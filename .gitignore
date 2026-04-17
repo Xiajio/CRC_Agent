@@ -38,3 +38,7 @@ data_temp.csv
 .vscode/
 .DS_Store
 Thumbs.db
+
+
+tests/
+docs/superpowers/
