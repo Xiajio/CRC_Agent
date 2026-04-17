@@ -1,0 +1,40 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python caches and virtual environments
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+
+# Test and browser artifacts
+.playwright-cli/
+playwright-report/
+test-results/
+coverage/
+htmlcov/
+
+# Local runtime and temporary files
+output/
+runtime/
+tmp/
+*.log
+
+# Local indexes and data kept out of version control
+chroma_db/
+bm25_index/
+data/
+data_temp.csv
+
+# Editor and OS files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

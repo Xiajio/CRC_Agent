@@ -1,0 +1,12 @@
+:root {
+  color-scheme: light;
+  --bg-canvas: #fbf6f5;
+  --bg-panel: rgba(255, 255, 255, 0.92);
+  --bg-accent: linear-gradient(135deg, #ffeae7 0%, #fff8f7 52%, #ffd9d4 100%);
+  --text-primary: #2a1b1f;
+  --text-secondary: #6d5459;
+  --border-subtle: rgba(165, 73, 83, 0.14);
+  --shadow-panel: 0 18px 44px rgba(133, 70, 78, 0.11);
+  --radius-panel: 24px;
+  --font-body: "Noto Sans SC", "IBM Plex Sans", "Segoe UI", sans-serif;
+}

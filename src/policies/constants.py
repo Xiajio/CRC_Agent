@@ -1,0 +1,7 @@
+"""Policy-layer constants shared by routing and review code."""
+
+MAX_DECISION_RETRIES = 3
+MAX_EVALUATION_RETRIES = 2
+STABLE_GUIDELINE_MIN_COVERAGE = 80
+STABLE_GUIDELINE_MIN_INLINE_ANCHORS = 2
+
