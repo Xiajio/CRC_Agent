@@ -14,6 +14,7 @@ CARD_REGISTRY: tuple[tuple[str, str], ...] = (
     ("decision_json", "decision_card"),
     ("medical_card", "medical_card"),
     ("triage_card", "triage_card"),
+    ("triage_question_card", "triage_question_card"),
     ("pathology_card", "pathology_card"),
     ("pathology_slide_card", "pathology_slide_card"),
     ("radiomics_report_card", "radiomics_report_card"),

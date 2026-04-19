@@ -15,6 +15,7 @@ type ConversationPanelProps = {
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
   onCardPromptRequest?: CardPromptHandler;
+  activeTriageQuestionId?: string | null;
 };
 
 const INTERNAL_LINE_PATTERNS = [
@@ -123,6 +124,7 @@ export function ConversationPanel({
   onDraftChange,
   onSubmit,
   onCardPromptRequest,
+  activeTriageQuestionId,
 }: ConversationPanelProps) {
   const executionLabel = executionStatusLabel(statusNode, isStreaming);
   const textareaDisabled = draftDisabled ?? disabled;
@@ -197,6 +199,10 @@ export function ConversationPanel({
                               cardType: card.cardType,
                               payload: card.payload,
                               onPromptRequest: onCardPromptRequest,
+                              isInteractive:
+                                card.cardType !== "triage_question_card"
+                                || (typeof card.payload.question_id === "string"
+                                  && card.payload.question_id === activeTriageQuestionId),
                             })}
                           </div>
                         </div>

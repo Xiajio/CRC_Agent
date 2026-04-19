@@ -19,6 +19,7 @@ const INLINE_CARD_TYPES = new Set([
   "tumor_detection_card",
   "radiomics_report_card",
   "triage_card",
+  "triage_question_card",
   "decision_card",
 ]);
 const INLINE_CARD_PRIORITY: Record<string, number> = {
@@ -27,6 +28,7 @@ const INLINE_CARD_PRIORITY: Record<string, number> = {
   tumor_detection_card: 3,
   radiomics_report_card: 4,
   triage_card: 5,
+  triage_question_card: 5,
   decision_card: 6,
 };
 

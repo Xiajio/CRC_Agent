@@ -2,12 +2,13 @@
 
 import type { JsonObject, JsonValue } from "../../app/api/types";
 
-export type CardPromptHandler = (prompt: string) => void;
+export type CardPromptHandler = (prompt: string, context?: Record<string, unknown>) => void;
 
 type CardRendererContext = {
   cardType: string;
   payload: JsonObject;
   onPromptRequest?: CardPromptHandler;
+  isInteractive?: boolean;
 };
 
 const TRIAGE_RISK_LABELS: Record<string, string> = {

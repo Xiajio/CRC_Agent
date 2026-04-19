@@ -18,6 +18,71 @@ TRIAGE_FIELD_ORDER = [
     "fever",
 ]
 
+TRIAGE_QUESTION_SCHEMAS: dict[str, dict[str, Any]] = {
+    "duration": {
+        "selection_mode": "single",
+        "allow_other": True,
+        "other_placeholder": "例如：3天、2周、1个月",
+        "options": [
+            {"id": "lt_1d", "label": "1天内", "submit_text": "持续时间少于1天"},
+            {"id": "1_3d", "label": "1-3天", "submit_text": "持续时间大约1到3天"},
+            {"id": "3_7d", "label": "3-7天", "submit_text": "持续时间大约3到7天"},
+            {"id": "1_2w", "label": "1-2周", "submit_text": "持续时间大约1到2周"},
+            {"id": "gt_1m", "label": "1个月以上", "submit_text": "持续时间超过1个月"},
+        ],
+    },
+    "bleeding": {
+        "selection_mode": "single",
+        "allow_other": True,
+        "other_placeholder": "例如：鲜红、暗红、黑便",
+        "options": [
+            {"id": "none", "label": "没有便血/黑便", "submit_text": "没有便血或黑便"},
+            {"id": "bright_red", "label": "鲜红便血", "submit_text": "便血是鲜红色"},
+            {"id": "dark_red", "label": "暗红便血", "submit_text": "便血是暗红色"},
+            {"id": "black_stool", "label": "黑便", "submit_text": "大便发黑或柏油样"},
+        ],
+    },
+    "bowel_change": {
+        "selection_mode": "multiple",
+        "allow_other": True,
+        "other_placeholder": "例如：次数增多、排便变细",
+        "submit_label": "提交答案",
+        "options": [
+            {"id": "diarrhea", "label": "腹泻", "submit_text": "最近有腹泻"},
+            {"id": "constipation", "label": "便秘", "submit_text": "最近有便秘"},
+            {"id": "more_frequent", "label": "次数增多", "submit_text": "排便次数增多"},
+            {"id": "thin_stool", "label": "大便变细", "submit_text": "大便变细"},
+            {
+                "id": "no_change",
+                "label": "没有明显变化",
+                "submit_text": "排便习惯没有明显变化",
+                "exclusive": True,
+            },
+        ],
+    },
+    "weight_loss": {
+        "selection_mode": "single",
+        "allow_other": True,
+        "other_placeholder": "例如：瘦了几斤",
+        "options": [
+            {"id": "yes", "label": "有消瘦/乏力", "submit_text": "最近有消瘦或乏力"},
+            {"id": "no", "label": "没有消瘦", "submit_text": "没有明显消瘦"},
+            {"id": "unsure", "label": "不确定", "submit_text": "是否消瘦不确定"},
+        ],
+    },
+    "fever": {
+        "selection_mode": "single",
+        "allow_other": True,
+        "other_placeholder": "例如：发热、呕吐、停止排气排便",
+        "options": [
+            {"id": "none", "label": "没有发热/呕吐", "submit_text": "没有发热或呕吐"},
+            {"id": "fever", "label": "有发热", "submit_text": "有发热"},
+            {"id": "vomiting", "label": "有呕吐", "submit_text": "有呕吐"},
+            {"id": "obstruction", "label": "停止排气排便", "submit_text": "有停止排气排便"},
+        ],
+    },
+}
+
 TRIAGE_QUESTION_MAP: dict[str, str] = {
     "duration": "腹痛/腹泻/便秘是从什么时候开始的？大概持续了多久？",
     "bleeding": "最近有没有便血或黑便？如果有，大概是什么颜色？",
@@ -331,6 +396,41 @@ def _triage_prompt_text(field: str | None, *, clarification: bool = False) -> st
     return TRIAGE_QUESTION_MAP.get(field, "")
 
 
+def _build_triage_question_card(
+    field_key: str | None,
+    prompt: str,
+    question_revision: int = 0,
+) -> dict[str, Any] | None:
+    if not field_key or not prompt:
+        return None
+
+    schema = TRIAGE_QUESTION_SCHEMAS.get(field_key)
+    if schema is None:
+        return None
+
+    options = [dict(option) for option in schema.get("options", []) if isinstance(option, dict)]
+    if not options:
+        return None
+
+    selection_mode = schema.get("selection_mode")
+    if selection_mode not in {"single", "multiple"}:
+        return None
+
+    return {
+        "type": "triage_question_card",
+        "version": 1,
+        "question_id": f"triage-q-{field_key}-{max(0, int(question_revision))}",
+        "field_key": field_key,
+        "prompt": prompt,
+        "selection_mode": selection_mode,
+        "options": options,
+        "allow_other": bool(schema.get("allow_other", False)),
+        "other_label": schema.get("other_label", "其他"),
+        "other_placeholder": schema.get("other_placeholder"),
+        "submit_label": schema.get("submit_label"),
+    }
+
+
 def _triage_switch_prompt(field: str | None) -> str:
     prompt = _triage_prompt_text(field, clarification=True) or "请先直接回答当前分诊问题。"
     return TRIAGE_SWITCH_PROMPT_TEMPLATE.format(prompt=prompt)
@@ -463,6 +563,19 @@ def node_outpatient_triage(
             "triage_explicit_switch_request": False,
         }
 
+        additional_kwargs: dict[str, Any] = {}
+        if active_inquiry and not triage_switch_prompt_active:
+            triage_question_card = _build_triage_question_card(
+                next_field,
+                inquiry_message or message,
+                triage_no_progress_count,
+            )
+            if triage_question_card is not None:
+                additional_kwargs["triage_question_card"] = triage_question_card
+
+        if published_triage_card is not None:
+            additional_kwargs["triage_card"] = published_triage_card
+
         return {
             "encounter_track": "outpatient_triage",
             "clinical_entry_reason": "symptom_based_triage",
@@ -476,7 +589,7 @@ def node_outpatient_triage(
             "triage_card": published_triage_card,
             "missing_critical_data": [],
             "findings": findings,
-            "messages": [AIMessage(content=message)],
+            "messages": [AIMessage(content=message, additional_kwargs=additional_kwargs)],
             "clinical_stage": "Inquiry_Pending" if active_inquiry else "Outpatient_Triage",
             "error": None,
         }
@@ -611,9 +724,11 @@ def route_after_outpatient_triage(state: CRCAgentState) -> str:
 
 __all__ = [
     "TRIAGE_FIELD_ORDER",
+    "TRIAGE_QUESTION_SCHEMAS",
     "TRIAGE_QUESTION_MAP",
     "TRIAGE_CLARIFICATION_MAP",
     "TRIAGE_SWITCH_PROMPT_TEMPLATE",
+    "_build_triage_question_card",
     "_extract_boolean",
     "_extract_duration",
     "_triage_from_symptoms",

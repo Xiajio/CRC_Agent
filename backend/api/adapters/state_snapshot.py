@@ -19,6 +19,8 @@ INLINE_CARD_TYPES = {
     "imaging_card",
     "tumor_detection_card",
     "radiomics_report_card",
+    "triage_card",
+    "triage_question_card",
     "decision_card",
 }
 INLINE_CARD_PRIORITY = {
@@ -26,7 +28,9 @@ INLINE_CARD_PRIORITY = {
     "imaging_card": 2,
     "tumor_detection_card": 3,
     "radiomics_report_card": 4,
-    "decision_card": 5,
+    "triage_card": 5,
+    "triage_question_card": 5,
+    "decision_card": 6,
 }
 TRIAGE_STATE_KEYS = (
     "encounter_track",

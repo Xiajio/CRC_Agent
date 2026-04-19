@@ -50,6 +50,7 @@ INLINE_CARD_TYPES = {
     "tumor_detection_card",
     "radiomics_report_card",
     "triage_card",
+    "triage_question_card",
     "decision_card",
 }
 INLINE_CARD_PRIORITY = {
@@ -58,6 +59,7 @@ INLINE_CARD_PRIORITY = {
     "tumor_detection_card": 3,
     "radiomics_report_card": 4,
     "triage_card": 5,
+    "triage_question_card": 5,
     "decision_card": 6,
 }
 

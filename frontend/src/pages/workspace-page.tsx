@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiClientError } from "../app/api/client";
-import type { FrontendMessage, Scene, SessionState } from "../app/api/types";
+import type { FrontendMessage, JsonObject, Scene, SessionState } from "../app/api/types";
 import { mergeMessageHistory, reduceStreamEvent } from "../app/store/stream-reducer";
 import { useApiClient } from "../app/providers";
 import { WorkspaceLayout } from "../components/layout/workspace-layout";
@@ -27,6 +27,14 @@ function readFiniteNumber(value: unknown): number | null {
   if (typeof value === "string" && value.trim()) {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function readText(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
   }
 
   return null;
@@ -82,6 +90,28 @@ function appendOptimisticUserMessage(state: SessionState, content: string): Sess
   };
 }
 
+function stripTriageQuestionCard(cards: Record<string, JsonObject>): Record<string, JsonObject> {
+  const { triage_question_card: _triageQuestionCard, ...rest } = cards;
+  return rest;
+}
+
+function triageVisibilityContext(findings: SessionState["findings"]): {
+  encounterTrack: string | null;
+  activeInquiry: boolean;
+} {
+  const record = findings as Record<string, unknown>;
+
+  return {
+    encounterTrack: readText(record.encounter_track),
+    activeInquiry: Boolean(record.active_inquiry),
+  };
+}
+
+function readActiveTriageQuestionId(cards: SessionState["cards"]): string | null {
+  const questionCard = cards.triage_question_card as Record<string, unknown> | undefined;
+  return readText(questionCard?.question_id);
+}
+
 function sceneLabel(scene: Scene): string {
   return scene === "patient" ? "👤 患者端" : "🩺 医生端";
 }
@@ -130,6 +160,11 @@ export function WorkspacePage() {
   const activeSessionState = activeController.state;
   const setActiveSessionState = activeController.setState;
   const doctorPatientId = readFiniteNumber(doctor.state.currentPatientId);
+  const { encounterTrack: patientEncounterTrack, activeInquiry: patientActiveInquiry } =
+    triageVisibilityContext(patient.state.findings);
+  const activePatientTriageQuestionId = patientActiveInquiry
+    ? readActiveTriageQuestionId(patient.state.cards)
+    : null;
 
   const patientRegistry = usePatientRegistry({
     enabled: activeScene === "doctor",
@@ -147,12 +182,14 @@ export function WorkspacePage() {
 
   const patientVisibleCards = useMemo(
     () =>
-      getVisibleCards(patient.state.cards, {
-        isDatabaseDetailActive: false,
-        encounterTrack: null,
-        activeInquiry: false,
-      }),
-    [patient.state.cards],
+      stripTriageQuestionCard(
+        getVisibleCards(patient.state.cards, {
+          isDatabaseDetailActive: false,
+          encounterTrack: patientEncounterTrack,
+          activeInquiry: patientActiveInquiry,
+        }),
+      ),
+    [patient.state.cards, patientEncounterTrack, patientActiveInquiry],
   );
 
   const doctorVisibleCards = useMemo(
@@ -250,11 +287,16 @@ export function WorkspacePage() {
     }
   }
 
-  async function submitPrompt() {
-    const sessionId = activeSessionState.sessionId;
-    const prompt = drafts[activeScene].trim();
+  async function submitMessage(
+    scene: Scene,
+    prompt: string,
+    context?: Record<string, unknown>,
+  ) {
+    const sceneController = scene === "patient" ? patient : doctor;
+    const sessionId = sceneController.state.sessionId;
+    const normalizedPrompt = prompt.trim();
 
-    if (!sessionId || !prompt) {
+    if (!sessionId || !normalizedPrompt) {
       return;
     }
 
@@ -266,20 +308,27 @@ export function WorkspacePage() {
     setIsStreaming(true);
     setSceneError(null);
 
-    setActiveSessionState((current) => appendOptimisticUserMessage(current, prompt));
-    updateDraft(activeScene, "");
+    sceneController.setState((current) => appendOptimisticUserMessage(current, normalizedPrompt));
 
     try {
       await apiClient.streamTurn(
         sessionId,
-        {
-          message: {
-            role: "user",
-            content: prompt,
-          },
-        },
+        context
+          ? {
+              message: {
+                role: "user",
+                content: normalizedPrompt,
+              },
+              context,
+            }
+          : {
+              message: {
+                role: "user",
+                content: normalizedPrompt,
+              },
+            },
         (event) => {
-          setActiveSessionState((current) => reduceStreamEvent(current, event));
+          sceneController.setState((current) => reduceStreamEvent(current, event));
         },
         controller.signal,
       );
@@ -293,6 +342,18 @@ export function WorkspacePage() {
         setIsStreaming(false);
       }
     }
+  }
+
+  async function submitPrompt() {
+    const sessionId = activeSessionState.sessionId;
+    const prompt = drafts[activeScene].trim();
+
+    if (!sessionId || !prompt) {
+      return;
+    }
+
+    updateDraft(activeScene, "");
+    void submitMessage(activeScene, prompt);
   }
 
   async function handleUpload(file: File) {
@@ -448,7 +509,7 @@ export function WorkspacePage() {
   }
 
   return (
-    <WorkspaceLayout
+      <WorkspaceLayout
       toolbar={(
         <div className="workspace-toolbar-row" style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
           {toolbar}
@@ -465,22 +526,26 @@ export function WorkspacePage() {
         </div>
       )}
       centerWorkspace={(
-        <div className="workspace-panel-stack">
-          <ConversationPanel
-            messages={patient.state.messages}
-            draft={activeDraft}
+            <div className="workspace-panel-stack">
+              <ConversationPanel
+                messages={patient.state.messages}
+                draft={activeDraft}
+                activeTriageQuestionId={activePatientTriageQuestionId}
             statusNode={patient.state.statusNode}
             isStreaming={isStreaming}
             isLoadingHistory={isLoadingHistory}
             canLoadHistory={Boolean(patient.state.messagesNextBeforeCursor)}
             disabled={isStreaming || isUploading}
-            errorMessage={activeError}
-            onLoadHistory={() => void loadMessageHistory()}
-            onDraftChange={(value) => updateDraft("patient", value)}
-            onSubmit={() => void submitPrompt()}
-          />
-        </div>
-      )}
+                errorMessage={activeError}
+                onLoadHistory={() => void loadMessageHistory()}
+                onDraftChange={(value) => updateDraft("patient", value)}
+                onSubmit={() => void submitPrompt()}
+                onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
+                  void submitMessage("patient", prompt, context)
+                }
+              />
+            </div>
+          )}
       rightInspector={(
         <div className="workspace-panel-stack">
           <ClinicalCardsPanel 
