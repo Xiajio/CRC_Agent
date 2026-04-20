@@ -5,7 +5,9 @@ import type {
   PatientRegistryRecord,
 } from "../../app/api/types";
 import type { CardPromptHandler } from "../cards/card-renderers-extended";
-import { ConversationPanel } from "../chat/conversation-panel";
+import { ConversationPanel, type ConversationLatencyStatus } from "../chat/conversation-panel";
+
+export type DoctorLatencyStatus = ConversationLatencyStatus;
 
 export type DoctorConsultationViewProps = {
   currentPatientId: number | null;
@@ -20,6 +22,7 @@ export type DoctorConsultationViewProps = {
   canLoadHistory: boolean;
   disabled: boolean;
   errorMessage: string | null;
+  latencyStatus?: DoctorLatencyStatus | null;
   roadmap: JsonObject[];
   stage: string | null;
   plan: JsonObject[];
@@ -118,6 +121,7 @@ export function DoctorConsultationView({
   canLoadHistory,
   disabled,
   errorMessage,
+  latencyStatus,
   onLoadHistory,
   onDraftChange,
   onSubmit,
@@ -146,6 +150,7 @@ export function DoctorConsultationView({
       canLoadHistory={canLoadHistory}
       disabled={disabled}
       errorMessage={errorMessage}
+      latencyStatus={latencyStatus}
       onLoadHistory={onLoadHistory}
       onDraftChange={onDraftChange}
       onSubmit={onSubmit}

@@ -1,12 +1,15 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 
+import { buildChatLatencyTraceAnalysis, createChatLatencyTraceStore } from "../app/api/chat-latency-trace";
 import { ApiClientError } from "../app/api/client";
-import type { FrontendMessage, JsonObject, Scene, SessionState } from "../app/api/types";
+import { generateTraceId } from "../app/api/generate-trace-id";
+import type { ChatTurnRequest, FrontendMessage, JsonObject, Scene, SessionState } from "../app/api/types";
+import type { StreamTraceTap } from "../app/api/stream";
 import { mergeMessageHistory, reduceStreamEvent } from "../app/store/stream-reducer";
 import { useApiClient } from "../app/providers";
 import { WorkspaceLayout } from "../components/layout/workspace-layout";
 import { ClinicalCardsPanel } from "../features/cards/clinical-cards-panel";
-import { ConversationPanel } from "../features/chat/conversation-panel";
+import { ConversationPanel, type ConversationLatencyStatus } from "../features/chat/conversation-panel";
 import { DoctorSceneShell } from "../features/doctor/doctor-scene-shell";
 import { ExecutionPlanPanel } from "../features/execution-plan/execution-plan-panel";
 import { RoadmapPanel } from "../features/roadmap/roadmap-panel";
@@ -18,6 +21,39 @@ import { useSceneSessions } from "../features/workspace/use-scene-sessions";
 import { getVisibleCards } from "./visible-cards";
 
 type SceneDrafts = Record<Scene, string>;
+type TurnLatencyProbeStatus = "streaming" | "message_done" | "ui_complete" | "aborted" | "error";
+
+type TurnLatencyProbe = {
+  sequence: number;
+  scene: Scene;
+  traceId: string;
+  prompt: string;
+  status: TurnLatencyProbeStatus;
+  startedAt: number;
+  messageDoneAt: number | null;
+  renderCommittedAt: number | null;
+  assistantMessageId: string | null;
+  assistantCursor: string | null;
+  finalContentText: string | null;
+  uiCompleteMs: number | null;
+  errorMessage: string | null;
+};
+
+type RecentCompletedProbes = Record<Scene, TurnLatencyProbe | null>;
+
+type ChatLatencyDebugSurface = {
+  readonly latestTrace: unknown;
+  readonly traceHistory: unknown[];
+  readonly latestDiagnosis: unknown;
+  toLatestTraceJson(): string;
+  toAllTracesJson(): string;
+};
+
+declare global {
+  interface Window {
+    __chatLatency?: ChatLatencyDebugSurface;
+  }
+}
 
 function readFiniteNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -38,6 +74,23 @@ function readText(value: unknown): string | null {
   }
 
   return null;
+}
+
+function isChatLatencyDebugEnabled(): boolean {
+  if (typeof window !== "undefined") {
+    try {
+      if (window.localStorage.getItem("chatLatencyDebug") === "1") {
+        return true;
+      }
+    } catch {
+      // Ignore storage access failures and fall back to env-only debug mode.
+    }
+  }
+
+  const importMetaEnv = import.meta as ImportMeta & {
+    env?: Record<string, string | boolean | undefined>;
+  };
+  return importMetaEnv.env?.VITE_CHAT_LATENCY_DEBUG === "true";
 }
 
 function readErrorMessage(error: unknown): string {
@@ -85,6 +138,7 @@ function appendOptimisticUserMessage(state: SessionState, content: string): Sess
       },
     ],
     messagesTotal: Math.max(state.messagesTotal, state.messages.length + 1),
+    lastError: null,
     pendingInlineCards: [],
     latestAssistantMessageCursor: null,
   };
@@ -132,10 +186,36 @@ function currentSceneError(
   return bootstrapError;
 }
 
+function isProbeIncomplete(probe: TurnLatencyProbe | null): probe is TurnLatencyProbe {
+  return probe !== null && probe.status !== "ui_complete" && probe.status !== "aborted" && probe.status !== "error";
+}
+
+function conversationLatencyStatusForScene(
+  scene: Scene,
+  activeProbe: TurnLatencyProbe | null,
+  recentCompletedProbes: RecentCompletedProbes,
+): ConversationLatencyStatus | null {
+  const recentCompletedProbe = recentCompletedProbes[scene];
+  if (activeProbe && activeProbe.scene === scene && (activeProbe.status === "streaming" || activeProbe.status === "message_done")) {
+    return { kind: "streaming" };
+  }
+
+  if (recentCompletedProbe && recentCompletedProbe.scene === scene && recentCompletedProbe.status === "ui_complete" && recentCompletedProbe.uiCompleteMs !== null) {
+    return {
+      kind: "completed",
+      uiCompleteMs: recentCompletedProbe.uiCompleteMs,
+    };
+  }
+
+  return null;
+}
+
 export function WorkspacePage() {
   const apiClient = useApiClient();
   const activeStreamRef = useRef<AbortController | null>(null);
   const streamSequenceRef = useRef(0);
+  const activeProbeRef = useRef<TurnLatencyProbe | null>(null);
+  const traceStoreRef = useRef(createChatLatencyTraceStore());
   const {
     activeScene,
     setActiveScene,
@@ -155,6 +235,10 @@ export function WorkspacePage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [recentCompletedProbes, setRecentCompletedProbes] = useState<RecentCompletedProbes>({
+    patient: null,
+    doctor: null,
+  });
 
   const activeController = activeScene === "patient" ? patient : doctor;
   const activeSessionState = activeController.state;
@@ -202,12 +286,181 @@ export function WorkspacePage() {
     [doctor.state.cards],
   );
 
+  function emitTraceConsoleSummary(traceId: string) {
+    if (!isChatLatencyDebugEnabled()) {
+      return;
+    }
+
+    const trace = traceStoreRef.current.getTrace(traceId);
+    if (!trace) {
+      return;
+    }
+
+    const analysis = buildChatLatencyTraceAnalysis(trace);
+    console.debug({
+      traceId,
+      uiCompleteMs: analysis.derived.uiCompleteMs,
+      ttftMs: analysis.derived.ttftMs,
+      renderTailMs: analysis.derived.renderTailMs,
+      primaryBottleneck: analysis.diagnosis.primary,
+      secondaryFactors: analysis.diagnosis.secondaryFactors,
+    });
+  }
+
+  function markProbeAborted(probe: TurnLatencyProbe, abortedAt: number) {
+    activeProbeRef.current = {
+      ...probe,
+      status: "aborted",
+    };
+    traceStoreRef.current.recordClientAbort(probe.traceId, abortedAt);
+  }
+
+  function markProbeSuperseded(probe: TurnLatencyProbe, supersededAt: number) {
+    activeProbeRef.current = {
+      ...probe,
+      status: "aborted",
+    };
+    traceStoreRef.current.markSuperseded(probe.traceId, supersededAt);
+  }
+
   useEffect(() => {
     setSceneError(null);
     if (activeScene === "doctor") {
       setUploadStatus(null);
     }
   }, [activeScene]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !isChatLatencyDebugEnabled()) {
+      return;
+    }
+
+    const debugSurface: ChatLatencyDebugSurface = {
+      get latestTrace() {
+        const latest = traceStoreRef.current.getLatestTrace();
+        return latest ? JSON.parse(traceStoreRef.current.toLatestTraceJson()) : null;
+      },
+      get traceHistory() {
+        const payload = JSON.parse(traceStoreRef.current.toAllTracesJson()) as { traces?: unknown[] };
+        return payload.traces ?? [];
+      },
+      get latestDiagnosis() {
+        const latest = traceStoreRef.current.getLatestTrace();
+        return latest ? buildChatLatencyTraceAnalysis(latest) : null;
+      },
+      toLatestTraceJson() {
+        return traceStoreRef.current.toLatestTraceJson();
+      },
+      toAllTracesJson() {
+        return traceStoreRef.current.toAllTracesJson();
+      },
+    };
+
+    window.__chatLatency = debugSurface;
+    return () => {
+      if (window.__chatLatency === debugSurface) {
+        delete window.__chatLatency;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const probe = activeProbeRef.current;
+    if (!isProbeIncomplete(probe)) {
+      return;
+    }
+    if (probe.scene === activeScene) {
+      return;
+    }
+
+    activeProbeRef.current = null;
+  }, [activeScene]);
+
+  useEffect(() => {
+    const probe = activeProbeRef.current;
+    if (!isProbeIncomplete(probe)) {
+      return;
+    }
+
+    const relevantState = probe.scene === "patient" ? patient.state : doctor.state;
+    const errorMessage = relevantState.lastError?.message;
+    if (!errorMessage) {
+      return;
+    }
+
+    const errorAt = performance.now();
+    activeProbeRef.current = {
+      ...probe,
+      status: "error",
+      errorMessage,
+    };
+    traceStoreRef.current.recordClientError(probe.traceId, errorAt);
+  }, [patient.state.lastError, doctor.state.lastError, patient.state, doctor.state]);
+
+  useEffect(() => {
+    const probe = activeProbeRef.current;
+    if (!probe || probe.status !== "message_done") {
+      return;
+    }
+    if (probe.sequence !== streamSequenceRef.current) {
+      markProbeAborted(probe, performance.now());
+      return;
+    }
+
+    const relevantState = probe.scene === "patient" ? patient.state : doctor.state;
+    let assistantCursor = probe.assistantCursor;
+    let targetMessage: FrontendMessage | undefined;
+
+    if (probe.assistantMessageId) {
+      targetMessage = relevantState.messages.find(
+        (message) => message.type === "ai" && message.id === probe.assistantMessageId,
+      );
+      assistantCursor = targetMessage?.cursor ?? assistantCursor;
+    } else {
+      assistantCursor = assistantCursor ?? relevantState.latestAssistantMessageCursor ?? null;
+      targetMessage = assistantCursor
+        ? relevantState.messages.find(
+            (message) => message.type === "ai" && message.cursor === assistantCursor,
+          )
+        : undefined;
+    }
+
+    if (!targetMessage) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      const currentProbe = activeProbeRef.current;
+      if (!currentProbe || currentProbe.sequence !== probe.sequence || currentProbe.status !== "message_done") {
+        return;
+      }
+
+      const renderCommittedAt = performance.now();
+      const completedProbe: TurnLatencyProbe = {
+        ...currentProbe,
+        assistantCursor,
+        renderCommittedAt,
+        status: "ui_complete",
+      };
+      completedProbe.uiCompleteMs = renderCommittedAt - completedProbe.startedAt;
+      activeProbeRef.current = completedProbe;
+      traceStoreRef.current.recordClientUiComplete(completedProbe.traceId, renderCommittedAt);
+      emitTraceConsoleSummary(completedProbe.traceId);
+      setRecentCompletedProbes((current) => ({
+        ...current,
+        [completedProbe.scene]: completedProbe,
+      }));
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [
+    patient.state.messages,
+    patient.state.latestAssistantMessageCursor,
+    doctor.state.messages,
+    doctor.state.latestAssistantMessageCursor,
+  ]);
 
   useEffect(() => {
     const sessionId = activeSessionState.sessionId;
@@ -254,6 +507,10 @@ export function WorkspacePage() {
 
     activeStreamRef.current?.abort();
     activeStreamRef.current = null;
+    if (isProbeIncomplete(activeProbeRef.current)) {
+      markProbeAborted(activeProbeRef.current, performance.now());
+      activeProbeRef.current = null;
+    }
     setIsStreaming(false);
     setSceneError(null);
     setActiveScene(scene);
@@ -300,9 +557,44 @@ export function WorkspacePage() {
       return;
     }
 
+    const traceId = generateTraceId();
+    const clientWallClockAtSubmit = new Date().toISOString();
+    const startedAt = performance.now();
     const controller = new AbortController();
     const sequence = streamSequenceRef.current + 1;
+    const currentProbe = activeProbeRef.current;
+    if (isProbeIncomplete(currentProbe)) {
+      markProbeSuperseded(currentProbe, startedAt);
+    }
     streamSequenceRef.current = sequence;
+    activeProbeRef.current = {
+      sequence,
+      scene,
+      traceId,
+      prompt: normalizedPrompt,
+      status: "streaming",
+      startedAt,
+      messageDoneAt: null,
+      renderCommittedAt: null,
+      assistantMessageId: null,
+      assistantCursor: null,
+      finalContentText: null,
+      uiCompleteMs: null,
+      errorMessage: null,
+    };
+    traceStoreRef.current.recordClientSubmit({
+      traceId,
+      scene,
+      promptText: normalizedPrompt,
+      clientWallClockAtSubmit,
+      submitAt: startedAt,
+      uploadsCount: Object.keys(sceneController.state.uploadedAssets ?? {}).length,
+      contextKeys: context ? Object.keys(context).sort() : [],
+    });
+    setRecentCompletedProbes((current) => ({
+      ...current,
+      [scene]: null,
+    }));
     activeStreamRef.current?.abort();
     activeStreamRef.current = controller;
     setIsStreaming(true);
@@ -310,30 +602,45 @@ export function WorkspacePage() {
 
     sceneController.setState((current) => appendOptimisticUserMessage(current, normalizedPrompt));
 
+    const request: ChatTurnRequest = {
+      message: {
+        role: "user",
+        content: normalizedPrompt,
+      },
+      trace_id: traceId,
+      ...(context ? { context } : {}),
+    };
+    const traceTap: StreamTraceTap = (event, receivedAt) => {
+      traceStoreRef.current.recordStreamObservation(traceId, event, receivedAt);
+    };
+
     try {
-      await apiClient.streamTurn(
-        sessionId,
-        context
-          ? {
-              message: {
-                role: "user",
-                content: normalizedPrompt,
-              },
-              context,
-            }
-          : {
-              message: {
-                role: "user",
-                content: normalizedPrompt,
-              },
-            },
-        (event) => {
-          sceneController.setState((current) => reduceStreamEvent(current, event));
-        },
-        controller.signal,
-      );
+      await apiClient.streamTurn(sessionId, request, (event) => {
+        if (event.type === "message.done" && activeProbeRef.current?.sequence === sequence) {
+          const messageDoneAt = performance.now();
+          activeProbeRef.current = {
+            ...activeProbeRef.current,
+            status: "message_done",
+            messageDoneAt,
+            assistantMessageId: event.message_id ?? null,
+            finalContentText: typeof event.content === "string" ? event.content : null,
+          };
+          traceStoreRef.current.recordClientMessageDone(traceId, messageDoneAt);
+        }
+        sceneController.setState((current) => reduceStreamEvent(current, event));
+      }, controller.signal, traceTap);
     } catch (error) {
       if (!isAbortError(error)) {
+        const currentProbeAfterError = activeProbeRef.current;
+        if (isProbeIncomplete(currentProbeAfterError) && currentProbeAfterError.sequence === sequence) {
+          const errorAt = performance.now();
+          activeProbeRef.current = {
+            ...currentProbeAfterError,
+            status: "error",
+            errorMessage: readErrorMessage(error),
+          };
+          traceStoreRef.current.recordClientError(currentProbeAfterError.traceId, errorAt);
+        }
         setSceneError(readErrorMessage(error));
       }
     } finally {
@@ -380,6 +687,8 @@ export function WorkspacePage() {
           },
         },
       }));
+      const refreshed = await apiClient.getSession(sessionId);
+      applyResponseToScene("patient", refreshed);
       setUploadStatus(`Uploaded ${response.filename}`);
     } catch (error) {
       setSceneError(readErrorMessage(error));
@@ -398,6 +707,14 @@ export function WorkspacePage() {
 
     activeStreamRef.current?.abort();
     activeStreamRef.current = null;
+    if (isProbeIncomplete(activeProbeRef.current)) {
+      markProbeAborted(activeProbeRef.current, performance.now());
+    }
+    activeProbeRef.current = null;
+    setRecentCompletedProbes((current) => ({
+      ...current,
+      [activeScene]: null,
+    }));
     setIsStreaming(false);
     setSceneError(null);
 
@@ -450,6 +767,8 @@ export function WorkspacePage() {
 
   const activeError = currentSceneError(sceneError, activeSessionState, bootstrapError);
   const activeDraft = drafts[activeScene];
+  const patientLatencyStatus = conversationLatencyStatusForScene("patient", activeProbeRef.current, recentCompletedProbes);
+  const doctorLatencyStatus = conversationLatencyStatusForScene("doctor", activeProbeRef.current, recentCompletedProbes);
 
   const toolbar = (
     <>
@@ -495,6 +814,7 @@ export function WorkspacePage() {
         canLoadHistory={Boolean(doctor.state.messagesNextBeforeCursor)}
         disabled={isStreaming || isUploading}
         errorMessage={activeError}
+        latencyStatus={doctorLatencyStatus}
         roadmap={doctor.state.roadmap}
         stage={doctor.state.stage}
         plan={doctor.state.plan}
@@ -537,6 +857,7 @@ export function WorkspacePage() {
             canLoadHistory={Boolean(patient.state.messagesNextBeforeCursor)}
             disabled={isStreaming || isUploading}
                 errorMessage={activeError}
+                latencyStatus={patientLatencyStatus}
                 onLoadHistory={() => void loadMessageHistory()}
                 onDraftChange={(value) => updateDraft("patient", value)}
                 onSubmit={() => void submitPrompt()}

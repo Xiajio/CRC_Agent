@@ -14,6 +14,7 @@ import { RoadmapPanel } from "../roadmap/roadmap-panel";
 import {
   CurrentPatientSummary,
   DoctorConsultationView,
+  type DoctorLatencyStatus,
   GeneralClinicalMode,
 } from "./doctor-consultation-view";
 import { DoctorDatabaseView } from "./doctor-database-view";
@@ -33,6 +34,7 @@ type DoctorSceneShellProps = {
   canLoadHistory: boolean;
   disabled: boolean;
   errorMessage: string | null;
+  latencyStatus?: DoctorLatencyStatus | null;
   roadmap: JsonObject[];
   stage: string | null;
   plan: JsonObject[];
@@ -59,6 +61,7 @@ export function DoctorSceneShell({
   canLoadHistory,
   disabled,
   errorMessage,
+  latencyStatus,
   roadmap,
   stage,
   plan,
@@ -150,6 +153,7 @@ export function DoctorSceneShell({
                 canLoadHistory={canLoadHistory}
                 disabled={disabled}
                 errorMessage={errorMessage}
+                latencyStatus={latencyStatus}
                 onLoadHistory={onLoadHistory}
                 onDraftChange={onDraftChange}
                 onSubmit={onSubmit}
@@ -189,6 +193,7 @@ export function DoctorSceneShell({
                 canLoadHistory={canLoadHistory}
                 disabled={disabled}
                 errorMessage={errorMessage}
+                latencyStatus={latencyStatus}
                 onLoadHistory={onLoadHistory}
                 onDraftChange={onDraftChange}
                 onSubmit={onSubmit}

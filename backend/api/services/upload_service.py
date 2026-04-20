@@ -387,6 +387,7 @@ def store_session_upload(
                 json.dumps(record_payload, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
+            session_store.merge_context_state(session_id, {"medical_card": record_payload})
 
             if ingest_decision == "asset_only":
                 asset_id = f"asset_{uuid4().hex}"

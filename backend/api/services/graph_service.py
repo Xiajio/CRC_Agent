@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 import json
-from contextlib import suppress
 from collections.abc import AsyncIterator, Mapping
 from typing import Any
 from uuid import uuid4
@@ -12,7 +11,15 @@ from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 
 from backend.api.adapters.event_normalizer import normalize_tick
-from backend.api.schemas.events import ContextMaintenanceEvent, DoneEvent, ErrorEvent, MessageDeltaEvent
+from backend.api.schemas.events import (
+    ContextMaintenanceEvent,
+    DoneEvent,
+    ErrorEvent,
+    MessageDeltaEvent,
+    MessageDoneEvent,
+    TraceStepEvent,
+)
+from backend.api.services import chat_latency_trace
 from backend.api.services.context_maintenance import (
     CONTEXT_MAINTENANCE_COMPLETED_MESSAGE,
     CONTEXT_MAINTENANCE_FAILED_MESSAGE,
@@ -21,6 +28,7 @@ from backend.api.services.context_maintenance import (
 from backend.api.services.payload_builder import build_graph_payload, restore_pending_context_messages
 from backend.api.services.session_store import InMemorySessionStore, SessionMeta
 from src.nodes.node_utils import clear_stream_callback, set_stream_callback
+from contextlib import suppress
 
 
 class SessionNotFoundError(RuntimeError):
@@ -140,6 +148,159 @@ class GraphService:
         if self._session_store.get_session(session_id) is not None:
             self._session_store.set_context_maintenance(session_id, None)
 
+    @staticmethod
+    def _coerce_float(value: Any) -> float | None:
+        if isinstance(value, (int, float)):
+            return float(value)
+        return None
+
+    @staticmethod
+    def _phase0_trace_from_request(session_id: str, run_id: str, chat_request: Any) -> chat_latency_trace.Phase0ChatLatencyTrace:
+        trace_id = None
+        request_started_at: float | None = None
+        router_ms = 0.0
+
+        if isinstance(chat_request, Mapping):
+            raw_trace_id = chat_request.get("trace_id")
+            if isinstance(raw_trace_id, str) and raw_trace_id.strip():
+                trace_id = raw_trace_id
+
+            request_started = chat_request.get("_latency_request_started_at")
+            if isinstance(request_started, (int, float)):
+                request_started_at = float(request_started)
+
+            router_value = chat_request.get("_latency_router_ms")
+            if isinstance(router_value, (int, float)):
+                router_ms = float(router_value)
+
+        if request_started_at is None:
+            request_started_at = chat_latency_trace.perf_counter()
+
+        trace = chat_latency_trace.Phase0ChatLatencyTrace(
+            trace_id=trace_id,
+            run_id=run_id,
+            session_id=session_id,
+            request_started_at=request_started_at,
+        )
+        trace.record_router_ms(router_ms)
+        return trace
+
+    @staticmethod
+    def _phase1_trace_from_request(
+        session_id: str,
+        run_id: str,
+        chat_request: Any,
+        *,
+        scene: str | None,
+    ) -> chat_latency_trace.Phase1ChatLatencyTrace | None:
+        if not chat_latency_trace.phase1_tracing_enabled():
+            return None
+
+        trace_id = None
+        model = None
+        flush_controlled = False
+
+        if isinstance(chat_request, Mapping):
+            raw_trace_id = chat_request.get("trace_id")
+            if isinstance(raw_trace_id, str) and raw_trace_id.strip():
+                trace_id = raw_trace_id
+
+            for key in ("model", "model_name"):
+                raw_model = chat_request.get(key)
+                if isinstance(raw_model, str) and raw_model.strip():
+                    model = raw_model
+                    break
+
+            context = chat_request.get("context")
+            if isinstance(context, Mapping):
+                flush_controlled = bool(context.get("flush_controlled"))
+            elif "flush_controlled" in chat_request:
+                flush_controlled = bool(chat_request.get("flush_controlled"))
+
+        return chat_latency_trace.Phase1ChatLatencyTrace(
+            trace_id=trace_id,
+            run_id=run_id,
+            session_id=session_id,
+            scene=scene,
+            model=model,
+            flush_controlled=flush_controlled,
+        )
+
+    @staticmethod
+    def _record_phase0_stream_payload(
+        phase0_trace: chat_latency_trace.Phase0ChatLatencyTrace | None,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if phase0_trace is None:
+            return
+
+        event_type = str(payload.get("type") or "")
+        node_name = payload.get("node")
+        if event_type == "start":
+            phase0_trace.record_node_start(node_name if isinstance(node_name, str) else None)
+        elif event_type == "delta":
+            phase0_trace.record_node_delta(node_name if isinstance(node_name, str) else None)
+        elif event_type == "end":
+            phase0_trace.record_node_end(node_name if isinstance(node_name, str) else None)
+
+    @staticmethod
+    def _record_phase1_stream_payload(
+        phase1_trace: chat_latency_trace.Phase1ChatLatencyTrace | None,
+        payload: Mapping[str, Any],
+    ) -> list[TraceStepEvent]:
+        if phase1_trace is None:
+            return []
+        return phase1_trace.record_stream_payload(payload)
+
+    @staticmethod
+    def _record_phase0_node_output(
+        phase0_trace: chat_latency_trace.Phase0ChatLatencyTrace | None,
+        node_name: str,
+        node_output: Mapping[str, Any],
+    ) -> None:
+        if phase0_trace is None:
+            return
+
+        phase0_trace.record_node_seen(node_name)
+        retrieval_ms = GraphService._coerce_float(node_output.get("retrieval_ms"))
+        if retrieval_ms is None:
+            retrieval_ms = GraphService._coerce_float(node_output.get("subagent_retrieval_ms"))
+        phase0_trace.record_retrieval_ms(retrieval_ms)
+
+    @staticmethod
+    def _record_phase1_node_output(
+        phase1_trace: chat_latency_trace.Phase1ChatLatencyTrace | None,
+        node_name: str,
+        node_output: Mapping[str, Any],
+    ) -> list[TraceStepEvent]:
+        if phase1_trace is None:
+            return []
+        return phase1_trace.record_node_output(node_name, node_output)
+
+    @staticmethod
+    def _record_visible_message_done(
+        phase0_trace: chat_latency_trace.Phase0ChatLatencyTrace | None,
+        node_name: str,
+    ) -> None:
+        if phase0_trace is None:
+            return
+        phase0_trace.record_visible_message_done(node_name)
+
+    @staticmethod
+    def _record_phase1_message_done(
+        phase1_trace: chat_latency_trace.Phase1ChatLatencyTrace | None,
+        node_name: str,
+        message_done_event: MessageDoneEvent,
+        node_output: Mapping[str, Any] | None,
+    ) -> TraceStepEvent | None:
+        if phase1_trace is None:
+            return None
+        return phase1_trace.record_message_done(
+            node_name=node_name,
+            message=message_done_event,
+            node_output=node_output,
+        )
+
     async def _invoke_context_finalizer(
         self,
         *,
@@ -220,7 +381,9 @@ class GraphService:
         thread_id: str,
         *,
         stream_event_queue: asyncio.Queue[dict[str, Any]] | None = None,
-    ) -> AsyncIterator[dict[str, Any] | MessageDeltaEvent]:
+        phase0_trace: chat_latency_trace.Phase0ChatLatencyTrace | None = None,
+        phase1_trace: chat_latency_trace.Phase1ChatLatencyTrace | None = None,
+    ) -> AsyncIterator[dict[str, Any] | MessageDeltaEvent | TraceStepEvent]:
         config = {
             "configurable": {"thread_id": thread_id},
             "recursion_limit": 200,
@@ -230,6 +393,9 @@ class GraphService:
         next_stream_task: asyncio.Task[dict[str, Any]] | None = (
             asyncio.create_task(stream_event_queue.get()) if stream_event_queue is not None else None
         )
+
+        def record_callback_payload(callback_payload: Mapping[str, Any]) -> None:
+            self._record_phase0_stream_payload(phase0_trace, callback_payload)
 
         try:
             while next_event_task is not None or next_stream_task is not None:
@@ -251,6 +417,9 @@ class GraphService:
 
                 if next_stream_task is not None and next_stream_task in done:
                     callback_payload = next_stream_task.result()
+                    record_callback_payload(callback_payload)
+                    for trace_event in self._record_phase1_stream_payload(phase1_trace, callback_payload):
+                        yield trace_event
                     next_stream_task = (
                         asyncio.create_task(stream_event_queue.get()) if stream_event_queue is not None else None
                     )
@@ -265,12 +434,20 @@ class GraphService:
                         next_event_task = None
                         await asyncio.sleep(0)
                         if next_stream_task is not None and next_stream_task.done():
-                            delta_event = _message_delta_from_callback(next_stream_task.result())
+                            callback_payload = next_stream_task.result()
+                            record_callback_payload(callback_payload)
+                            for trace_event in self._record_phase1_stream_payload(phase1_trace, callback_payload):
+                                yield trace_event
+                            delta_event = _message_delta_from_callback(callback_payload)
                             if delta_event is not None:
                                 yield delta_event
                         if stream_event_queue is not None:
                             while not stream_event_queue.empty():
-                                delta_event = _message_delta_from_callback(stream_event_queue.get_nowait())
+                                callback_payload = stream_event_queue.get_nowait()
+                                record_callback_payload(callback_payload)
+                                for trace_event in self._record_phase1_stream_payload(phase1_trace, callback_payload):
+                                    yield trace_event
+                                delta_event = _message_delta_from_callback(callback_payload)
                                 if delta_event is not None:
                                     yield delta_event
                         if next_stream_task is not None:
@@ -281,7 +458,11 @@ class GraphService:
                         return
 
                     if next_stream_task is not None and next_stream_task.done():
-                        delta_event = _message_delta_from_callback(next_stream_task.result())
+                        callback_payload = next_stream_task.result()
+                        record_callback_payload(callback_payload)
+                        for trace_event in self._record_phase1_stream_payload(phase1_trace, callback_payload):
+                            yield trace_event
+                        delta_event = _message_delta_from_callback(callback_payload)
                         if delta_event is not None:
                             yield delta_event
                         next_stream_task = (
@@ -289,7 +470,11 @@ class GraphService:
                         )
                     if stream_event_queue is not None:
                         while not stream_event_queue.empty():
-                            delta_event = _message_delta_from_callback(stream_event_queue.get_nowait())
+                            callback_payload = stream_event_queue.get_nowait()
+                            record_callback_payload(callback_payload)
+                            for trace_event in self._record_phase1_stream_payload(phase1_trace, callback_payload):
+                                yield trace_event
+                            delta_event = _message_delta_from_callback(callback_payload)
                             if delta_event is not None:
                                 yield delta_event
 
@@ -320,6 +505,8 @@ class GraphService:
         thread_id = meta.thread_id
         starting_snapshot_version = meta.snapshot_version
         run_id = f"run_{uuid4().hex}"
+        phase0_trace = self._phase0_trace_from_request(session_id, run_id, chat_request)
+        phase1_trace = self._phase1_trace_from_request(session_id, run_id, chat_request, scene=meta.scene)
 
         if not self._session_store.try_acquire_run_lock(session_id, run_id):
             raise SessionBusyError(f"Session is busy: {session_id}")
@@ -331,6 +518,10 @@ class GraphService:
                 session_meta=meta,
                 state_snapshot=self.load_agent_state(session_id) or {},
             )
+            if isinstance(chat_request, Mapping):
+                trace_id = chat_request.get("trace_id")
+                if isinstance(trace_id, str) and trace_id.strip():
+                    prepared.payload["trace_id"] = trace_id
         except Exception:
             self._session_store.release_run_lock(session_id, run_id)
             raise
@@ -341,6 +532,7 @@ class GraphService:
             restored_pending_context = False
             run_lock_released = False
             stream_callback_token = None
+            terminal_status = "error"
 
             def release_run_lock() -> None:
                 nonlocal run_lock_released
@@ -366,24 +558,46 @@ class GraphService:
                         loop.call_soon_threadsafe(stream_event_queue.put_nowait, event_payload)
 
                 stream_callback_token = set_stream_callback(stream_callback)
+                if phase1_trace is not None:
+                    yield encode_sse_event(phase1_trace.build_start_event())
 
                 async for raw_event in self._stream_runner_events(
                     prepared.payload,
                     thread_id,
                     stream_event_queue=stream_event_queue,
+                    phase0_trace=phase0_trace,
+                    phase1_trace=phase1_trace,
                 ):
                     if raw_event == {":ping": True}:
                         yield ": ping\n\n"
+                        continue
+                    if isinstance(raw_event, TraceStepEvent):
+                        yield encode_sse_event(raw_event)
                         continue
                     if isinstance(raw_event, MessageDeltaEvent):
                         yield encode_sse_event(raw_event)
                         continue
 
                     for node_name, node_output in raw_event.items():
+                        if isinstance(node_output, Mapping):
+                            self._record_phase0_node_output(phase0_trace, node_name, node_output)
+                            for trace_event in self._record_phase1_node_output(phase1_trace, node_name, node_output):
+                                yield encode_sse_event(trace_event)
                         for event in normalize_tick(node_name, node_output):
+                            if isinstance(event, MessageDoneEvent):
+                                self._record_visible_message_done(phase0_trace, node_name)
+                                trace_event = self._record_phase1_message_done(
+                                    phase1_trace,
+                                    node_name,
+                                    event,
+                                    node_output if isinstance(node_output, Mapping) else None,
+                                )
+                                if trace_event is not None:
+                                    yield encode_sse_event(trace_event)
                             yield encode_sse_event(event)
 
                 success = True
+                terminal_status = "completed"
                 if self._context_finalizer is not None:
                     self._session_store.set_context_maintenance(
                         session_id,
@@ -399,6 +613,10 @@ class GraphService:
                             message=CONTEXT_MAINTENANCE_RUNNING_MESSAGE,
                         )
                     )
+                if phase1_trace is not None:
+                    stream_done_event = phase1_trace.record_stream_done()
+                    if stream_done_event is not None:
+                        yield encode_sse_event(stream_done_event)
                 snapshot_version = self._session_store.bump_snapshot_version(session_id)
                 done_event = DoneEvent(
                     thread_id=thread_id,
@@ -408,13 +626,19 @@ class GraphService:
                 self._schedule_context_maintenance(session_id, run_id)
                 release_run_lock()
                 yield encode_sse_event(done_event)
+                if phase1_trace is not None:
+                    yield encode_sse_event(phase1_trace.build_summary(status=terminal_status))
             except asyncio.CancelledError:
                 restore_pending_context_messages(meta, prepared.drained_pending_context_messages)
                 restored_pending_context = True
+                terminal_status = "aborted"
                 raise
             except Exception as exc:
                 restore_pending_context_messages(meta, prepared.drained_pending_context_messages)
                 restored_pending_context = True
+                terminal_status = "error"
+                if phase1_trace is not None:
+                    yield encode_sse_event(phase1_trace.record_error())
                 yield encode_sse_event(
                     ErrorEvent(
                         code="GRAPH_RUN_FAILED",
@@ -429,12 +653,20 @@ class GraphService:
                 )
                 release_run_lock()
                 yield encode_sse_event(done_event)
+                if phase1_trace is not None:
+                    yield encode_sse_event(phase1_trace.build_summary(status=terminal_status))
             finally:
                 if stream_callback_token is not None:
                     clear_stream_callback(stream_callback_token)
                 if not success and done_event is None and not restored_pending_context:
                     restore_pending_context_messages(meta, prepared.drained_pending_context_messages)
                 release_run_lock()
+                phase0_trace.log_summary(
+                    status=terminal_status,
+                    finished_at=chat_latency_trace.perf_counter(),
+                )
+                if phase1_trace is not None:
+                    phase1_trace.log_artifact(status=terminal_status)
 
         return _generator()
 

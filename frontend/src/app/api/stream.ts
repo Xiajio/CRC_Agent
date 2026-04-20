@@ -1,6 +1,7 @@
 import type { StreamEvent } from "./types";
 
 export type FetchLike = typeof fetch;
+export type StreamTraceTap = (event: StreamEvent, receivedAt: number) => void;
 
 export interface StreamJsonOptions<TBody> {
   fetchImpl?: FetchLike;
@@ -9,6 +10,7 @@ export interface StreamJsonOptions<TBody> {
   headers?: HeadersInit;
   signal?: AbortSignal;
   onEvent: (event: StreamEvent) => void;
+  traceTap?: StreamTraceTap;
 }
 
 function parseEventBlock(block: string): StreamEvent | null {
@@ -34,6 +36,7 @@ function parseEventBlock(block: string): StreamEvent | null {
 export async function consumeSseResponse(
   response: Response,
   onEvent: (event: StreamEvent) => void,
+  traceTap?: StreamTraceTap,
 ): Promise<void> {
   if (!response.ok) {
     throw new Error(`Stream request failed with status ${response.status}`);
@@ -57,6 +60,12 @@ export async function consumeSseResponse(
       buffer = buffer.slice(boundary + 2);
       const event = parseEventBlock(block);
       if (event) {
+        const receivedAt = performance.now();
+        try {
+          traceTap?.(event, receivedAt);
+        } catch {
+          // Trace taps are observational only; never block reducer forwarding.
+        }
         onEvent(event);
       }
       boundary = buffer.indexOf("\n\n");
@@ -69,6 +78,12 @@ export async function consumeSseResponse(
 
   const trailingEvent = parseEventBlock(buffer);
   if (trailingEvent) {
+    const receivedAt = performance.now();
+    try {
+      traceTap?.(trailingEvent, receivedAt);
+    } catch {
+      // Trace taps are observational only; never block reducer forwarding.
+    }
     onEvent(trailingEvent);
   }
 }
@@ -80,6 +95,7 @@ export async function streamJsonEvents<TBody>({
   headers,
   signal,
   onEvent,
+  traceTap,
 }: StreamJsonOptions<TBody>): Promise<void> {
   const response = await fetchImpl(url, {
     method: "POST",
@@ -91,5 +107,5 @@ export async function streamJsonEvents<TBody>({
     signal,
   });
 
-  await consumeSseResponse(response, onEvent);
+  await consumeSseResponse(response, onEvent, traceTap);
 }

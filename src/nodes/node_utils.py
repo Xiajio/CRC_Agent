@@ -314,10 +314,14 @@ def _invoke_with_streaming(
     raw_accumulated = ""
     visible_response = ""
     tool_calls: list[dict[str, Any]] = []
+    first_raw_chunk_emitted = False
 
     try:
         stream_iterable = chain.stream(context)
         for chunk in stream_iterable:
+            if callback is not None and not first_raw_chunk_emitted:
+                callback({"type": "raw_first_chunk", "message_id": message_id, "node": node_name})
+                first_raw_chunk_emitted = True
             raw_accumulated += _extract_text_content(chunk)
             parts = _sanitize_message_parts(raw_accumulated)
             delta = _visible_delta_suffix(visible_response, parts.response)

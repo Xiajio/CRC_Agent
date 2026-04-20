@@ -81,6 +81,83 @@ function booleanLabel(value: unknown): string | null {
   return null;
 }
 
+function fieldText(value: unknown, options?: { booleanAsLabel?: boolean; suffix?: string }): string | null {
+  const fieldObject = asObject(value);
+  if (fieldObject) {
+    const fieldMeta = asObject(readValue(fieldObject, "field_meta"));
+    const metaDisplay = asString(readValue(fieldMeta, "display"));
+    if (metaDisplay) {
+      return metaDisplay;
+    }
+
+    const directDisplay = asString(readValue(fieldObject, "display"));
+    if (directDisplay) {
+      return directDisplay;
+    }
+
+    const candidateKeys = ["value", "raw_value", "raw", "canonical_value", "actual_value", "data"];
+    for (const key of candidateKeys) {
+      if (Object.prototype.hasOwnProperty.call(fieldObject, key)) {
+        const candidate = readValue(fieldObject, key);
+        if (candidate !== undefined) {
+          return fieldText(candidate, options);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  if (typeof value === "boolean") {
+    return options?.booleanAsLabel === false ? String(value) : booleanLabel(value);
+  }
+
+  const text = asString(value);
+  if (!text) {
+    return null;
+  }
+
+  if (options?.suffix && !text.endsWith(options.suffix)) {
+    return `${text}${options.suffix}`;
+  }
+
+  return text;
+}
+
+function fieldMetaDisplay(payload: JsonObject, section: string, field: string): string | null {
+  const fieldMetaRoot = asObject(readValue(payload, "field_meta"));
+  const sectionMeta = asObject(readValue(fieldMetaRoot, section));
+  const fieldMeta = asObject(readValue(sectionMeta, field));
+  const display = asString(readValue(fieldMeta, "display"));
+  if (display) {
+    return display;
+  }
+
+  const dottedKeyMeta = asObject(readValue(fieldMetaRoot, `${section}.${field}`));
+  const dottedDisplay = asString(readValue(dottedKeyMeta, "display"));
+  if (dottedDisplay) {
+    return dottedDisplay;
+  }
+
+  const dottedKeyValue = asString(readValue(fieldMetaRoot, `${section}.${field}`));
+  return dottedKeyValue;
+}
+
+function patientCardFieldText(
+  payload: JsonObject,
+  section: string,
+  field: string,
+  value: unknown,
+  preferFieldMeta: boolean,
+  options?: { booleanAsLabel?: boolean; suffix?: string },
+): string | null {
+  const display = preferFieldMeta ? fieldMetaDisplay(payload, section, field) : null;
+  if (display) {
+    return display;
+  }
+  return fieldText(value, options);
+}
+
 function triageRiskLabel(value: unknown): string | null {
   const raw = asString(value);
   if (!raw) {
@@ -317,10 +394,15 @@ function renderPatientCard(payload: JsonObject, onPromptRequest?: CardPromptHand
   const diagnosisBlock = asObject(readValue(data, "diagnosis_block"));
   const stagingBlock = asObject(readValue(data, "staging_block"));
   const historyBlock = asObject(readValue(data, "history_block"));
+  const cardMeta = asObject(readValue(payload, "card_meta"));
+  const sourceMode = asString(readValue(cardMeta, "source_mode"));
+  const isSelfReport = sourceMode === "patient_self_report";
   const patientId = asString(payload.patient_id) ?? asString(readValue(data, "patient_id")) ?? "N/A";
-  const riskFactors = Array.isArray(historyBlock?.risk_factors)
-    ? historyBlock.risk_factors.map((item) => asString(item)).filter((item): item is string => Boolean(item))
+  const rawRiskFactors = readValue(historyBlock, "risk_factors");
+  const riskFactors = Array.isArray(rawRiskFactors)
+    ? rawRiskFactors.map((item) => asString(item)).filter((item): item is string => Boolean(item))
     : [];
+  const riskFactorsDisplay = isSelfReport ? fieldMetaDisplay(payload, "history_block", "risk_factors") : null;
 
   const prompts = [
     `为病人 ${patientId} 生成治疗方案`,
@@ -329,45 +411,51 @@ function renderPatientCard(payload: JsonObject, onPromptRequest?: CardPromptHand
   ];
   const labels = ["生成治疗方案", "查询影像资料", "撰写病程记录"];
 
+  const patientInfoItems = [
+    { label: "性别", value: patientCardFieldText(payload, "patient_info", "gender", readValue(patientInfo, "gender"), isSelfReport) },
+    { label: "年龄", value: patientCardFieldText(payload, "patient_info", "age", readValue(patientInfo, "age"), isSelfReport, { suffix: "岁" }) },
+    { label: "ECOG", value: patientCardFieldText(payload, "patient_info", "ecog", readValue(patientInfo, "ecog"), isSelfReport) },
+    { label: "CEA", value: patientCardFieldText(payload, "patient_info", "cea", readValue(patientInfo, "cea"), isSelfReport) },
+  ];
+  const diagnosisItems = [
+    { label: "确诊", value: patientCardFieldText(payload, "diagnosis_block", "confirmed", readValue(diagnosisBlock, "confirmed"), isSelfReport) },
+    { label: "原发部位", value: patientCardFieldText(payload, "diagnosis_block", "primary_site", readValue(diagnosisBlock, "primary_site"), isSelfReport) },
+    { label: "MMR", value: patientCardFieldText(payload, "diagnosis_block", "mmr_status", readValue(diagnosisBlock, "mmr_status"), isSelfReport) },
+    { label: "临床分期", value: patientCardFieldText(payload, "staging_block", "clinical_stage", readValue(stagingBlock, "clinical_stage"), isSelfReport) },
+    { label: "cT", value: patientCardFieldText(payload, "staging_block", "ct_stage", readValue(stagingBlock, "ct_stage"), isSelfReport) },
+    { label: "cN", value: patientCardFieldText(payload, "staging_block", "cn_stage", readValue(stagingBlock, "cn_stage"), isSelfReport) },
+    { label: "cM", value: patientCardFieldText(payload, "staging_block", "cm_stage", readValue(stagingBlock, "cm_stage"), isSelfReport) },
+  ];
+  const historyItems = [
+    { label: "主诉", value: patientCardFieldText(payload, "history_block", "chief_complaint", readValue(historyBlock, "chief_complaint"), isSelfReport) },
+    { label: "症状持续时间", value: patientCardFieldText(payload, "history_block", "symptom_duration", readValue(historyBlock, "symptom_duration"), isSelfReport) },
+    { label: "家族史", value: patientCardFieldText(payload, "history_block", "family_history", readValue(historyBlock, "family_history"), isSelfReport, { booleanAsLabel: true }) },
+    { label: "家族史详情", value: patientCardFieldText(payload, "history_block", "family_history_details", readValue(historyBlock, "family_history_details"), isSelfReport) },
+    { label: "病理活检确认", value: patientCardFieldText(payload, "history_block", "biopsy_confirmed", readValue(historyBlock, "biopsy_confirmed"), isSelfReport, { booleanAsLabel: true }) },
+    { label: "活检详情", value: patientCardFieldText(payload, "history_block", "biopsy_details", readValue(historyBlock, "biopsy_details"), isSelfReport) },
+    { label: "危险因素", value: riskFactorsDisplay ?? (riskFactors.length > 0 ? riskFactors.join("、") : null) },
+  ];
+
   return (
     <>
       <div className="workspace-card-section">
         <p className="workspace-card-kicker">患者画像</p>
         <strong className="workspace-card-heading">{`患者 #${patientId}`}</strong>
-        {renderMetaItems([
-          { label: "性别", value: asString(readValue(patientInfo, "gender")) },
-          { label: "年龄", value: asString(readValue(patientInfo, "age")) ? `${asString(readValue(patientInfo, "age"))}岁` : null },
-          { label: "ECOG", value: asString(readValue(patientInfo, "ecog")) },
-          { label: "CEA", value: asString(readValue(patientInfo, "cea")) },
-        ])}
+        {renderMetaItems(patientInfoItems)}
       </div>
-      <div className="workspace-card-section">
-        <strong>诊断信息</strong>
-        {renderMetaItems([
-          { label: "确诊", value: asString(readValue(diagnosisBlock, "confirmed")) },
-          { label: "原发部位", value: asString(readValue(diagnosisBlock, "primary_site")) },
-          { label: "MMR", value: asString(readValue(diagnosisBlock, "mmr_status")) },
-          { label: "临床分期", value: asString(readValue(stagingBlock, "clinical_stage")) },
-          { label: "cT", value: asString(readValue(stagingBlock, "ct_stage")) },
-          { label: "cN", value: asString(readValue(stagingBlock, "cn_stage")) },
-          { label: "cM", value: asString(readValue(stagingBlock, "cm_stage")) },
-        ])}
-      </div>
-      {historyBlock ? (
+      {isSelfReport || diagnosisBlock ? (
         <div className="workspace-card-section">
-          <strong>基础病史</strong>
-          {renderMetaItems([
-            { label: "主诉", value: asString(readValue(historyBlock, "chief_complaint")) },
-            { label: "症状持续时间", value: asString(readValue(historyBlock, "symptom_duration")) },
-            { label: "家族史", value: booleanLabel(readValue(historyBlock, "family_history")) },
-            { label: "家族史详情", value: asString(readValue(historyBlock, "family_history_details")) },
-            { label: "病理活检确认", value: booleanLabel(readValue(historyBlock, "biopsy_confirmed")) },
-            { label: "活检详情", value: asString(readValue(historyBlock, "biopsy_details")) },
-            { label: "危险因素", value: riskFactors.length > 0 ? riskFactors.join("、") : null },
-          ])}
+          <strong>诊断信息</strong>
+          {renderMetaItems(diagnosisItems)}
         </div>
       ) : null}
-      {renderPromptButtons(prompts, onPromptRequest, labels)}
+      {isSelfReport || historyBlock ? (
+        <div className="workspace-card-section">
+          <strong>基础病史</strong>
+          {renderMetaItems(historyItems)}
+        </div>
+      ) : null}
+      {!isSelfReport ? renderPromptButtons(prompts, onPromptRequest, labels) : null}
       {renderDisclosure("查看原始数据", payload)}
     </>
   );

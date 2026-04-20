@@ -13,6 +13,7 @@ from backend.api.adapters.reference_normalizer import normalize_reference_list
 from backend.api.schemas.events import CardUpsertEvent
 from backend.api.schemas.responses import MessageHistoryPage, RecoverySnapshot, SessionMessage
 from backend.api.services.session_store import SessionMeta
+from src.services.patient_card_projector import project_patient_self_report_card
 
 INLINE_CARD_TYPES = {
     "patient_card",
@@ -259,6 +260,48 @@ def _sanitize_card_events(events: list[CardUpsertEvent]) -> list[CardUpsertEvent
     return sanitized
 
 
+def _inject_patient_self_report_card(
+    *,
+    cards: list[CardUpsertEvent],
+    session_meta: SessionMeta,
+    state: Mapping[str, Any],
+) -> list[CardUpsertEvent]:
+    if session_meta.scene != "patient":
+        return cards
+
+    recovery_state = dict(state)
+    context_state = _coerce_mapping(getattr(session_meta, "context_state", None))
+    if "medical_card" in context_state:
+        recovery_state["medical_card"] = context_state["medical_card"]
+
+    projected = project_patient_self_report_card(recovery_state)
+    if projected is None:
+        return cards
+
+    replacement = CardUpsertEvent(
+        card_type="patient_card",
+        payload=sanitize_card_payload("patient_card", projected),
+        source_channel="state",
+    )
+    first_self_report_index: int | None = None
+    filtered: list[CardUpsertEvent] = []
+    for index, event in enumerate(cards):
+        payload_meta = _coerce_mapping(event.payload.get("card_meta")) or {}
+        if (
+            event.card_type == "patient_card"
+            and isinstance(event.payload, Mapping)
+            and payload_meta.get("source_mode") == "patient_self_report"
+        ):
+            if first_self_report_index is None:
+                first_self_report_index = index
+            continue
+        filtered.append(event)
+
+    insert_at = len(filtered) if first_self_report_index is None else min(first_self_report_index, len(filtered))
+    filtered.insert(insert_at, replacement)
+    return filtered
+
+
 def build_message_history(
     agent_state: Mapping[str, Any] | None,
     before: str | int | None = None,
@@ -298,6 +341,7 @@ def build_recovery_snapshot(
             messages=_coerce_langchain_messages(messages),
         )
     )
+    cards = _inject_patient_self_report_card(cards=cards, session_meta=session_meta, state=state)
 
     findings = _coerce_mapping(_get_value(state, "findings", {})) or {}
     findings = _merge_triage_state_fields(state, findings)

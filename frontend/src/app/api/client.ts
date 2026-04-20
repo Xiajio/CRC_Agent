@@ -1,4 +1,4 @@
-import { streamJsonEvents, type FetchLike } from "./stream";
+import { streamJsonEvents, type FetchLike, type StreamTraceTap } from "./stream";
 import type {
   ChatTurnRequest,
   DatabaseCaseDetailResponse,
@@ -89,6 +89,7 @@ export interface ApiClient {
     request: ChatTurnRequest,
     onEvent: (event: StreamEvent) => void,
     signal?: AbortSignal,
+    traceTap?: StreamTraceTap,
   ): Promise<void>;
   uploadFile(sessionId: string, file: File): Promise<UploadResponse>;
   resetSession(sessionId: string): Promise<SessionResponse>;
@@ -149,7 +150,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       return parseJsonResponse<MessageHistoryResponse>(response);
     },
 
-    async streamTurn(sessionId, request, onEvent, signal) {
+    async streamTurn(sessionId, request, onEvent, signal, traceTap) {
       await streamJsonEvents({
         fetchImpl,
         url: buildUrl(`/api/sessions/${sessionId}/messages/stream`, baseUrl),
@@ -157,6 +158,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         headers: defaultHeaders,
         signal,
         onEvent,
+        traceTap,
       });
     },
 

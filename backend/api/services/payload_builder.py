@@ -77,7 +77,7 @@ def build_graph_payload(
         "findings": _snapshot_value(state_snapshot, "findings", {}),
         "assessment_draft": _snapshot_value(state_snapshot, "assessment_draft"),
         "decision_json": None,
-        "medical_card": _snapshot_value(state_snapshot, "medical_card"),
+        "medical_card": _context_value(session_meta, state_snapshot, "medical_card"),
         "roadmap": _snapshot_value(state_snapshot, "roadmap", []),
         "summary_memory": _context_value(session_meta, state_snapshot, "summary_memory"),
         "structured_summary": _context_value(session_meta, state_snapshot, "structured_summary"),

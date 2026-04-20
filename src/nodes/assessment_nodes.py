@@ -22,6 +22,7 @@ from ..prompts import (
     ASSESSMENT_SYSTEM_PROMPT,
     DIAGNOSIS_SYSTEM_PROMPT,
 )
+from ..services.patient_card_projector import project_patient_self_report_card
 from .node_utils import (
     _select_tools,
     _execute_tool_calls,
@@ -1391,7 +1392,18 @@ def _scene_assessment_entry(
     assessment = node_assessment(model=model, tools=tools, streaming=streaming, show_thinking=show_thinking)
 
     def _run(state: CRCAgentState):
-        return assessment(_prepare_scene_assessment_state(state, scene))
+        prepared_state = _prepare_scene_assessment_state(state, scene)
+        result = assessment(prepared_state)
+        if scene != "patient" or not isinstance(result, dict):
+            return result
+
+        projected_card = project_patient_self_report_card(prepared_state.model_copy(update=result))
+        if projected_card is None:
+            return result
+
+        next_result = dict(result)
+        next_result["patient_card"] = projected_card
+        return next_result
 
     return _run
 

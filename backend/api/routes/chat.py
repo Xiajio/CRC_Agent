@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from backend.api.services import chat_latency_trace
 from backend.api.services.graph_service import GraphService, SessionBusyError, SessionNotFoundError
 
 router = APIRouter(prefix="/api/sessions", tags=["chat"])
@@ -25,7 +26,10 @@ async def stream_session_message(
     request: Request,
     body: dict[str, object],
 ):
+    request_started_at = chat_latency_trace.perf_counter()
     graph_service = _get_graph_service(request, session_id)
+    body["_latency_request_started_at"] = request_started_at
+    body["_latency_router_ms"] = (chat_latency_trace.perf_counter() - request_started_at) * 1000.0
     try:
         event_iterator = graph_service.stream_turn(session_id, body)
     except SessionNotFoundError as exc:

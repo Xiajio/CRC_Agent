@@ -258,6 +258,7 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
         user_text = _latest_user_text(state)
         intent = (state.findings or {}).get("user_intent", "general_chat")
         plan_followup = (state.findings or {}).get("plan_followup", False)
+        stream_node_name = "general_chat"
         pinned_context = _build_pinned_context(state)
         summary_memory = _build_summary_memory(state)
         recent_conversation = _get_recent_conversation_history(state, max_turns=5)
@@ -285,6 +286,7 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
                 },
                 streaming,
                 show_thinking,
+                node_name=stream_node_name,
             )
             msg = _ensure_message(response)
             return {
@@ -350,7 +352,8 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
                         "recent_conversation": recent_conversation,
                     },
                     streaming,
-                    show_thinking
+                    show_thinking,
+                    node_name=stream_node_name,
                 )
             elif is_simple_fact:
                 # 简单事实性回答：只回答问题，不提供额外建议
@@ -370,7 +373,8 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
                         "recent_conversation": recent_conversation,
                     },
                     streaming,
-                    show_thinking
+                    show_thinking,
+                    node_name=stream_node_name,
                 )
             else:
                 # 原有的综合响应模式：整合信息并提供建议
@@ -386,7 +390,8 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
                         "recent_conversation": recent_conversation,
                     },
                     streaming,
-                    show_thinking
+                    show_thinking,
+                    node_name=stream_node_name,
                 )
             
             msg = _ensure_message(response)
@@ -411,7 +416,8 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
                     "pinned_context": pinned_context,
                 },
                 streaming,
-                show_thinking
+                show_thinking,
+                node_name=stream_node_name,
             )
         else:
             response = _invoke_with_streaming(
@@ -423,7 +429,8 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
                     "recent_conversation": recent_conversation,
                 },
                 streaming,
-                show_thinking
+                show_thinking,
+                node_name=stream_node_name,
             )
         
         msg = _ensure_message(response)

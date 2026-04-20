@@ -7,6 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 
 from ..prompts import INTENT_CLASSIFIER_SYSTEM_PROMPT
+from ..services.provider_capabilities import resolve_provider_capabilities
 from ..state import CRCAgentState
 from .general_nodes import _get_recent_conversation_history
 from .node_utils import (
@@ -66,6 +67,18 @@ _TRIAGE_SWITCH_MARKERS = (
     "\u95ee\u522b\u7684",
 )
 
+_META_CAPABILITY_QUERIES = {
+    "你有什么用",
+    "你有啥用",
+    "你能做什么",
+    "你会什么",
+    "你是谁",
+    "介绍一下你自己",
+    "自我介绍",
+    "你的功能是什么",
+    "你可以做什么",
+}
+
 _TRIAGE_SWITCH_INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "case_database_query": ("\u6570\u636e\u5e93", "\u75c5\u4f8b", "\u75c5\u5386"),
     "knowledge_query": ("\u77e5\u8bc6", "\u79d1\u666e", "\u539f\u7406", "\u4e3a\u4ec0\u4e48", "\u662f\u4ec0\u4e48"),
@@ -112,7 +125,13 @@ def node_intent_classifier(model, streaming: bool = False, show_thinking: bool =
 
     del streaming
     intent_prompt = ChatPromptTemplate.from_template(INTENT_CLASSIFIER_SYSTEM_PROMPT)
-    classifier_chain = intent_prompt | model.with_structured_output(IntentDecision).bind(temperature=0)
+    capabilities = resolve_provider_capabilities(
+        model_name=str(getattr(model, "model_name", "") or getattr(model, "model", "") or ""),
+        base_url=str(getattr(model, "openai_api_base", "") or getattr(model, "base_url", "") or ""),
+    )
+    classifier_chain = None
+    if capabilities.structured_output_strategy != "raw_first":
+        classifier_chain = intent_prompt | model.with_structured_output(IntentDecision).bind(temperature=0)
 
     def _is_active_outpatient_triage(state: CRCAgentState) -> bool:
         current_findings = state.findings or {}
@@ -208,6 +227,13 @@ def node_intent_classifier(model, streaming: bool = False, show_thinking: bool =
                 "error": None,
             }
 
+        if text_compact in _META_CAPABILITY_QUERIES:
+            return {
+                "findings": _base_findings(state, "general_chat", preserve_outpatient_triage, False),
+                "clinical_stage": "Intent",
+                "error": None,
+            }
+
         if text_compact in {
             "\u8c22\u8c22",
             "\u8b1d\u8b1d",
@@ -251,11 +277,15 @@ def node_intent_classifier(model, streaming: bool = False, show_thinking: bool =
                 raw_response = (intent_prompt | model.bind(temperature=0)).invoke(ctx)
                 result = _parse_intent_from_raw_response(raw_response)
             else:
-                try:
-                    result = classifier_chain.invoke(ctx)
-                except Exception:
+                if capabilities.structured_output_strategy == "raw_first":
                     raw_response = (intent_prompt | model.bind(temperature=0)).invoke(ctx)
                     result = _parse_intent_from_raw_response(raw_response)
+                else:
+                    try:
+                        result = classifier_chain.invoke(ctx)
+                    except Exception:
+                        raw_response = (intent_prompt | model.bind(temperature=0)).invoke(ctx)
+                        result = _parse_intent_from_raw_response(raw_response)
 
             intent = result.category
             reasoning = result.reasoning

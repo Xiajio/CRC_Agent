@@ -1,11 +1,21 @@
 import type { FrontendMessage } from "../../app/api/types";
 import { cardTitle, renderCardContent, type CardPromptHandler } from "../cards/card-renderers-extended";
 
+export type ConversationLatencyStatus =
+  | {
+      kind: "streaming";
+    }
+  | {
+      kind: "completed";
+      uiCompleteMs: number;
+    };
+
 type ConversationPanelProps = {
   messages: FrontendMessage[];
   draft: string;
   statusNode: string | null;
   isStreaming: boolean;
+  latencyStatus?: ConversationLatencyStatus | null;
   isLoadingHistory: boolean;
   canLoadHistory: boolean;
   disabled: boolean;
@@ -34,6 +44,18 @@ function executionStatusLabel(statusNode: string | null, isStreaming: boolean): 
     return statusNode;
   }
   return isStreaming ? "生成中..." : "就绪";
+}
+
+function latencyStatusLabel(latencyStatus?: ConversationLatencyStatus): string | null {
+  if (!latencyStatus) {
+    return null;
+  }
+
+  if (latencyStatus.kind === "streaming") {
+    return "\u672c\u8f6e\u8017\u65f6\u8ba1\u65f6\u4e2d...";
+  }
+
+  return `\u672c\u8f6e\u754c\u9762\u5b8c\u6210 ${(latencyStatus.uiCompleteMs / 1000).toFixed(2)}s`;
 }
 
 function messageLabel(message: FrontendMessage): string {
@@ -115,6 +137,7 @@ export function ConversationPanel({
   draft,
   statusNode,
   isStreaming,
+  latencyStatus,
   isLoadingHistory,
   canLoadHistory,
   disabled,
@@ -127,6 +150,7 @@ export function ConversationPanel({
   activeTriageQuestionId,
 }: ConversationPanelProps) {
   const executionLabel = executionStatusLabel(statusNode, isStreaming);
+  const latencyLabel = latencyStatusLabel(latencyStatus ?? undefined);
   const textareaDisabled = draftDisabled ?? disabled;
 
   return (
@@ -231,9 +255,16 @@ export function ConversationPanel({
           <span className="workspace-meta" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <span style={{ fontSize: "1.1rem" }}>⚙️</span> 执行节点
           </span>
-          <strong className="workspace-status-node" data-testid="status-node" style={{ color: "#8e4a55", background: "rgba(165, 73, 83, 0.08)", padding: "4px 10px", borderRadius: "12px", fontSize: "0.85rem" }}>
-            {executionLabel}
-          </strong>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <strong className="workspace-status-node" data-testid="status-node" style={{ color: "#8e4a55", background: "rgba(165, 73, 83, 0.08)", padding: "4px 10px", borderRadius: "12px", fontSize: "0.85rem" }}>
+              {executionLabel}
+            </strong>
+            {latencyLabel ? (
+              <strong className="workspace-status-node" data-testid="latency-status" style={{ color: "#8e4a55", background: "rgba(165, 73, 83, 0.08)", padding: "4px 10px", borderRadius: "12px", fontSize: "0.85rem" }}>
+                {latencyLabel}
+              </strong>
+            ) : null}
+          </div>
         </div>
 
         <div className="workspace-composer" style={{ marginTop: 0 }}>
@@ -294,3 +325,4 @@ export function ConversationPanel({
     </div>
   );
 }
+

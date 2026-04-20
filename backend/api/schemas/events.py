@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 CardSourceChannel = Literal["state", "findings", "message_kwargs"]
@@ -41,6 +41,55 @@ class MessageDeltaEvent(BaseModel):
     message_id: str
     node: str | None = None
     delta: str
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TraceStartEvent(BaseModel):
+    type: Literal["trace.start"] = "trace.start"
+    trace_id: str | None = None
+    run_id: str
+    session_id: str
+    scene: str | None = None
+    server_received_at: str
+    graph_started_at: str
+    model: str | None = None
+    graph_path: list[str] = Field(default_factory=list)
+    attrs: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TraceStepEvent(BaseModel):
+    type: Literal["trace.step"] = "trace.step"
+    trace_id: str | None = None
+    run_id: str
+    session_id: str
+    name: str
+    at: str
+    node: str | None = None
+    model: str | None = None
+    attrs: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TraceSummaryEvent(BaseModel):
+    type: Literal["trace.summary"] = "trace.summary"
+    trace_id: str | None = None
+    run_id: str
+    session_id: str
+    status: Literal["completed", "aborted", "error"]
+    at: str
+    scene: str | None = None
+    graph_path: list[str] = Field(default_factory=list)
+    model: str | None = None
+    has_thinking: bool = False
+    response_chars: int = 0
+    response_tokens: int | None = None
+    tool_calls: int = 0
+    retrieval_hit_count: int = 0
+    attrs: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid")
 

@@ -6,6 +6,7 @@ from typing import Any
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import Runnable
 
+from ..services.patient_card_projector import project_patient_self_report_card
 from ..state import CRCAgentState
 from .node_utils import _latest_user_text
 
@@ -576,7 +577,7 @@ def node_outpatient_triage(
         if published_triage_card is not None:
             additional_kwargs["triage_card"] = published_triage_card
 
-        return {
+        result = {
             "encounter_track": "outpatient_triage",
             "clinical_entry_reason": "symptom_based_triage",
             "entry_explanation_shown": False,
@@ -593,6 +594,10 @@ def node_outpatient_triage(
             "clinical_stage": "Inquiry_Pending" if active_inquiry else "Outpatient_Triage",
             "error": None,
         }
+        projected_card = project_patient_self_report_card(state.model_copy(update=result))
+        if projected_card is not None:
+            result["patient_card"] = projected_card
+        return result
 
     return _run
 

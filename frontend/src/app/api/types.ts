@@ -119,6 +119,48 @@ export interface ContextMaintenanceEvent {
   message: string;
 }
 
+export interface TraceStartEvent {
+  type: "trace.start";
+  trace_id?: string | null;
+  scene: Scene;
+  session_id: string;
+  run_id: string;
+  server_received_at: string;
+  graph_started_at: string;
+  graph_path: string[];
+  attrs: JsonObject;
+}
+
+export interface TraceStepEvent {
+  type: "trace.step";
+  trace_id?: string | null;
+  name: string;
+  at: string;
+  session_id: string;
+  run_id: string;
+  attrs: JsonObject;
+}
+
+export interface TraceSummaryEvent {
+  type: "trace.summary";
+  trace_id?: string | null;
+  run_id: string;
+  session_id: string;
+  scene: Scene;
+  at: string;
+  status: "completed" | "error" | "aborted";
+  graph_path: string[];
+  model?: string | null;
+  has_thinking: boolean;
+  response_chars: number;
+  tool_calls: number;
+  retrieval_hit_count: number;
+  response_tokens: number | null;
+  attrs: JsonObject;
+}
+
+export type TraceEvent = TraceStartEvent | TraceStepEvent | TraceSummaryEvent;
+
 export interface DoneEvent {
   type: "done";
   thread_id: string;
@@ -141,6 +183,7 @@ export type StreamEvent =
   | ReferencesAppendEvent
   | ErrorEvent
   | ContextMaintenanceEvent
+  | TraceEvent
   | DoneEvent;
 
 export interface ContextMaintenanceState {
@@ -206,6 +249,7 @@ export interface ChatTurnRequest {
     role: "user";
     content: string;
   };
+  trace_id?: string;
   context?: Record<string, unknown>;
 }
 
