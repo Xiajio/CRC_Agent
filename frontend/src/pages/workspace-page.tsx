@@ -12,6 +12,7 @@ import { ClinicalCardsPanel } from "../features/cards/clinical-cards-panel";
 import { ConversationPanel, type ConversationLatencyStatus } from "../features/chat/conversation-panel";
 import { DoctorSceneShell } from "../features/doctor/doctor-scene-shell";
 import { ExecutionPlanPanel } from "../features/execution-plan/execution-plan-panel";
+import { PatientIdentityPanel } from "../features/patient-identity/patient-identity-panel";
 import { RoadmapPanel } from "../features/roadmap/roadmap-panel";
 import { UploadsPanel } from "../features/uploads/uploads-panel";
 import { useDatabaseWorkbench } from "../features/database/use-database-workbench";
@@ -689,6 +690,10 @@ export function WorkspacePage() {
       }));
       const refreshed = await apiClient.getSession(sessionId);
       applyResponseToScene("patient", refreshed);
+      patient.setState((current) => ({
+        ...current,
+        patientIdentity: refreshed.snapshot.patient_identity ?? null,
+      }));
       setUploadStatus(`Uploaded ${response.filename}`);
     } catch (error) {
       setSceneError(readErrorMessage(error));
@@ -721,6 +726,12 @@ export function WorkspacePage() {
     try {
       const response = await apiClient.resetSession(sessionId);
       applyResponseToScene(activeScene, response);
+      if (activeScene === "patient") {
+        patient.setState((current) => ({
+          ...current,
+          patientIdentity: response.snapshot.patient_identity ?? null,
+        }));
+      }
       updateDraft(activeScene, "");
       if (activeScene === "patient") {
         setUploadStatus(null);
@@ -869,6 +880,16 @@ export function WorkspacePage() {
           )}
       rightInspector={(
         <div className="workspace-panel-stack">
+          <PatientIdentityPanel
+            sessionId={patient.state.sessionId}
+            patientIdentity={patient.state.patientIdentity ?? null}
+            onSaved={(identity) => {
+              patient.setState((current) => ({
+                ...current,
+                patientIdentity: identity,
+              }));
+            }}
+          />
           <ClinicalCardsPanel 
             title="患者背景信息" 
             emptyMessage="当前暂无患者背景信息" 

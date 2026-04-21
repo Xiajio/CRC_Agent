@@ -94,6 +94,11 @@ export interface ApiClient {
   uploadFile(sessionId: string, file: File): Promise<UploadResponse>;
   resetSession(sessionId: string): Promise<SessionResponse>;
   bindPatient(sessionId: string, patientId: number): Promise<SessionResponse>;
+  saveSessionPatientIdentity(
+    sessionId: string,
+    patient_name: string,
+    patient_number: string,
+  ): Promise<SessionResponse>;
   getDatabaseStats(): Promise<DatabaseStatsResponse>;
   searchDatabaseCases(request: DatabaseSearchRequest): Promise<DatabaseSearchResponse>;
   getDatabaseCaseDetail(patientId: number): Promise<DatabaseCaseDetailResponse>;
@@ -187,6 +192,18 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         method: "PATCH",
         headers: buildJsonHeaders(defaultHeaders),
         body: JSON.stringify({ patient_id: patientId }),
+      });
+      return parseJsonResponse<SessionResponse>(response);
+    },
+
+    async saveSessionPatientIdentity(sessionId, patient_name, patient_number) {
+      const response = await fetchImpl(buildUrl(`/api/sessions/${sessionId}/identity`, baseUrl), {
+        method: "POST",
+        headers: buildJsonHeaders(defaultHeaders),
+        body: JSON.stringify({
+          patient_name,
+          patient_number,
+        }),
       });
       return parseJsonResponse<SessionResponse>(response);
     },

@@ -208,6 +208,7 @@ export interface RecoverySnapshot {
   roadmap: JsonObject[];
   findings: JsonObject;
   patient_profile: JsonObject | null;
+  patient_identity?: PatientIdentitySnapshot | null;
   stage: string | null;
   assessment_draft: unknown;
   current_patient_id: string | number | null;
@@ -218,6 +219,12 @@ export interface RecoverySnapshot {
   uploaded_assets: Record<string, unknown>;
   context_maintenance: ContextMaintenanceState | null;
   context_state: ContextStateSnapshot | null;
+}
+
+export interface PatientIdentitySnapshot {
+  patient_name: string | null;
+  patient_number: string | null;
+  identity_locked: boolean;
 }
 
 export interface RuntimeInfo {
@@ -515,6 +522,7 @@ export interface SessionState {
   roadmap: JsonObject[];
   findings: JsonObject;
   patientProfile: JsonObject | null;
+  patientIdentity?: PatientIdentitySnapshot | null;
   stage: string | null;
   references: JsonObject[];
   plan: JsonObject[];

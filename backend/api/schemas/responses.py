@@ -42,6 +42,7 @@ class RecoverySnapshot(BaseModel):
     uploaded_assets: dict[str, Any] = Field(default_factory=dict)
     context_maintenance: dict[str, Any] | None = None
     context_state: dict[str, Any] | None = None
+    patient_identity: dict[str, Any] | None = None
 
 
 class RuntimeInfo(BaseModel):

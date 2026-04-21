@@ -9,6 +9,7 @@ import type {
   DatabaseCaseDetailResponse,
   DatabaseSearchResponse,
   DatabaseStatsResponse,
+  PatientIdentitySnapshot,
   PatientRegistryAlertsResponse,
   PatientRegistryDetail,
   PatientRegistryListResponse,
@@ -39,6 +40,7 @@ export function makeSessionResponse(
       roadmap: overrides.snapshot?.roadmap ?? [],
       findings: overrides.snapshot?.findings ?? {},
       patient_profile: overrides.snapshot?.patient_profile ?? null,
+      patient_identity: overrides.snapshot?.patient_identity ?? null,
       stage: overrides.snapshot?.stage ?? null,
       assessment_draft: overrides.snapshot?.assessment_draft ?? null,
       current_patient_id: overrides.snapshot?.current_patient_id ?? patientId,
@@ -180,6 +182,19 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
       snapshot: { current_patient_id: patientId },
     }),
   );
+  const saveSessionPatientIdentity = vi.fn(async (sessionId: string, patient_name: string, patient_number: string) =>
+    makeSessionResponse({
+      session_id: sessionId,
+      scene: "patient",
+      snapshot: {
+        patient_identity: {
+          patient_name,
+          patient_number,
+          identity_locked: true,
+        } satisfies PatientIdentitySnapshot,
+      },
+    }),
+  );
   const getDatabaseStats = vi.fn(async () => makeDatabaseStatsResponse());
   const searchDatabaseCases = vi.fn(async () => makeDatabaseSearchResponse());
   const getDatabaseCaseDetail = vi.fn(async (patientId: number): Promise<DatabaseCaseDetailResponse> => ({
@@ -229,6 +244,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
     uploadFile,
     resetSession,
     bindPatient,
+    saveSessionPatientIdentity,
     getDatabaseStats,
     searchDatabaseCases,
     getDatabaseCaseDetail,

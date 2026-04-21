@@ -1,10 +1,15 @@
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from backend.api.adapters.state_snapshot import build_message_history, build_session_snapshot
 from backend.api.schemas.responses import MessageHistoryResponse, SessionResponse
+from backend.api.services.patient_registry_service import (
+    PatientIdentityLockedError,
+    PatientIdentityNotFoundError,
+    PatientNumberConflictError,
+)
 from backend.api.services.session_store import InMemorySessionStore
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
@@ -18,6 +23,21 @@ class CreateSessionRequest(BaseModel):
 
 class BindPatientRequest(BaseModel):
     patient_id: int
+
+
+class UpdatePatientIdentityRequest(BaseModel):
+    patient_name: str
+    patient_number: str
+
+    @field_validator("patient_name", "patient_number", mode="before")
+    @classmethod
+    def _strip_and_reject_blank(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        candidate = value.strip()
+        if not candidate:
+            raise ValueError("must not be blank")
+        return candidate
 
 
 def load_agent_state(session_id: str) -> dict[str, Any] | None:
@@ -39,9 +59,19 @@ def _get_session_meta_or_404(session_id: str):
     return meta
 
 
+def _load_patient_identity(meta) -> dict[str, Any] | None:
+    if meta.patient_id is None or patient_registry_service is None:
+        return None
+    try:
+        return patient_registry_service.get_patient_identity(meta.patient_id)
+    except (PatientIdentityNotFoundError, KeyError):
+        return None
+
+
 def _build_session_response(session_id: str) -> SessionResponse:
     meta = _get_session_meta_or_404(session_id)
     snapshot = build_session_snapshot(load_agent_state(session_id), meta)
+    snapshot.patient_identity = _load_patient_identity(meta)
     return SessionResponse(
         session_id=meta.session_id,
         thread_id=meta.thread_id,
@@ -115,5 +145,37 @@ async def bind_session_patient(session_id: str, request: BindPatientRequest) -> 
         session_store.bind_patient(session_id, request.patient_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    session_store.bump_snapshot_version(session_id)
+    return _build_session_response(session_id)
+
+
+@router.post("/{session_id}/identity")
+async def set_session_patient_identity(
+    session_id: str,
+    request: UpdatePatientIdentityRequest,
+) -> SessionResponse:
+    meta = _get_session_meta_or_404(session_id)
+    if meta.active_run_id is not None:
+        raise HTTPException(status_code=409, detail="Session is busy")
+    if meta.scene != "patient":
+        raise HTTPException(status_code=409, detail="NOT_PATIENT_SESSION")
+    if meta.patient_id is None:
+        raise HTTPException(status_code=409, detail="PATIENT_IDENTITY_NOT_FOUND")
+    if patient_registry_service is None:
+        raise HTTPException(status_code=503, detail="Patient registry is not initialized")
+
+    try:
+        patient_registry_service.set_patient_identity(
+            meta.patient_id,
+            request.patient_name,
+            request.patient_number,
+        )
+    except PatientNumberConflictError as exc:
+        raise HTTPException(status_code=409, detail="PATIENT_NUMBER_ALREADY_EXISTS") from exc
+    except PatientIdentityLockedError as exc:
+        raise HTTPException(status_code=409, detail="PATIENT_IDENTITY_LOCKED") from exc
+    except PatientIdentityNotFoundError as exc:
+        raise HTTPException(status_code=409, detail="PATIENT_IDENTITY_NOT_FOUND") from exc
+
     session_store.bump_snapshot_version(session_id)
     return _build_session_response(session_id)

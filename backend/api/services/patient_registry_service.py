@@ -139,6 +139,29 @@ def _row_to_alert(
     }
 
 
+class PatientNumberConflictError(ValueError):
+    pass
+
+
+class PatientIdentityLockedError(ValueError):
+    pass
+
+
+class PatientIdentityNotFoundError(KeyError):
+    pass
+
+
+def normalize_patient_number(value: str) -> str:
+    candidate = value.strip()
+    normalized_chars: list[str] = []
+    for char in candidate:
+        if "a" <= char <= "z":
+            normalized_chars.append(char.upper())
+        else:
+            normalized_chars.append(char)
+    return "".join(normalized_chars)
+
+
 class PatientRegistryService:
     def __init__(self, db_path: str | Path) -> None:
         self._db_path = Path(db_path)
@@ -199,6 +222,10 @@ class PatientRegistryService:
                 connection,
                 "patients",
                 {
+                    "patient_name": "TEXT",
+                    "patient_number": "TEXT",
+                    "patient_number_normalized": "TEXT",
+                    "identity_locked": "INTEGER NOT NULL DEFAULT 0",
                     "snapshot_provenance_json": "TEXT NOT NULL DEFAULT '{}'",
                 },
             )
@@ -212,6 +239,13 @@ class PatientRegistryService:
                     "conflict_detected": "INTEGER NOT NULL DEFAULT 0",
                     "snapshot_meta_json": "TEXT NOT NULL DEFAULT '{}'",
                 },
+            )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_patient_number_normalized_unique
+                ON patients(patient_number_normalized)
+                WHERE patient_number_normalized IS NOT NULL
+                """
             )
 
     def _ensure_columns(
@@ -269,6 +303,110 @@ class PatientRegistryService:
                 ("draft", created_by_session_id, now, now),
             )
             return int(cursor.lastrowid)
+
+    def get_patient_identity(self, patient_id: int) -> dict[str, Any]:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    patient_name,
+                    patient_number,
+                    identity_locked
+                FROM patients
+                WHERE id = ?
+                """,
+                (patient_id,),
+            ).fetchone()
+        if row is None:
+            raise PatientIdentityNotFoundError(f"Patient not found: {patient_id}")
+        return {
+            "patient_name": row["patient_name"],
+            "patient_number": row["patient_number"],
+            "identity_locked": bool(row["identity_locked"]),
+        }
+
+    def patient_number_exists(
+        self,
+        normalized_number: str,
+        *,
+        exclude_patient_id: int | None = None,
+    ) -> bool:
+        with self._connect() as connection:
+            if exclude_patient_id is None:
+                row = connection.execute(
+                    """
+                    SELECT 1
+                    FROM patients
+                    WHERE patient_number_normalized = ?
+                    LIMIT 1
+                    """,
+                    (normalized_number,),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    """
+                    SELECT 1
+                    FROM patients
+                    WHERE patient_number_normalized = ?
+                      AND id != ?
+                    LIMIT 1
+                    """,
+                    (normalized_number, exclude_patient_id),
+                ).fetchone()
+        return row is not None
+
+    def set_patient_identity(
+        self,
+        patient_id: int,
+        patient_name: str,
+        patient_number: str,
+    ) -> dict[str, Any]:
+        normalized_number = normalize_patient_number(patient_number)
+        now = _utc_now()
+
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT id, identity_locked
+                FROM patients
+                WHERE id = ?
+                """,
+                (patient_id,),
+            ).fetchone()
+            if row is None:
+                raise PatientIdentityNotFoundError(f"Patient not found: {patient_id}")
+            if bool(row["identity_locked"]):
+                raise PatientIdentityLockedError(f"Patient identity is locked: {patient_id}")
+            if self.patient_number_exists(normalized_number, exclude_patient_id=patient_id):
+                raise PatientNumberConflictError(
+                    f"Patient number already exists: {normalized_number}"
+                )
+            try:
+                connection.execute(
+                    """
+                    UPDATE patients
+                    SET
+                        patient_name = ?,
+                        patient_number = ?,
+                        patient_number_normalized = ?,
+                        identity_locked = 1,
+                        updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        patient_name,
+                        patient_number,
+                        normalized_number,
+                        now,
+                        patient_id,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise PatientNumberConflictError(
+                    f"Patient number already exists: {normalized_number}"
+                ) from exc
+
+        return self.get_patient_identity(patient_id)
 
     def get_patient_detail(self, patient_id: int) -> dict[str, Any]:
         with self._connect() as connection:

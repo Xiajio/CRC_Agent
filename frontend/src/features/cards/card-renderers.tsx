@@ -181,11 +181,11 @@ function renderMetaItems(items: Array<{ label: string; value: string | number | 
   }
 
   return (
-    <dl className="workspace-definition-list workspace-definition-list-compact">
+    <dl className="workspace-definition-list workspace-definition-list-compact" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", margin: "8px 0" }}>
       {visibleItems.map((item) => (
-        <div key={item.label}>
-          <dt>{item.label}</dt>
-          <dd>{String(item.value)}</dd>
+        <div key={item.label} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+          <dt style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 500 }}>{item.label}</dt>
+          <dd style={{ margin: 0, fontSize: "0.875rem", color: "#111827", fontWeight: 500, wordBreak: "break-word" }}>{String(item.value)}</dd>
         </div>
       ))}
     </dl>
@@ -198,12 +198,13 @@ function renderPromptButtons(prompts: string[], onPromptRequest?: CardPromptHand
   }
 
   return (
-    <div className="workspace-action-row">
+    <div className="workspace-action-row" style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "16px" }}>
       {prompts.map((prompt, index) => (
         <button
           key={prompt}
           type="button"
           className="workspace-secondary-button workspace-action-button"
+          style={{ padding: "6px 12px", fontSize: "0.75rem", borderRadius: "9999px", backgroundColor: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", cursor: "pointer" }}
           onClick={() => onPromptRequest(prompt)}
         >
           {labels?.[index] ?? prompt}
@@ -437,27 +438,27 @@ function renderPatientCard(payload: JsonObject, onPromptRequest?: CardPromptHand
   ];
 
   return (
-    <>
-      <div className="workspace-card-section">
-        <p className="workspace-card-kicker">患者画像</p>
-        <strong className="workspace-card-heading">{`患者 #${patientId}`}</strong>
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+      <div className="workspace-card-section" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+        <p className="workspace-card-kicker" style={{ margin: 0, fontSize: "0.75rem", color: "#3b82f6", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>患者画像</p>
+        <strong className="workspace-card-heading" style={{ fontSize: "1.125rem", color: "#111827", margin: "4px 0 12px 0" }}>{`患者 #${patientId}`}</strong>
         {renderMetaItems(patientInfoItems)}
       </div>
       {isSelfReport || diagnosisBlock ? (
-        <div className="workspace-card-section">
-          <strong>诊断信息</strong>
+        <div className="workspace-card-section" style={{ display: "flex", flexDirection: "column", gap: "12px", borderTop: "1px solid #f3f4f6", paddingTop: "16px" }}>
+          <strong style={{ fontSize: "0.875rem", color: "#374151" }}>诊断信息</strong>
           {renderMetaItems(diagnosisItems)}
         </div>
       ) : null}
       {isSelfReport || historyBlock ? (
-        <div className="workspace-card-section">
-          <strong>基础病史</strong>
+        <div className="workspace-card-section" style={{ display: "flex", flexDirection: "column", gap: "12px", borderTop: "1px solid #f3f4f6", paddingTop: "16px" }}>
+          <strong style={{ fontSize: "0.875rem", color: "#374151" }}>基础病史</strong>
           {renderMetaItems(historyItems)}
         </div>
       ) : null}
       {!isSelfReport ? renderPromptButtons(prompts, onPromptRequest, labels) : null}
       {renderDisclosure("查看原始数据", payload)}
-    </>
+    </div>
   );
 }
 

@@ -167,12 +167,22 @@ vi.mock("../features/chat/conversation-panel", () => ({
   ),
 }));
 
-function makeSessionState(overrides: Partial<SessionState> = {}): SessionState {
+function makeSessionState(
+  overrides: Partial<SessionState> & { patientIdentity?: SessionStateWithPatientIdentity["patientIdentity"] } = {},
+): SessionStateWithPatientIdentity {
   return {
     ...createInitialSessionState(),
     ...overrides,
-  };
+  } as SessionStateWithPatientIdentity;
 }
+
+type SessionStateWithPatientIdentity = SessionState & {
+  patientIdentity?: {
+    patient_name: string | null;
+    patient_number: string | null;
+    identity_locked: boolean;
+  } | null;
+};
 
 function makeSceneController(state: SessionState) {
   const controller = {
@@ -250,6 +260,13 @@ function makeSceneSessions(overrides: Partial<typeof mockSceneSessions> = {}) {
     ...overrides,
   };
   return sessions;
+}
+
+function setPatientIdentity(state: SessionState, patientIdentity: SessionStateWithPatientIdentity["patientIdentity"]) {
+  return {
+    ...state,
+    patientIdentity,
+  } as SessionStateWithPatientIdentity as SessionState;
 }
 
 describe("WorkspacePage patient triage submission wiring", () => {
@@ -899,5 +916,34 @@ describe("WorkspacePage patient triage submission wiring", () => {
     view.rerenderWorkspace();
 
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("idle");
+  });
+
+  it("renders the patient identity panel in the patient scene and hydrates it from state", async () => {
+    const apiClient = buildApiClientStub();
+
+    mockSceneSessions = makeSceneSessions({
+      patient: makeSceneController(
+        setPatientIdentity(
+          makeSessionState({
+            sessionId: "patient-session",
+            currentPatientId: 101,
+          }),
+          {
+            patient_name: "王小明",
+            patient_number: "P-2001",
+            identity_locked: true,
+          },
+        ),
+      ),
+    });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    await waitFor(() =>
+      expect(screen.getByText("患者名称：王小明")).toBeInTheDocument(),
+    );
+    expect(screen.getByText("患者编号：P-2001")).toBeInTheDocument();
+    expect(screen.getByText("如需修改，请在医生端数据库中处理")).toBeInTheDocument();
+    expect(screen.getByTestId("workspace-right")).toBeInTheDocument();
   });
 });
