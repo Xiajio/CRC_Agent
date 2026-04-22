@@ -6,6 +6,7 @@ type RecentPatientsPanelProps = {
   items: PatientRegistryItem[];
   previewedPatientId: number | null;
   isLoading: boolean;
+  isLoadingPreview: boolean;
   error: string | null;
   onPreviewPatient: (patientId: number) => void;
 };
@@ -22,6 +23,7 @@ export function RecentPatientsPanel({
   items,
   previewedPatientId,
   isLoading,
+  isLoadingPreview,
   error,
   onPreviewPatient,
 }: RecentPatientsPanelProps) {
@@ -44,6 +46,7 @@ export function RecentPatientsPanel({
                     type="button"
                     className={`workspace-list-item ${isPreviewed ? "workspace-step-current" : ""}`}
                     onClick={() => onPreviewPatient(item.patient_id)}
+                    disabled={isLoadingPreview}
                     aria-label={`preview patient ${item.patient_id}`}
                     aria-pressed={isPreviewed}
                     style={{

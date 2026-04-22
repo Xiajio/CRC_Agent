@@ -83,6 +83,7 @@ export function DoctorDatabaseView({
             selectedPatientId={databaseWorkbench.selectedPatientId}
             isParsing={databaseWorkbench.isParsing}
             isSearching={databaseWorkbench.isSearching}
+            isLoadingDetail={databaseWorkbench.isLoadingDetail}
             isBootstrapping={databaseWorkbench.isBootstrapping}
             warnings={databaseWorkbench.intentWarnings}
             unsupportedTerms={databaseWorkbench.unsupportedTerms}
@@ -117,6 +118,7 @@ export function DoctorDatabaseView({
           items={registryBrowser.recentPatients}
           previewedPatientId={registryBrowser.previewPatientId}
           isLoading={registryBrowser.isLoadingRecent}
+          isLoadingPreview={registryBrowser.isLoadingPreview}
           error={registryBrowser.error}
           onPreviewPatient={(patientId) => void registryBrowser.previewPatient(patientId)}
         />

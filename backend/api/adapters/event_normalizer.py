@@ -312,7 +312,7 @@ def normalize_tick(
         if extracted_refs:
             events.append(ReferencesAppendEvent(items=strip_binary(normalize_reference_list(extracted_refs))))
 
-    # 去重：同一条 AIMessage（按 message_id）在单次 normalize_tick 内只 emit 一次
+    # Deduplicate AI messages by message_id within a single normalize_tick call.
     _seen_message_ids: set[str] = set()
     for message in langchain_messages:
         if not isinstance(message, AIMessage):

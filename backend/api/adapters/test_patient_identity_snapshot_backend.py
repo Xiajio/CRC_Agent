@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.api.adapters.state_snapshot import build_recovery_snapshot
+from langchain_core.messages import AIMessage, HumanMessage
+
+from backend.api.adapters.state_snapshot import build_message_history, build_recovery_snapshot
 from backend.api.schemas.responses import RecoverySnapshot
 from backend.api.services.session_store import SessionMeta
 
@@ -30,3 +32,21 @@ def test_build_recovery_snapshot_defaults_patient_identity_to_none_when_unset() 
     snapshot = build_recovery_snapshot(session_meta, {"messages": []})
 
     assert snapshot.patient_identity is None
+
+
+def test_build_message_history_filters_internal_ai_control_messages() -> None:
+    history = build_message_history(
+        {
+            "messages": [
+                HumanMessage(content="user question"),
+                AIMessage(content="[Router] internal route decision"),
+                AIMessage(content="visible answer"),
+            ]
+        }
+    )
+
+    assert history.messages_total == 2
+    assert [message.content for message in history.messages] == [
+        "user question",
+        "visible answer",
+    ]

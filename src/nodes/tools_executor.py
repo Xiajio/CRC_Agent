@@ -25,6 +25,9 @@ def node_tool_executor(state: CRCAgentState) -> Dict[str, Any]:
     """
     
     # 1. 获取最后一条消息 (一定是 AIMessage 且包含 tool_calls)
+    if not state.messages:
+        return {"error": "No tool calls found in the last message."}
+
     last_message = state.messages[-1]
     if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
         # 理论上不应走到这里，但也做个防御

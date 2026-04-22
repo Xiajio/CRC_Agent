@@ -7,6 +7,7 @@ interface DatabaseResultsTableProps {
   sort: DatabaseSort;
   selectedPatientId: number | null;
   isSearching: boolean;
+  isLoadingDetail: boolean;
   onSelectPatient: (patientId: number) => void;
   onSortChange: (field: DatabaseSort["field"]) => void;
   onPageChange: (page: number) => void;
@@ -26,6 +27,7 @@ export function DatabaseResultsTable({
   sort,
   selectedPatientId,
   isSearching,
+  isLoadingDetail,
   onSelectPatient,
   onSortChange,
   onPageChange,
@@ -83,7 +85,7 @@ export function DatabaseResultsTable({
                         type="button"
                         className="workspace-secondary-button database-table-button"
                         onClick={() => onSelectPatient(patientId)}
-                        disabled={isSearching}
+                        disabled={isSearching || isLoadingDetail}
                       >
                         {`查看 ${patientId}`}
                       </button>

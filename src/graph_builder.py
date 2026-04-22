@@ -39,6 +39,7 @@ from .nodes.router import (
     route_after_clinical_entry,
     route_after_intent,
 )
+from .policies.tool_targets import classify_pending_step_target
 from .nodes.planner import node_planner
 # [鏂板] 骞惰瀛愭櫤鑳戒綋鑺傜偣
 from .nodes.parallel_subagents import node_parallel_subagents
@@ -194,6 +195,13 @@ def _plan_driven_router(state: CRCAgentState) -> str:
         
         # 鏍规嵁 tool_needed 鐩存帴璺敱鍒板搴旇妭鐐?
         tool_type = pending_step.tool_needed.lower()
+        target = classify_pending_step_target(
+            pending_step.tool_needed,
+            getattr(pending_step, "assignee", "") or "",
+        )
+
+        if target == "tool_executor":
+            return target
 
         if any(kw in tool_type for kw in ["toc", "鐩綍", "chapter", "绔犺妭", "search"]):
             return "knowledge"

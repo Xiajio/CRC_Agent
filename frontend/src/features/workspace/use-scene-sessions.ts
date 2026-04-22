@@ -40,14 +40,13 @@ function persistSessionId(storageKey: string, sessionId: string): void {
   }
 }
 
-function clearPersistedSessionIds(): void {
+function clearPersistedSessionId(storageKey: string): void {
   if (typeof window === "undefined") {
     return;
   }
 
   try {
-    window.localStorage.removeItem(PATIENT_SESSION_STORAGE_KEY);
-    window.localStorage.removeItem(DOCTOR_SESSION_STORAGE_KEY);
+    window.localStorage.removeItem(storageKey);
   } catch {
     return;
   }
@@ -119,19 +118,18 @@ export function useSceneSessions() {
         let patientResponse = patientLoaded.response;
         let doctorResponse = doctorLoaded.response;
 
-        if (patientLoaded.stale || doctorLoaded.stale) {
-          clearPersistedSessionIds();
-          [patientResponse, doctorResponse] = await Promise.all([
-            apiClient.createSession("patient"),
-            apiClient.createSession("doctor"),
-          ]);
-        } else {
-          if (patientResponse === null) {
-            patientResponse = await apiClient.createSession("patient");
-          }
-          if (doctorResponse === null) {
-            doctorResponse = await apiClient.createSession("doctor");
-          }
+        if (patientLoaded.stale) {
+          clearPersistedSessionId(PATIENT_SESSION_STORAGE_KEY);
+        }
+        if (doctorLoaded.stale) {
+          clearPersistedSessionId(DOCTOR_SESSION_STORAGE_KEY);
+        }
+
+        if (patientResponse === null) {
+          patientResponse = await apiClient.createSession("patient");
+        }
+        if (doctorResponse === null) {
+          doctorResponse = await apiClient.createSession("doctor");
         }
 
         if (cancelled || patientResponse === null || doctorResponse === null) {

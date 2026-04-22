@@ -81,8 +81,8 @@ export function RegistryBrowserPane({
   onClearRegistry,
 }: RegistryBrowserPaneProps) {
   const summaryItems = previewSummary(previewDetail);
-  const canBind = previewPatientId !== null && previewPatientId !== currentPatientId;
-  const canDeletePreview = previewPatientId !== null && previewPatientId !== currentPatientId;
+  const canBind = previewPatientId !== null && previewPatientId !== currentPatientId && !isLoadingPreview;
+  const canDeletePreview = previewPatientId !== null && previewPatientId !== currentPatientId && !isLoadingPreview;
   const canClearRegistry = currentPatientId === null;
 
   return (
@@ -186,6 +186,7 @@ export function RegistryBrowserPane({
                       type="button"
                       className={isPreviewed ? "workspace-primary-button" : "workspace-secondary-button"}
                       onClick={() => onPreviewPatient(item.patient_id)}
+                      disabled={isLoadingPreview}
                       aria-label={isPreviewed ? `previewing ${item.patient_id}` : `preview patient ${item.patient_id}`}
                     >
                       {isPreviewed ? `✅ 正在预览 #${item.patient_id}` : `👀 预览 #${item.patient_id}`}

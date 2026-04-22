@@ -8,7 +8,7 @@ from typing import Iterable
 _TARGET_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("assessment", ("ask_user",)),
     ("case_database", ("database", "case_database", "case")),
-    ("tool_executor", ("calculator",)),
+    ("tool_executor", ("calculator", "tool_executor")),
     ("rad_agent", ("imaging", "ct", "mri", "tumor", "radiology")),
     ("path_agent", ("pathology", "clam", "biopsy")),
 )

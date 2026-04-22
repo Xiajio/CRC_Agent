@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ApiClientError } from "../../app/api/client";
 import type {
@@ -37,9 +37,10 @@ function readErrorMessage(error: unknown): string {
 }
 
 function buildSearchRequest(state: RegistryBrowserSearchState): PatientRegistrySearchRequest {
-  const patientId = Number(state.patientId);
+  const patientIdText = state.patientId.trim();
+  const patientId = patientIdText === "" ? null : Number(patientIdText);
   return {
-    patient_id: Number.isFinite(patientId) ? patientId : null,
+    patient_id: patientId !== null && Number.isFinite(patientId) ? patientId : null,
     tumor_location: state.tumorLocation.trim() || null,
     mmr_status: state.mmrStatus.trim() || null,
     clinical_stage: state.clinicalStage.trim() || null,
@@ -63,6 +64,8 @@ export function useRegistryBrowser(options: { enabled: boolean }) {
   const [isDeletingPatient, setIsDeletingPatient] = useState(false);
   const [isClearingRegistry, setIsClearingRegistry] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const previewRequestIdRef = useRef(0);
+  const previewPatientIdRef = useRef<number | null>(null);
 
   async function refreshRecent(limit = 20) {
     if (!enabled) {
@@ -98,6 +101,8 @@ export function useRegistryBrowser(options: { enabled: boolean }) {
   }
 
   async function previewPatient(patientId: number) {
+    const requestId = previewRequestIdRef.current + 1;
+    previewRequestIdRef.current = requestId;
     setIsLoadingPreview(true);
     setError(null);
     try {
@@ -106,14 +111,22 @@ export function useRegistryBrowser(options: { enabled: boolean }) {
         apiClient.getPatientRecords(patientId),
         apiClient.getPatientRegistryAlerts(patientId),
       ]);
+      if (previewRequestIdRef.current !== requestId) {
+        return null;
+      }
       setPreviewPatientId(patientId);
       setPreviewDetail(detailResponse);
       setPreviewRecords(recordsResponse.items);
       setPreviewAlerts(alertsResponse.items);
     } catch (nextError) {
+      if (previewRequestIdRef.current !== requestId) {
+        return null;
+      }
       setError(readErrorMessage(nextError));
     } finally {
-      setIsLoadingPreview(false);
+      if (previewRequestIdRef.current === requestId) {
+        setIsLoadingPreview(false);
+      }
     }
   }
 
@@ -128,8 +141,8 @@ export function useRegistryBrowser(options: { enabled: boolean }) {
       await apiClient.deletePatientRegistryPatient(patientId);
       setRecentPatients((current) => current.filter((item) => item.patient_id !== patientId));
       setSearchResults((current) => current.filter((item) => item.patient_id !== patientId));
-      setPreviewPatientId((current) => (current === patientId ? null : current));
-      if (previewPatientId === patientId) {
+      if (previewPatientIdRef.current === patientId) {
+        setPreviewPatientId(null);
         setPreviewDetail(null);
         setPreviewRecords([]);
         setPreviewAlerts([]);
@@ -181,6 +194,10 @@ export function useRegistryBrowser(options: { enabled: boolean }) {
     }
     void refreshRecent();
   }, [enabled]);
+
+  useEffect(() => {
+    previewPatientIdRef.current = previewPatientId;
+  }, [previewPatientId]);
 
   return {
     recentPatients,

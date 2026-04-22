@@ -66,7 +66,6 @@ def build_graph_payload(
         _normalize_message(message)
         for message in drained_pending_context_messages
     ]
-    session_meta.pending_context_messages.clear()
 
     payload_messages = payload_context_messages + [current_turn_message]
 
@@ -94,6 +93,7 @@ def build_graph_payload(
             if value is not None:
                 payload[key] = value
 
+    session_meta.pending_context_messages.clear()
     return PreparedGraphPayload(
         payload=payload,
         drained_pending_context_messages=drained_pending_context_messages,

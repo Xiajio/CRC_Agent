@@ -4,42 +4,41 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 强制 UTF-8 输出，避免中文乱码
-chcp 65001 | Out-Null
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+function Wait-BackendReady {
+  param(
+    [string]$Uri = "http://127.0.0.1:8000/docs",
+    [int]$TimeoutSeconds = 120,
+    [int]$PollIntervalSeconds = 1
+  )
 
-$repoRoot   = Split-Path -Parent $PSScriptRoot
-$pythonExe  = "D:\anaconda3\envs\LangG\python.exe"
-$nodeHome   = "D:\anaconda3\envs\LangG"
-$npmCmd     = Join-Path $nodeHome "npm.cmd"
-$nodeExe    = Join-Path $nodeHome "node.exe"
+  $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+  while ((Get-Date) -lt $deadline) {
+    try {
+      $response = Invoke-WebRequest -Uri $Uri -TimeoutSec 5
+      if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500) {
+        return
+      }
+    } catch {
+      Start-Sleep -Seconds $PollIntervalSeconds
+    }
+  }
 
-if (-not (Test-Path $pythonExe)) { throw "LangG python not found at $pythonExe" }
-if (-not (Test-Path $npmCmd))    { throw "LangG npm.cmd not found at $npmCmd" }
-if (-not (Test-Path $nodeExe))   { throw "LangG node.exe not found at $nodeExe" }
+  throw "Backend did not become ready at $Uri within $TimeoutSeconds seconds."
+}
 
-# ── 后端：在独立窗口中运行，窗口关闭时进程也退出 ──────────────────────────
-$backendArgs = @(
-  "-NoExit", "-Command",
-  "`$env:PYTHONUTF8='1'; `$env:AUTH_MODE='none'; `$env:GRAPH_RUNNER_MODE='real'; " +
-  "`$env:RAG_WARMUP='$(if ($WarmupRag) { 'true' } else { 'false' })'; " +
-  "`$env:FRONTEND_ORIGINS='http://127.0.0.1:4173'; " +
-  "Set-Location '$repoRoot'; " +
-  "& '$pythonExe' -m uvicorn backend.app:app --host 127.0.0.1 --port 8000"
-)
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$backendScript = Join-Path $PSScriptRoot "start_backend_real.ps1"
+$frontendScript = Join-Path $PSScriptRoot "start_frontend.ps1"
 
-Write-Host ">>> 启动后端 (新窗口)..." -ForegroundColor Cyan
+$backendArgs = @("-NoExit", "-File", $backendScript)
+if ($WarmupRag) {
+  $backendArgs += "-WarmupRag"
+}
+
+Write-Host ">>> Starting backend..." -ForegroundColor Cyan
 Start-Process powershell -ArgumentList $backendArgs
 
-# 稍等一秒让后端窗口先弹出
-Start-Sleep -Seconds 1
+Wait-BackendReady
 
-# ── 前端：在当前窗口运行 ──────────────────────────────────────────────────
-Write-Host ">>> 启动前端..." -ForegroundColor Cyan
-
-Set-Location (Join-Path $repoRoot "frontend")
-
-$env:PATH = "$nodeHome;$env:PATH"
-$env:VITE_API_BASE_URL = "http://127.0.0.1:8000"
-
-& $npmCmd run dev:e2e
+Write-Host ">>> Starting frontend..." -ForegroundColor Cyan
+& $frontendScript

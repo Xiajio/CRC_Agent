@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -323,6 +324,8 @@ def store_session_upload(
         summary_text = f"Parse failed for {normalized_filename}"
         patient_snapshot: dict[str, Any] = {}
         record_id: int | None = None
+        previous_medical_card = deepcopy(meta.context_state.get("medical_card"))
+        medical_card_context_written = False
 
         try:
             original_root.mkdir(parents=True, exist_ok=False)
@@ -388,6 +391,7 @@ def store_session_upload(
                 encoding="utf-8",
             )
             session_store.merge_context_state(session_id, {"medical_card": record_payload})
+            medical_card_context_written = True
 
             if ingest_decision == "asset_only":
                 asset_id = f"asset_{uuid4().hex}"
@@ -480,6 +484,8 @@ def store_session_upload(
                 meta.pending_context_messages = [
                     message for message in meta.pending_context_messages if message != context_message
                 ]
+            if medical_card_context_written:
+                session_store.merge_context_state(session_id, {"medical_card": previous_medical_card})
             _cleanup_asset_root(session_assets_root, asset_root)
             raise UploadProcessingError(str(exc)) from exc
     finally:

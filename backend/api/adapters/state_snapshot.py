@@ -8,6 +8,7 @@ from langchain_core.messages.utils import convert_to_messages
 
 from backend.api.adapters.card_payload_sanitizer import sanitize_card_payload, strip_binary
 from backend.api.adapters.card_extractor import extract_cards
+from backend.api.adapters.event_normalizer import _is_internal_ai_message
 from backend.api.adapters.message_content import sanitize_user_visible_content
 from backend.api.adapters.reference_normalizer import normalize_reference_list
 from backend.api.schemas.events import CardUpsertEvent
@@ -88,6 +89,11 @@ def _is_user_visible_message(raw_message: Any) -> bool:
     if message_type in {"tool", "system"}:
         return False
     return True
+
+
+def _is_internal_ai_control_message(raw_message: Any) -> bool:
+    messages = _coerce_langchain_messages([raw_message])
+    return any(_is_internal_ai_message(message) for message in messages)
 
 
 def _coerce_langchain_messages(messages: Sequence[Any] | None) -> list[BaseMessage]:
@@ -311,7 +317,7 @@ def build_message_history(
     raw_messages = [
         message
         for message in _coerce_messages(_get_value(state, "messages", []))
-        if _is_user_visible_message(message)
+        if _is_user_visible_message(message) and not _is_internal_ai_control_message(message)
     ]
     page_messages, total, next_before_cursor, start = _paginate_messages(raw_messages, before, limit)
 

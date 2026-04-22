@@ -24,43 +24,43 @@ dependencies = [
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "streamlit>=1.52.1",
-    # 混合检索新增依赖
-    "rank-bm25>=0.2.2",  # BM25 关键词检索
-    "jieba>=0.42.1",  # 中文分词
+    # Mixed retrieval dependencies
+    "rank-bm25>=0.2.2",  # BM25 keyword search
+    "jieba>=0.42.1",  # Chinese word segmentation
 ]
 
 [project.optional-dependencies]
-# 文档可视化处理增强 (PDF转图片视觉模式 + Word文档支持)
+# Document visualization enhancements (PDF-to-image vision mode + Word support)
 vision = [
-    "pymupdf>=1.26.7",  # PDF 转图片，用于多模态 LLM 视觉识别
-    "python-docx>=1.2.0",  # Word 文档解析
+    "pymupdf>=1.26.7",  # PDF to images for multimodal vision
+    "python-docx>=1.2.0",  # Word document parsing
 ]
-# OCR 支持 (用于扫描件PDF的文字识别)
+# OCR support (for scanned PDFs)
 ocr = [
-    "pymupdf>=1.26.7",  # PDF 转图片
-    "pytesseract>=0.3.13",  # Tesseract OCR Python 接口
-    "pillow>=11.1.0",  # 图片处理
+    "pymupdf>=1.26.7",  # PDF to images
+    "pytesseract>=0.3.13",  # Tesseract OCR Python bindings
+    "pillow>=11.1.0",  # Image processing
 ]
-# Rerank 重排序支持
+# Rerank support
 rerank = [
-    "sentence-transformers>=2.2.0",  # Cross-Encoder 重排序模型
+    "sentence-transformers>=2.2.0",  # Cross-encoder reranking
     "torch>=2.9.1",  # PyTorch
 ]
-# Cohere Reranker (可选的云端重排序服务)
+# Cohere reranker (optional cloud reranking service)
 cohere = [
     "cohere>=5.0.0",  # Cohere API
 ]
-# MinerU 高质量文档解析 (可选)
+# MinerU document parsing (optional)
 mineru = [
-    "magic-pdf>=0.6.0",  # MinerU PDF解析
+    "magic-pdf>=0.6.0",  # MinerU PDF parsing
 ]
-# Checkpoint 存储 (用于持久化 Graph 状态)
+# Checkpoint storage (for persistent graph state)
 checkpoint = [
-    "langgraph-checkpoint-sqlite>=2.0.0",  # SQLite 持久化
-    "langgraph-checkpoint-postgres>=2.0.0",  # PostgreSQL 持久化
-    "langgraph-checkpoint-redis>=2.0.0",  # Redis 持久化
+    "langgraph-checkpoint-sqlite>=2.0.0",  # SQLite persistence
+    "langgraph-checkpoint-postgres>=2.0.0",  # PostgreSQL persistence
+    "langgraph-checkpoint-redis>=2.0.0",  # Redis persistence
 ]
-# 完整功能安装
+# Full feature set
 full = [
     "pymupdf>=1.26.7",
     "python-docx>=1.2.0",
@@ -76,4 +76,3 @@ full = [
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 asyncio_mode = "auto"
-

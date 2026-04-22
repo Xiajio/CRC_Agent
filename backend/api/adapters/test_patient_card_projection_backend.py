@@ -12,7 +12,7 @@ from backend.api.adapters.state_snapshot import build_recovery_snapshot
 from backend.api.services.patient_registry_service import PatientRegistryService
 from backend.api.services.payload_builder import build_graph_payload
 from backend.api.services.session_store import InMemorySessionStore, SessionMeta
-from backend.api.services.upload_service import store_session_upload
+from backend.api.services.upload_service import UploadProcessingError, store_session_upload
 from src.services.patient_card_projector import (
     project_patient_card,
     project_patient_card_for_updates,
@@ -225,6 +225,54 @@ def test_store_session_upload_persists_medical_card_into_context_state(
         saved = session_store.get_session(session_meta.session_id).context_state["medical_card"]
         assert saved["type"] == "medical_card"
         assert saved["data"]["patient_summary"]["age"] == 61
+    finally:
+        del registry
+        gc.collect()
+        shutil.rmtree(scratch_root, ignore_errors=True)
+
+
+def test_store_session_upload_rolls_back_context_medical_card_when_registry_write_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    scratch_root = Path("backend/api/adapters/.tmp_patient_card_projection") / uuid4().hex
+    scratch_root.mkdir(parents=True, exist_ok=False)
+    session_store = InMemorySessionStore()
+    session_meta = session_store.create_session(scene="patient", patient_id=None)
+    registry = PatientRegistryService(scratch_root / "registry.sqlite3")
+    patient_id = registry.create_draft_patient(created_by_session_id=session_meta.session_id)
+    session_store.set_patient_id(session_meta.session_id, patient_id)
+    monkeypatch.setattr(
+        "backend.api.services.upload_service.convert_upload_to_medical_card",
+        lambda *_args, **_kwargs: {
+            "type": "medical_card",
+            "data": {
+                "patient_summary": {"age": 61, "gender": "male"},
+                "diagnosis_block": {"location": "colon", "mmr_status": "pMMR"},
+                "staging_block": {"clinical_stage": "III", "t_stage": "T3", "n_stage": "N1", "m_stage": "M0"},
+            },
+        },
+    )
+    monkeypatch.setattr(
+        registry,
+        "write_medical_card_record",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("registry write failed")),
+    )
+
+    try:
+        with pytest.raises(UploadProcessingError, match="registry write failed"):
+            store_session_upload(
+                session_store=session_store,
+                patient_registry=registry,
+                assets_root=scratch_root / "assets",
+                session_id=session_meta.session_id,
+                filename="report.pdf",
+                content_type="application/pdf",
+                file_bytes=b"pdf",
+            )
+
+        refreshed = session_store.get_session(session_meta.session_id)
+        assert refreshed is not None
+        assert "medical_card" not in refreshed.context_state
     finally:
         del registry
         gc.collect()

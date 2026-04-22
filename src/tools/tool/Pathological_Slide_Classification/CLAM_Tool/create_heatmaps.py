@@ -66,16 +66,20 @@ def infer_single_slide(model, features, label, reverse_label_dict, k=1):
 def load_params(df_entry, params):
     for key in params.keys():
         if key in df_entry.index:
+            raw_val = df_entry[key]
+            if pd.isna(raw_val):
+                raise ValueError(
+                    f"Encountered NaN while loading parameter '{key}'. "
+                    "Heatmap parameter loading must not enter an interactive debugger."
+                )
+
             dtype = type(params[key])
-            val = df_entry[key] 
-            val = dtype(val)
+            val = dtype(raw_val)
             if isinstance(val, str):
                 if len(val) > 0:
                     params[key] = val
-            elif not np.isnan(val):
-                params[key] = val
             else:
-                pdb.set_trace()
+                params[key] = val
 
     return params
 
@@ -440,5 +444,4 @@ if __name__ == '__main__':
 
     with open(os.path.join(exp_args.raw_save_dir, exp_args.save_exp_code, 'config.yaml'), 'w') as outfile:
         yaml.dump(config_dict, outfile, default_flow_style=False)
-
 

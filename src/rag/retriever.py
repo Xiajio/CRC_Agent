@@ -1033,7 +1033,8 @@ def get_hybrid_retriever(
     Returns:
         全局 SimpleRetriever 实例
     """
-    return _global_manager.get_retriever(candidate_k=20)
+    candidate_k = k if k is not None else kwargs.get("candidate_k", DEFAULT_RETRIEVAL_K)
+    return _global_manager.get_retriever(candidate_k=candidate_k)
 
 
 def hybrid_search(

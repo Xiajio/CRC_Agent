@@ -143,3 +143,15 @@ def test_card_extraction_and_snapshot_restore_keep_triage_question_card_inline()
     assert any(card["card_type"] == "triage_card" for card in snapshot.messages[0].inline_cards)
     assert any(card.card_type == "triage_question_card" for card in snapshot.cards)
     assert any(card.card_type == "triage_card" for card in snapshot.cards)
+
+
+def test_normalize_tick_deduplicates_ai_messages_with_same_nonempty_id() -> None:
+    first = AIMessage(content="first answer", id="msg-123")
+    second = AIMessage(content="second answer", id="msg-123")
+
+    normalized = normalize_tick("message", {}, messages=[first, second])
+    message_done_events = [event for event in normalized if isinstance(event, MessageDoneEvent)]
+
+    assert len(message_done_events) == 1
+    assert message_done_events[0].message_id == "msg-123"
+    assert message_done_events[0].content == "first answer"

@@ -19,6 +19,7 @@ interface DatabaseWorkbenchPanelProps {
   selectedPatientId: number | null;
   isParsing: boolean;
   isSearching: boolean;
+  isLoadingDetail: boolean;
   isBootstrapping: boolean;
   warnings: string[];
   unsupportedTerms: string[];
@@ -165,6 +166,7 @@ export function DatabaseWorkbenchPanel({
   selectedPatientId,
   isParsing,
   isSearching,
+  isLoadingDetail,
   isBootstrapping,
   warnings,
   unsupportedTerms,
@@ -276,6 +278,7 @@ export function DatabaseWorkbenchPanel({
         sort={searchRequest.sort}
         selectedPatientId={selectedPatientId}
         isSearching={isSearching || isBootstrapping}
+        isLoadingDetail={isLoadingDetail}
         onSelectPatient={onSelectPatient}
         onSortChange={onSortChange}
         onPageChange={onPageChange}

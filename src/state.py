@@ -609,15 +609,19 @@ def update_step_status(
         更新后的状态副本
     """
     from datetime import datetime
-    
+
     plan = state.current_plan or []
     step = next((s for s in plan if s.id == step_id), None)
     
     if not step:
         return state
-    
-    step.status = new_status
-    step.updated_at = datetime.utcnow()
+
+    updated_at = datetime.utcnow()
+    updated_step = step.model_copy(update={
+        "status": new_status,
+        "updated_at": updated_at,
+    })
+    new_plan = [updated_step if s.id == step_id else s for s in plan]
     
     new_graph = dict(state.execution_graph or {})
     node = new_graph.setdefault(step_id, {
@@ -633,12 +637,12 @@ def update_step_status(
     new_history.append({
         "step_id": step_id,
         "status": new_status,
-        "timestamp": step.updated_at.isoformat(),
+        "timestamp": updated_at.isoformat(),
         "meta": meta or {},
     })
     
     return state.model_copy(update={
-        "current_plan": plan,
+        "current_plan": new_plan,
         "execution_graph": new_graph,
         "step_history": new_history,
     })

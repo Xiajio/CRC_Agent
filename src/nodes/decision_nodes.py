@@ -2280,21 +2280,6 @@ def node_critic(model, streaming: bool = False, show_thinking: bool = True) -> R
     return _run
 
 
-# ==============================================================================
-# 4. Routing & Finalize
-# ==============================================================================
-
-def route_by_critic_v2(state: CRCAgentState) -> str:
-    if getattr(state, "iteration_count", 0) >= 3: return "finalize"
-    strategy = (getattr(state, "findings", {}) or {}).get("decision_strategy")
-    if strategy == "template_fast":
-        return "finalize"
-    if strategy == "rag_guideline" and _decision_has_stable_rag_support(state):
-        return "finalize"
-    if getattr(state, "critic_verdict") == "REJECTED": return "decision"
-    return "finalize"
-
-
 def route_by_critic_validator(state: CRCAgentState) -> str:
     """
     统一的 Validator 链式 Router：

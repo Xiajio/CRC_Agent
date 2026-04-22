@@ -4,12 +4,26 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent $PSScriptRoot
-$pythonExe = "D:\anaconda3\envs\LangG\python.exe"
+function Resolve-CommandPath {
+  param(
+    [string[]]$CommandNames,
+    [string]$DisplayName
+  )
 
-if (-not (Test-Path $pythonExe)) {
-  throw "LangG python not found at $pythonExe"
+  foreach ($commandName in $CommandNames) {
+    $command = Get-Command $commandName -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($command) {
+      if ($command.Source) { return $command.Source }
+      if ($command.Path) { return $command.Path }
+      if ($command.Definition) { return $command.Definition }
+    }
+  }
+
+  throw "$DisplayName not found on PATH. Install it or add it to PATH."
 }
+
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$pythonExe = Resolve-CommandPath -CommandNames @("python", "py") -DisplayName "Python"
 
 Set-Location $repoRoot
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ApiClientError } from "../../app/api/client";
 import type {
@@ -28,22 +28,34 @@ export function usePatientRegistry(options: { enabled: boolean; currentPatientId
   const [isLoadingBoundPatient, setIsLoadingBoundPatient] = useState(false);
   const [isBindingPatient, setIsBindingPatient] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadRequestIdRef = useRef(0);
 
   async function loadBoundPatient(patientId: number) {
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
     setIsLoadingBoundPatient(true);
+    setError(null);
     try {
       const [detailResponse, recordsResponse, alertsResponse] = await Promise.all([
         apiClient.getPatientRegistryDetail(patientId),
         apiClient.getPatientRecords(patientId),
         apiClient.getPatientRegistryAlerts(patientId),
       ]);
+      if (loadRequestIdRef.current !== requestId) {
+        return;
+      }
       setBoundPatientDetail(detailResponse);
       setBoundPatientRecords(recordsResponse.items);
       setBoundPatientAlerts(alertsResponse.items);
     } catch (error) {
+      if (loadRequestIdRef.current !== requestId) {
+        return;
+      }
       setError(readErrorMessage(error));
     } finally {
-      setIsLoadingBoundPatient(false);
+      if (loadRequestIdRef.current === requestId) {
+        setIsLoadingBoundPatient(false);
+      }
     }
   }
 
@@ -61,17 +73,24 @@ export function usePatientRegistry(options: { enabled: boolean; currentPatientId
 
   useEffect(() => {
     if (!enabled) {
+      loadRequestIdRef.current += 1;
       setBoundPatientDetail(null);
       setBoundPatientRecords([]);
       setBoundPatientAlerts([]);
+      setIsLoadingBoundPatient(false);
       return;
     }
     if (currentPatientId === null) {
+      loadRequestIdRef.current += 1;
       setBoundPatientDetail(null);
       setBoundPatientRecords([]);
       setBoundPatientAlerts([]);
+      setIsLoadingBoundPatient(false);
       return;
     }
+    setBoundPatientDetail(null);
+    setBoundPatientRecords([]);
+    setBoundPatientAlerts([]);
     void loadBoundPatient(currentPatientId);
   }, [enabled, currentPatientId]);
 

@@ -125,6 +125,7 @@ export function DatabasePage() {
       selectedPatientId={selectedPatientId}
       isParsing={isParsing}
       isSearching={isSearching}
+      isLoadingDetail={isLoadingDetail}
       isBootstrapping={isBootstrapping}
       warnings={intentWarnings}
       unsupportedTerms={unsupportedTerms}

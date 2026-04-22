@@ -291,6 +291,7 @@ export function useDatabaseWorkbench(options: UseDatabaseWorkbenchOptions = {}) 
   const [isParsing, setIsParsing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const bootstrapRequestRef = useRef<DatabaseSearchRequest | null>(bootstrapRequest);
+  const detailRequestIdRef = useRef(0);
 
   useEffect(() => {
     bootstrapRequestRef.current = bootstrapRequest;
@@ -322,20 +323,30 @@ export function useDatabaseWorkbench(options: UseDatabaseWorkbenchOptions = {}) 
   }
 
   async function loadCaseDetail(patientId: number) {
+    const requestId = detailRequestIdRef.current + 1;
+    detailRequestIdRef.current = requestId;
     setIsLoadingDetail(true);
     setPageError(null);
 
     try {
       const response = await apiClient.getDatabaseCaseDetail(patientId);
+      if (detailRequestIdRef.current !== requestId) {
+        return null;
+      }
       setSelectedPatientId(patientId);
       setDetail(response);
       setEditRecord(response.case_record ? { ...response.case_record } : null);
       return response;
     } catch (error) {
+      if (detailRequestIdRef.current !== requestId) {
+        return null;
+      }
       setPageError(readDatabaseWorkbenchError(error));
       return null;
     } finally {
-      setIsLoadingDetail(false);
+      if (detailRequestIdRef.current === requestId) {
+        setIsLoadingDetail(false);
+      }
     }
   }
 
