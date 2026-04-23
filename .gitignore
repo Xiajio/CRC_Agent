@@ -25,6 +25,10 @@ htmlcov/
 output/
 runtime/
 tmp/
+# Root scratch dirs/files left by Python, pip, or pytest temp roots.
+/_tmp/
+/tmp*
+/pytest-cache-files*
 *.log
 
 # Local indexes and data kept out of version control

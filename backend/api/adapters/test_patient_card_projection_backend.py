@@ -25,6 +25,12 @@ def _nested_meta(card: dict, section: str, field: str) -> dict:
     return card["field_meta"][section][field]
 
 
+def _make_scratch_root() -> Path:
+    scratch_root = Path("tmp") / "backend-api" / "patient-card-projection" / uuid4().hex
+    scratch_root.mkdir(parents=True, exist_ok=False)
+    return scratch_root
+
+
 def test_project_patient_card_emits_full_spec_skeleton_and_metadata() -> None:
     card = project_patient_card(
         patient_id="current",
@@ -191,8 +197,7 @@ def test_build_graph_payload_prefers_fresher_context_state_medical_card() -> Non
 def test_store_session_upload_persists_medical_card_into_context_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    scratch_root = Path("backend/api/adapters/.tmp_patient_card_projection") / uuid4().hex
-    scratch_root.mkdir(parents=True, exist_ok=False)
+    scratch_root = _make_scratch_root()
     session_store = InMemorySessionStore()
     session_meta = session_store.create_session(scene="patient", patient_id=None)
     registry = PatientRegistryService(scratch_root / "registry.sqlite3")
@@ -234,8 +239,7 @@ def test_store_session_upload_persists_medical_card_into_context_state(
 def test_store_session_upload_rolls_back_context_medical_card_when_registry_write_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    scratch_root = Path("backend/api/adapters/.tmp_patient_card_projection") / uuid4().hex
-    scratch_root.mkdir(parents=True, exist_ok=False)
+    scratch_root = _make_scratch_root()
     session_store = InMemorySessionStore()
     session_meta = session_store.create_session(scene="patient", patient_id=None)
     registry = PatientRegistryService(scratch_root / "registry.sqlite3")

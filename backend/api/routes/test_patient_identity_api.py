@@ -13,10 +13,15 @@ from backend.api.services.patient_registry_service import PatientRegistryService
 from backend.api.services.session_store import InMemorySessionStore
 
 
+def _make_scratch_root() -> Path:
+    scratch_root = Path("tmp") / "backend-api" / "patient-identity" / uuid4().hex
+    scratch_root.mkdir(parents=True, exist_ok=False)
+    return scratch_root
+
+
 @pytest.fixture()
 def identity_app(monkeypatch: pytest.MonkeyPatch):
-    scratch_root = Path(__file__).resolve().parent / ".tmp_patient_identity" / uuid4().hex
-    scratch_root.mkdir(parents=True, exist_ok=False)
+    scratch_root = _make_scratch_root()
     session_store = InMemorySessionStore()
     registry = PatientRegistryService(scratch_root / "patient_registry.sqlite3")
 
