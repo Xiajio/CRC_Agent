@@ -34,11 +34,16 @@ $defaultCondaEnv = "D:\anaconda3\envs\LangG"
 if (Test-Path -LiteralPath $defaultCondaEnv) {
   $env:PATH = "$defaultCondaEnv;$env:PATH"
 }
+# New windows from Start-Process often have CONDA_PREFIX=base; prefer the repo's LangG
+# env first so we do not run uvicorn with base Python (missing project deps like fastapi).
 $preferredPythonPaths = @()
+$langGPython = Join-Path $defaultCondaEnv "python.exe"
+if (Test-Path -LiteralPath $langGPython) {
+  $preferredPythonPaths += $langGPython
+}
 if ($env:CONDA_PREFIX) {
   $preferredPythonPaths += Join-Path $env:CONDA_PREFIX "python.exe"
 }
-$preferredPythonPaths += Join-Path $defaultCondaEnv "python.exe"
 $pythonExe = Resolve-CommandPath -PreferredPaths $preferredPythonPaths -CommandNames @("python", "py") -DisplayName "Python"
 
 Set-Location $repoRoot

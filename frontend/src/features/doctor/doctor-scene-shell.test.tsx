@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockConversationPanel = vi.hoisted(() => vi.fn());
@@ -79,6 +79,55 @@ describe("DoctorSceneShell", () => {
     return profileText.closest("button");
   }
 
+  function renderDoctorSceneShell(overrides: Partial<Parameters<typeof DoctorSceneShell>[0]> = {}) {
+    return render(
+      <DoctorSceneShell
+        toolbar={null}
+        currentPatientId={null}
+        patientRegistry={
+          {
+            boundPatientDetail: null,
+            boundPatientAlerts: [],
+            boundPatientRecords: [],
+            isLoadingBoundPatient: false,
+            isBindingPatient: false,
+          } as never
+        }
+        databaseWorkbench={{} as never}
+        registryBrowser={{} as never}
+        messages={[]}
+        draft=""
+        statusNode={null}
+        isStreaming={false}
+        isLoadingHistory={false}
+        canLoadHistory={false}
+        disabled={false}
+        errorMessage={null}
+        latencyStatus={null}
+        roadmap={[]}
+        stage={null}
+        plan={[]}
+        cards={{}}
+        references={[]}
+        onLoadHistory={vi.fn()}
+        onDraftChange={vi.fn()}
+        onSubmit={vi.fn()}
+        onSetCurrentPatient={vi.fn(async () => true)}
+        {...overrides}
+      />,
+    );
+  }
+
+  it("omits placeholder-only doctor top nav items in production", () => {
+    renderDoctorSceneShell();
+
+    const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
+    expect(navButtons).toHaveLength(2);
+    for (const navButton of navButtons) {
+      expect(navButton).not.toBeDisabled();
+    }
+  });
+
   it("renders the clinical assistant dashboard chrome for consultation mode", () => {
     render(
       <DoctorSceneShell
@@ -116,7 +165,7 @@ describe("DoctorSceneShell", () => {
       />,
     );
 
-    expect(screen.getByText("LangGraph 临床助手")).toBeInTheDocument();
+    expect(screen.getByText("临床助手")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "会诊" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("患者摘要")).toBeInTheDocument();
     expect(screen.getByText("医疗卡片")).toBeInTheDocument();

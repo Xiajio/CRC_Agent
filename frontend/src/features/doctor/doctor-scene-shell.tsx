@@ -57,6 +57,8 @@ const DOCTOR_NAV_ITEMS: NavItem[] = [
   { key: "reports", label: "报表", disabled: true },
 ];
 
+const PRODUCTION_DOCTOR_NAV_ITEMS = DOCTOR_NAV_ITEMS.filter((item) => !item.disabled);
+
 function SmallIcon({
   name,
 }: {
@@ -410,9 +412,9 @@ export function DoctorSceneShell({
 
   const topNav = (
     <ClinicalTopNav
-       brandLabel="LangGraph 临床助手"
+       brandLabel="临床助手"
        navLabel="临床导航"
-      items={DOCTOR_NAV_ITEMS}
+      items={PRODUCTION_DOCTOR_NAV_ITEMS}
       activeKey={activeDoctorTab}
       onSelect={handleTabChange}
       actions={toolbar}

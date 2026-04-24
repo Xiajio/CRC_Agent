@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -688,6 +688,65 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(profileSwitch).toHaveTextContent("患者");
     expect(screen.queryByRole("button", { name: /patient scene/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "重置当前场景" })).toBeInTheDocument();
+  });
+
+  it("omits placeholder-only patient top nav items in production", () => {
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
+    expect(navButtons).toHaveLength(2);
+    for (const navButton of navButtons) {
+      expect(navButton).not.toBeDisabled();
+    }
+  });
+
+  it("switches the patient top nav between profile and upload workspaces while keeping upload usable", async () => {
+    const uploadFile = vi.fn(async () => ({
+      asset_id: "1",
+      filename: "report.pdf",
+      content_type: "application/pdf",
+      size: 7,
+      sha256: "sha",
+      reused: false,
+      derived: { record_id: 1 },
+    }));
+    const getSession = vi.fn(async () =>
+      makeSessionResponse({
+        session_id: "patient-session",
+        snapshot: {
+          uploaded_assets: {
+            "1": {
+              filename: "report.pdf",
+              derived: { record_id: 1 },
+            },
+          },
+        },
+      }),
+    );
+    const apiClient = buildApiClientStub({ uploadFile, getSession });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    const profileTab = screen.getByRole("button", { name: "资料填写" });
+    const uploadTab = screen.getByRole("button", { name: "上传" });
+    expect(profileTab).toHaveAttribute("aria-current", "page");
+    expect(uploadTab).not.toBeDisabled();
+    expect(screen.getByTestId("workspace-right")).toContainElement(screen.getByTestId("uploads-panel"));
+
+    fireEvent.click(uploadTab);
+
+    expect(uploadTab).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("workspace-center")).toContainElement(screen.getByTestId("uploads-panel"));
+    fireEvent.click(screen.getByRole("button", { name: /^trigger upload$/i }));
+
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getSession).toHaveBeenCalledWith("patient-session"));
+
+    fireEvent.click(profileTab);
+
+    expect(profileTab).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("patient-identity-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("patient-background-panel")).toBeInTheDocument();
   });
 
   it("uses inline cards from doctor messages as visible doctor cards", async () => {

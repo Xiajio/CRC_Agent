@@ -242,12 +242,16 @@ function readActiveTriageQuestionId(cards: SessionState["cards"]): string | null
   return readText(questionCard?.question_id);
 }
 
+type PatientWorkspaceTab = "profile" | "upload";
+
 const PATIENT_NAV_ITEMS = [
   { key: "profile", label: "资料填写" },
   { key: "symptoms", label: "症状", disabled: true },
-  { key: "upload", label: "上传", disabled: true },
+  { key: "upload", label: "上传" },
   { key: "care-plan", label: "照护计划", disabled: true },
 ];
+
+const PRODUCTION_PATIENT_NAV_ITEMS = PATIENT_NAV_ITEMS.filter((item) => !item.disabled);
 
 function currentSceneError(
   sceneError: string | null,
@@ -309,6 +313,7 @@ export function WorkspacePage() {
     patient: "",
     doctor: "",
   });
+  const [patientWorkspaceTab, setPatientWorkspaceTab] = useState<PatientWorkspaceTab>("profile");
   const [sceneError, setSceneError] = useState<string | null>(null);
   const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -593,6 +598,12 @@ export function WorkspacePage() {
     setIsStreaming(false);
     setSceneError(null);
     setActiveScene(scene);
+  }
+
+  function handlePatientNavSelect(key: string) {
+    if (key === "profile" || key === "upload") {
+      setPatientWorkspaceTab(key);
+    }
   }
 
   function updateDraft(scene: Scene, value: string) {
@@ -890,6 +901,15 @@ export function WorkspacePage() {
     </button>
   );
 
+  const patientUploadsPanel = (
+    <UploadsPanel
+      uploadedAssets={patient.state.uploadedAssets}
+      disabled={isUploading || isStreaming}
+      statusMessage={uploadStatus}
+      onUpload={(file) => void handleUpload(file)}
+    />
+  );
+
   if (activeScene === "doctor") {
     return (
       <DoctorSceneShell
@@ -924,11 +944,11 @@ export function WorkspacePage() {
   return (
     <main className="clinical-app-shell clinical-app-shell-patient">
       <ClinicalTopNav
-        brandLabel="LangGraph 临床助理"
+        brandLabel="临床助手"
         navLabel="患者工作台"
-        items={PATIENT_NAV_ITEMS}
-        activeKey="profile"
-        onSelect={() => undefined}
+        items={PRODUCTION_PATIENT_NAV_ITEMS}
+        activeKey={patientWorkspaceTab}
+        onSelect={handlePatientNavSelect}
         actions={topNavActions}
         statusLabel="安全会话"
         statusTone="safe"
@@ -959,34 +979,33 @@ export function WorkspacePage() {
         </aside>
         <section className="clinical-patient-center-column" data-testid="workspace-center">
           <div className="workspace-panel-stack">
-            <ConversationPanel
-              messages={patient.state.messages}
-              draft={activeDraft}
-              activeTriageQuestionId={activePatientTriageQuestionId}
-              statusNode={patient.state.statusNode}
-              isStreaming={isStreaming}
-              isLoadingHistory={isLoadingHistory}
-              canLoadHistory={Boolean(patient.state.messagesNextBeforeCursor)}
-              disabled={isStreaming || isUploading}
-              errorMessage={activeError}
-              latencyStatus={patientLatencyStatus}
-              onLoadHistory={() => void loadMessageHistory()}
-              onDraftChange={(value) => updateDraft("patient", value)}
-              onSubmit={() => void submitPrompt()}
-              onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
-                void submitMessage("patient", prompt, context)
-              }
-            />
+            {patientWorkspaceTab === "upload" ? (
+              patientUploadsPanel
+            ) : (
+              <ConversationPanel
+                messages={patient.state.messages}
+                draft={activeDraft}
+                activeTriageQuestionId={activePatientTriageQuestionId}
+                statusNode={patient.state.statusNode}
+                isStreaming={isStreaming}
+                isLoadingHistory={isLoadingHistory}
+                canLoadHistory={Boolean(patient.state.messagesNextBeforeCursor)}
+                disabled={isStreaming || isUploading}
+                errorMessage={activeError}
+                latencyStatus={patientLatencyStatus}
+                onLoadHistory={() => void loadMessageHistory()}
+                onDraftChange={(value) => updateDraft("patient", value)}
+                onSubmit={() => void submitPrompt()}
+                onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
+                  void submitMessage("patient", prompt, context)
+                }
+              />
+            )}
           </div>
         </section>
         <aside className="clinical-patient-right-column" data-testid="workspace-right">
           <div className="workspace-panel-stack">
-            <UploadsPanel
-              uploadedAssets={patient.state.uploadedAssets}
-              disabled={isUploading || isStreaming}
-              statusMessage={uploadStatus}
-              onUpload={(file) => void handleUpload(file)}
-            />
+            {patientWorkspaceTab === "profile" ? patientUploadsPanel : null}
           </div>
         </aside>
       </div>
