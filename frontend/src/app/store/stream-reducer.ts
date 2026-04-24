@@ -34,6 +34,94 @@ const INLINE_CARD_PRIORITY: Record<string, number> = {
 
 type FrontendInlineCard = NonNullable<FrontendMessage["inlineCards"]>[number];
 
+function normalizeWorkflowNode(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+  if (normalized.includes("intent")) {
+    return "intent";
+  }
+  if (normalized.includes("planner") || normalized.includes("planning")) {
+    return "planner";
+  }
+  if (normalized.includes("tool-router") || normalized.includes("toolrouter")) {
+    return "tool-router";
+  }
+  if (normalized.includes("assessment")) {
+    return "assessment";
+  }
+  if (normalized.includes("decision")) {
+    return "decision";
+  }
+  if (normalized.includes("citation")) {
+    return "citation";
+  }
+  if (normalized.includes("evaluator") || normalized.includes("evaluation")) {
+    return "evaluator";
+  }
+  if (normalized.includes("final")) {
+    return "finalize";
+  }
+
+  return normalized;
+}
+
+function roadmapStepKey(step: JsonObject): string | null {
+  return (
+    normalizeWorkflowNode(step.id) ??
+    normalizeWorkflowNode(step.step_id) ??
+    normalizeWorkflowNode(step.title) ??
+    normalizeWorkflowNode(step.step_name)
+  );
+}
+
+function advanceRoadmapFromNode(roadmap: JsonObject[], node: string): JsonObject[] {
+  if (roadmap.length === 0) {
+    return roadmap;
+  }
+
+  const activeKey = normalizeWorkflowNode(node);
+  if (!activeKey) {
+    return roadmap;
+  }
+
+  const activeIndex = roadmap.findIndex((step) => roadmapStepKey(step) === activeKey);
+  if (activeIndex < 0) {
+    return roadmap;
+  }
+
+  return roadmap.map((step, index) => {
+    if (index < activeIndex) {
+      return { ...step, status: "completed" };
+    }
+    if (index === activeIndex) {
+      return { ...step, status: "in_progress" };
+    }
+    return step.status ? step : { ...step, status: "waiting" };
+  });
+}
+
+function markActivePlanStepBlocked(plan: JsonObject[], message: string): JsonObject[] {
+  if (plan.length === 0) {
+    return plan;
+  }
+
+  const activeIndex = plan.findIndex((step) => step.status === "in_progress");
+  const pendingIndex = plan.findIndex((step) => step.status === "pending" || step.status === "waiting");
+  const targetIndex = activeIndex >= 0 ? activeIndex : pendingIndex;
+  if (targetIndex < 0) {
+    return plan;
+  }
+
+  return plan.map((step, index) => (
+    index === targetIndex
+      ? { ...step, status: "blocked", error_message: message }
+      : step
+  ));
+}
+
 function normalizeInlineCard(card: InlineCard | { cardType: string; payload: JsonObject }): FrontendInlineCard {
   if ("cardType" in card) {
     return {
@@ -270,6 +358,7 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
       return {
         ...state,
         statusNode: event.node,
+        roadmap: advanceRoadmapFromNode(state.roadmap, event.node),
       };
     case "message.delta":
       {
@@ -481,6 +570,7 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
     case "error":
       return {
         ...state,
+        plan: markActivePlanStepBlocked(state.plan, event.message),
         lastError: {
           code: event.code,
           message: event.message,

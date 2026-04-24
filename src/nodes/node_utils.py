@@ -538,10 +538,18 @@ def _truncate_message_history(
     max_tokens: int = 6000,
     reserve_tokens: int = 500,
     keep_last: int = 8,
+    keep_last_n: int | None = None,
+    max_chars_per_message: int | None = None,
 ) -> list[BaseMessage]:
+    if keep_last_n is not None:
+        keep_last = keep_last_n
+
     budget = max(0, max_tokens - reserve_tokens)
     if budget <= 0:
-        return list(messages[-keep_last:])
+        selected = list(messages[-keep_last:])
+        if max_chars_per_message and max_chars_per_message > 0:
+            return [_truncate_single_message(message, max_chars_per_message) for message in selected]
+        return selected
 
     selected: list[BaseMessage] = []
     total = 0
@@ -551,7 +559,10 @@ def _truncate_message_history(
             break
         selected.append(message)
         total += token_cost
-    return list(reversed(selected))
+    result = list(reversed(selected))
+    if max_chars_per_message and max_chars_per_message > 0:
+        return [_truncate_single_message(message, max_chars_per_message) for message in result]
+    return result
 
 
 def _compress_rag_context(rag_context: Any, max_chars: int = 4000) -> str:

@@ -123,6 +123,12 @@ vi.mock("../features/doctor/doctor-scene-shell", () => ({
         <button type="button" onClick={() => props.onDraftChange("doctor draft")}>
           set doctor draft
         </button>
+        <button type="button" onClick={() => props.onDraftChange("查询患者093")}>
+          set doctor query draft
+        </button>
+        <button type="button" onClick={() => props.onDraftChange("请基于当前患者信息，生成临床评估、证据依据和治疗建议。")}>
+          set doctor clinical draft
+        </button>
         <button type="button" onClick={() => props.onSubmit()}>
           submit doctor draft
         </button>
@@ -785,6 +791,78 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(lastDoctorSceneProps?.cards).toEqual({
       patient_card: patientCard,
     });
+  });
+
+  it("primes doctor workflow panels for clinical planning prompts before stream events arrive", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    const streamTurn = vi.fn(async () => undefined);
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /set doctor clinical draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /submit doctor draft/i }));
+
+    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(mockSceneSessions.doctor.state.roadmap).toEqual([
+      { id: "intent", title: "intent", status: "completed" },
+      { id: "planner", title: "planner", status: "in_progress" },
+      { id: "assessment", title: "assessment", status: "waiting" },
+      { id: "decision", title: "decision", status: "waiting" },
+      { id: "citation", title: "citation", status: "waiting" },
+      { id: "evaluator", title: "evaluator", status: "waiting" },
+      { id: "finalize", title: "finalize", status: "waiting" },
+    ]);
+    expect(mockSceneSessions.doctor.state.plan).toEqual([
+      { id: "collect-context", title: "collect context", status: "completed" },
+      { id: "retrieve-guidelines", title: "retrieve guidelines", status: "in_progress" },
+      { id: "query-case-database", title: "query case database", status: "pending" },
+      { id: "generate-assessment", title: "generate clinical assessment", status: "pending" },
+      { id: "generate-recommendation", title: "generate treatment recommendation", status: "pending" },
+      { id: "finalize-report", title: "finalize report", status: "pending" },
+    ]);
+  });
+
+  it("marks the active doctor plan step blocked when a primed clinical request fails", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    const streamTurn = vi.fn(async () => {
+      throw new Error("network failed");
+    });
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /set doctor clinical draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /submit doctor draft/i }));
+
+    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    await waitFor(() => {
+      expect(mockSceneSessions.doctor.state.plan[1]).toMatchObject({
+        id: "retrieve-guidelines",
+        status: "blocked",
+        error_message: "network failed",
+      });
+    });
+    expect(mockSceneSessions.doctor.state.lastError).toEqual({
+      code: "STREAM_REQUEST_FAILED",
+      message: "network failed",
+      recoverable: true,
+    });
+  });
+
+  it("does not prime doctor workflow panels for simple patient lookup prompts", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    const streamTurn = vi.fn(async () => undefined);
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /set doctor query draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /submit doctor draft/i }));
+
+    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(mockSceneSessions.doctor.state.roadmap).toEqual([]);
+    expect(mockSceneSessions.doctor.state.plan).toEqual([]);
   });
 
   it("measures patient chat from submit to committed assistant render", async () => {

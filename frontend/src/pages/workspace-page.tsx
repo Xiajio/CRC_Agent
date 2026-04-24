@@ -207,6 +207,68 @@ function appendOptimisticUserMessage(state: SessionState, content: string): Sess
   };
 }
 
+const DOCTOR_WORKFLOW_KEYWORDS = [
+  "临床评估",
+  "治疗建议",
+  "治疗方案",
+  "证据依据",
+  "基于证据",
+  "管理建议",
+  "会诊报告",
+  "生成报告",
+  "指南",
+  "recommendation",
+  "treatment",
+  "assessment",
+  "evidence",
+  "guideline",
+  "report",
+];
+
+function shouldPrimeDoctorWorkflow(scene: Scene, prompt: string): boolean {
+  if (scene !== "doctor") {
+    return false;
+  }
+
+  const normalized = prompt.toLowerCase();
+  return DOCTOR_WORKFLOW_KEYWORDS.some((keyword) => normalized.includes(keyword.toLowerCase()));
+}
+
+function createClinicalRoadmapScaffold(): JsonObject[] {
+  return [
+    { id: "intent", title: "intent", status: "completed" },
+    { id: "planner", title: "planner", status: "in_progress" },
+    { id: "assessment", title: "assessment", status: "waiting" },
+    { id: "decision", title: "decision", status: "waiting" },
+    { id: "citation", title: "citation", status: "waiting" },
+    { id: "evaluator", title: "evaluator", status: "waiting" },
+    { id: "finalize", title: "finalize", status: "waiting" },
+  ];
+}
+
+function createClinicalPlanScaffold(): JsonObject[] {
+  return [
+    { id: "collect-context", title: "collect context", status: "completed" },
+    { id: "retrieve-guidelines", title: "retrieve guidelines", status: "in_progress" },
+    { id: "query-case-database", title: "query case database", status: "pending" },
+    { id: "generate-assessment", title: "generate clinical assessment", status: "pending" },
+    { id: "generate-recommendation", title: "generate treatment recommendation", status: "pending" },
+    { id: "finalize-report", title: "finalize report", status: "pending" },
+  ];
+}
+
+function primeDoctorClinicalWorkflow(state: SessionState, prompt: string): SessionState {
+  if (!shouldPrimeDoctorWorkflow("doctor", prompt)) {
+    return state;
+  }
+
+  return {
+    ...state,
+    roadmap: state.roadmap.length > 0 ? state.roadmap : createClinicalRoadmapScaffold(),
+    plan: state.plan.length > 0 ? state.plan : createClinicalPlanScaffold(),
+  };
+}
+
 function stripTriageQuestionCard(cards: Record<string, JsonObject>): Record<string, JsonObject> {
   const { triage_question_card: _triageQuestionCard, ...rest } = cards;
   return rest;
@@ -690,7 +752,12 @@ export function WorkspacePage() {
     setIsStreaming(true);
     setSceneError(null);
 
-    sceneController.setState((current) => appendOptimisticUserMessage(current, normalizedPrompt));
+    sceneController.setState((current) => {
+      const withUserMessage = appendOptimisticUserMessage(current, normalizedPrompt);
+      return scene === "doctor"
+        ? primeDoctorClinicalWorkflow(withUserMessage, normalizedPrompt)
+        : withUserMessage;
+    });
 
     const request: ChatTurnRequest = {
       message: {
@@ -721,17 +788,26 @@ export function WorkspacePage() {
       }, controller.signal, traceTap);
     } catch (error) {
       if (!isAbortError(error)) {
+        const message = readErrorMessage(error);
         const currentProbeAfterError = activeProbeRef.current;
         if (isProbeIncomplete(currentProbeAfterError) && currentProbeAfterError.sequence === sequence) {
           const errorAt = performance.now();
           activeProbeRef.current = {
             ...currentProbeAfterError,
             status: "error",
-            errorMessage: readErrorMessage(error),
+            errorMessage: message,
           };
           traceStoreRef.current.recordClientError(currentProbeAfterError.traceId, errorAt);
         }
-        setSceneError(readErrorMessage(error));
+        sceneController.setState((current) =>
+          reduceStreamEvent(current, {
+            type: "error",
+            code: "STREAM_REQUEST_FAILED",
+            message,
+            recoverable: true,
+          }),
+        );
+        setSceneError(message);
       }
     } finally {
       if (streamSequenceRef.current === sequence) {

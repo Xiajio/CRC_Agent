@@ -4,6 +4,76 @@ import type { CardUpsertEvent, MessageDeltaEvent, MessageDoneEvent } from "../ap
 import { createInitialSessionState, reduceStreamEvent } from "./stream-reducer";
 
 describe("reduceStreamEvent", () => {
+  it("advances a scaffolded roadmap from status.node events", () => {
+    const initialState = {
+      ...createInitialSessionState(),
+      roadmap: [
+        { id: "intent", title: "intent", status: "waiting" },
+        { id: "planner", title: "planner", status: "waiting" },
+        { id: "assessment", title: "assessment", status: "waiting" },
+      ],
+    };
+
+    const plannerState = reduceStreamEvent(initialState, {
+      type: "status.node",
+      node: "planner",
+    });
+    const assessmentState = reduceStreamEvent(plannerState, {
+      type: "status.node",
+      node: "assessment",
+    });
+
+    expect(plannerState.roadmap).toEqual([
+      { id: "intent", title: "intent", status: "completed" },
+      { id: "planner", title: "planner", status: "in_progress" },
+      { id: "assessment", title: "assessment", status: "waiting" },
+    ]);
+    expect(assessmentState.roadmap).toEqual([
+      { id: "intent", title: "intent", status: "completed" },
+      { id: "planner", title: "planner", status: "completed" },
+      { id: "assessment", title: "assessment", status: "in_progress" },
+    ]);
+  });
+
+  it("does not create a roadmap from status.node when no workflow has been scaffolded", () => {
+    const state = reduceStreamEvent(createInitialSessionState(), {
+      type: "status.node",
+      node: "database",
+    });
+
+    expect(state.statusNode).toBe("database");
+    expect(state.roadmap).toEqual([]);
+  });
+
+  it("marks the active scaffolded plan step as blocked when the stream returns an error", () => {
+    const initialState = {
+      ...createInitialSessionState(),
+      plan: [
+        { id: "collect-context", title: "collect context", status: "completed" },
+        { id: "generate-recommendation", title: "generate treatment recommendation", status: "in_progress" },
+        { id: "finalize-report", title: "finalize report", status: "pending" },
+      ],
+    };
+
+    const state = reduceStreamEvent(initialState, {
+      type: "error",
+      code: "BACKEND_ERROR",
+      message: "decision failed",
+      recoverable: true,
+    });
+
+    expect(state.plan).toEqual([
+      { id: "collect-context", title: "collect context", status: "completed" },
+      {
+        id: "generate-recommendation",
+        title: "generate treatment recommendation",
+        status: "blocked",
+        error_message: "decision failed",
+      },
+      { id: "finalize-report", title: "finalize report", status: "pending" },
+    ]);
+  });
+
   it("appends message.delta chunks into one assistant message and finalizes it on message.done", () => {
     const firstDelta: MessageDeltaEvent = {
       type: "message.delta",

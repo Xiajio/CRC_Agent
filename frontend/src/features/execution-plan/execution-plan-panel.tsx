@@ -6,8 +6,11 @@ type ExecutionPlanPanelProps = {
 };
 
 const PLAN_TITLE_LABELS: Record<string, string> = {
+  "collect context": "汇总患者上下文",
   "retrieve guidelines": "检索指南",
   "query case database": "查询病例库",
+  "generate clinical assessment": "生成临床评估",
+  "generate treatment recommendation": "生成治疗建议",
   "run ct summary": "生成 CT 摘要",
   "check citations": "核对引用",
   "finalize report": "完成报告",
