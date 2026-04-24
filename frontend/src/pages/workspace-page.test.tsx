@@ -1,15 +1,17 @@
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppProviders } from "../app/providers";
+import { ApiClientError } from "../app/api/client";
 import type { SessionState, StreamEvent } from "../app/api/types";
 import { createInitialSessionState, hydrateSessionState } from "../app/store/stream-reducer";
 import { WorkspacePage } from "../pages/workspace-page";
 import { buildApiClientStub, makeSessionResponse, renderWorkspaceWithSceneSessions } from "../test/test-utils";
 
 let mockSceneSessions: any;
-let lastClinicalCardsProps: any;
+let lastPatientBackgroundProps: any;
+let lastDoctorSceneProps: any;
 let lastUploadsPanelProps: any;
 let mockGenerateTraceId: ReturnType<typeof vi.fn>;
 
@@ -71,43 +73,62 @@ vi.mock("../features/uploads/uploads-panel", () => ({
         >
           trigger upload
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            const file = new File(["oversized"], "too-large.pdf", {
+              type: "application/pdf",
+            });
+            Object.defineProperty(file, "size", {
+              value: 25 * 1024 * 1024 + 1,
+            });
+            props.onUpload?.(file);
+          }}
+        >
+          trigger oversized upload
+        </button>
       </div>
     );
   },
 }));
 
-vi.mock("../features/cards/clinical-cards-panel", () => ({
-  ClinicalCardsPanel: (props: any) => {
-    lastClinicalCardsProps = props;
-    return <div data-testid="clinical-cards-panel" />;
+vi.mock("../features/cards/patient-background-panel", () => ({
+  PatientBackgroundPanel: (props: any) => {
+    lastPatientBackgroundProps = props;
+    return <div data-testid="patient-background-panel" />;
   },
 }));
 
 vi.mock("../features/doctor/doctor-scene-shell", () => ({
-  DoctorSceneShell: ({
-    draft,
-    onDraftChange,
-    onSubmit,
-    latencyStatus,
-  }: {
+  DoctorSceneShell: (props: {
+    toolbar?: ReactNode;
+    onSwitchScene?: () => void;
     draft: string;
     onDraftChange: (value: string) => void;
     onSubmit: () => void;
+    cards?: Record<string, unknown>;
     latencyStatus?: { kind: "streaming" } | { kind: "completed"; uiCompleteMs: number } | null;
-  }) => (
-    <section data-testid="doctor-scene-shell" data-latency-kind={latencyStatus?.kind ?? "idle"}>
-      <output data-testid="doctor-draft">{draft}</output>
-      <output data-testid="doctor-latency-ms">
-        {latencyStatus && "uiCompleteMs" in latencyStatus ? latencyStatus.uiCompleteMs : ""}
-      </output>
-      <button type="button" onClick={() => onDraftChange("doctor draft")}>
-        set doctor draft
-      </button>
-      <button type="button" onClick={() => onSubmit()}>
-        submit doctor draft
-      </button>
-    </section>
-  ),
+  }) => {
+    lastDoctorSceneProps = props;
+    return (
+      <section data-testid="doctor-scene-shell" data-latency-kind={props.latencyStatus?.kind ?? "idle"}>
+        <div data-testid="doctor-toolbar">{props.toolbar}</div>
+        <button type="button" aria-label="patient scene" onClick={props.onSwitchScene}>
+          switch to patient
+        </button>
+        <output data-testid="doctor-draft">{props.draft}</output>
+        <output data-testid="doctor-latency-ms">
+          {props.latencyStatus && "uiCompleteMs" in props.latencyStatus ? props.latencyStatus.uiCompleteMs : ""}
+        </output>
+        <button type="button" onClick={() => props.onDraftChange("doctor draft")}>
+          set doctor draft
+        </button>
+        <button type="button" onClick={() => props.onSubmit()}>
+          submit doctor draft
+        </button>
+      </section>
+    );
+  },
 }));
 
 vi.mock("../features/execution-plan/execution-plan-panel", () => ({
@@ -124,16 +145,19 @@ vi.mock("../features/chat/conversation-panel", () => ({
     onDraftChange,
     onSubmit,
     onCardPromptRequest,
+    errorMessage,
     latencyStatus,
   }: {
     draft: string;
     onDraftChange: (value: string) => void;
     onSubmit: () => void;
     onCardPromptRequest?: (prompt: string, context?: Record<string, unknown>) => void;
+    errorMessage?: string | null;
     latencyStatus?: { kind: "streaming" } | { kind: "completed"; uiCompleteMs: number } | null;
   }) => (
     <section data-testid="mock-conversation-panel">
       <output data-testid="composer-draft">{draft}</output>
+      <output data-testid="conversation-error">{errorMessage ?? ""}</output>
       <output data-testid="latency-kind">{latencyStatus?.kind ?? "idle"}</output>
       <output data-testid="latency-ms">
         {latencyStatus && "uiCompleteMs" in latencyStatus ? latencyStatus.uiCompleteMs : ""}
@@ -199,11 +223,13 @@ function renderWorkspace(apiClient: ReturnType<typeof buildApiClientStub>) {
   return {
     ...view,
     rerenderWorkspace() {
-      view.rerender(
-        <AppProviders apiClient={apiClient}>
-          <WorkspacePage />
-        </AppProviders>,
-      );
+      act(() => {
+        view.rerender(
+          <AppProviders apiClient={apiClient}>
+            <WorkspacePage />
+          </AppProviders>,
+        );
+      });
     },
   };
 }
@@ -271,7 +297,8 @@ function setPatientIdentity(state: SessionState, patientIdentity: SessionStateWi
 
 describe("WorkspacePage patient triage submission wiring", () => {
   beforeEach(() => {
-    lastClinicalCardsProps = null;
+    lastPatientBackgroundProps = null;
+    lastDoctorSceneProps = null;
     lastUploadsPanelProps = null;
     mockSceneSessions = makeSceneSessions();
     mockGenerateTraceId = vi.fn(() => "trace-123");
@@ -290,12 +317,12 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     expect(screen.getByTestId("composer-draft")).toHaveTextContent("typed composer");
 
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(streamTurn).toHaveBeenCalledWith(
       "patient-session",
       {
@@ -367,12 +394,50 @@ describe("WorkspacePage patient triage submission wiring", () => {
         derived: { record_id: 1 },
       },
     });
-    expect(lastClinicalCardsProps?.cards).toEqual({
+    expect(lastPatientBackgroundProps?.cards).toEqual({
       patient_card: {
         type: "patient_card",
         title: "Refreshed patient card",
       },
     });
+  });
+
+  it("rejects oversized files before entering upload state", async () => {
+    const uploadFile = vi.fn(async () => new Promise<never>(() => undefined));
+    const apiClient = buildApiClientStub({ uploadFile });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(await screen.findByRole("button", { name: /trigger oversized upload/i }));
+
+    expect(uploadFile).not.toHaveBeenCalled();
+    expect(screen.getByTestId("uploads-panel")).toHaveAttribute("data-disabled", "false");
+    expect(screen.getByTestId("conversation-error")).toHaveTextContent(
+      "文件过大，最大上传大小为 25 MB。",
+    );
+  });
+
+  it("maps backend 413 upload errors to a friendly size message", async () => {
+    const uploadFile = vi.fn(async () => {
+      throw new ApiClientError(
+        413,
+        "UPLOAD_TOO_LARGE: maximum size is 26214400 bytes",
+        { detail: "UPLOAD_TOO_LARGE: maximum size is 26214400 bytes" },
+      );
+    });
+    const apiClient = buildApiClientStub({ uploadFile });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(await screen.findByRole("button", { name: /^trigger upload$/i }));
+
+    await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByTestId("conversation-error")).toHaveTextContent(
+        "文件过大，最大上传大小为 25 MB。",
+      ),
+    );
+    expect(lastUploadsPanelProps?.statusMessage).toBeNull();
   });
 
   it("emits a debug summary with the trace id when the UI probe completes", async () => {
@@ -397,12 +462,12 @@ describe("WorkspacePage patient triage submission wiring", () => {
     });
     const apiClient = buildApiClientStub({ streamTurn });
 
-    renderWorkspaceWithSceneSessions(apiClient);
+    const view = renderWorkspace(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(callOrder).toEqual(["generate", "stream"]);
 
     now = 2500;
@@ -412,11 +477,14 @@ describe("WorkspacePage patient triage submission wiring", () => {
       message_id: "msg-1",
       content: "answer",
     });
+    view.rerenderWorkspace();
 
     now = 4200;
-    vi.runOnlyPendingTimers();
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
 
-    await waitFor(() => expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed"));
+    expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
     expect(consoleDebugSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         traceId: "trace-123",
@@ -454,12 +522,12 @@ describe("WorkspacePage patient triage submission wiring", () => {
     });
     const apiClient = buildApiClientStub({ streamTurn });
 
-    renderWorkspaceWithSceneSessions(apiClient);
+    const view = renderWorkspace(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(typeof traceTap).toBe("function");
 
     traceTap?.({
@@ -539,11 +607,14 @@ describe("WorkspacePage patient triage submission wiring", () => {
       message_id: "msg-1",
       content: "answer",
     });
+    view.rerenderWorkspace();
 
     now = 4200;
-    vi.runOnlyPendingTimers();
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
 
-    await waitFor(() => expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed"));
+    expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
 
     expect(window.__chatLatency?.latestTrace).toEqual(
       expect.objectContaining({
@@ -574,15 +645,15 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
-    await screen.findByTestId("clinical-cards-panel");
-    expect(lastClinicalCardsProps?.cards).toEqual({});
+    await screen.findByTestId("patient-background-panel");
+    expect(lastPatientBackgroundProps?.cards).toEqual({});
 
     fireEvent.click(screen.getByRole("button", { name: /set card draft/i }));
     expect(screen.getByTestId("composer-draft")).toHaveTextContent("draft for card");
 
     fireEvent.click(screen.getByRole("button", { name: /submit triage answer/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(streamTurn).toHaveBeenCalledWith(
       "patient-session",
       {
@@ -599,12 +670,62 @@ describe("WorkspacePage patient triage submission wiring", () => {
             other_text: null,
           },
         },
+        trace_id: "trace-123",
       },
       expect.any(Function),
       expect.any(AbortSignal),
       expect.any(Function),
     );
     expect(screen.getByTestId("composer-draft")).toHaveTextContent("draft for card");
+  });
+
+  it("renders patient chrome with profile scene switching instead of standalone scene buttons", () => {
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    expect(screen.getByRole("navigation", { name: "患者工作台" })).toBeInTheDocument();
+    const profileSwitch = screen.getByRole("button", { name: /doctor scene/i });
+    expect(profileSwitch).toHaveClass("clinical-profile-switch");
+    expect(profileSwitch).toHaveTextContent("患者");
+    expect(screen.queryByRole("button", { name: /patient scene/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "重置当前场景" })).toBeInTheDocument();
+  });
+
+  it("uses inline cards from doctor messages as visible doctor cards", async () => {
+    const patientCard = {
+      type: "patient_card",
+      patient_id: 93,
+      data: {
+        patient_info: {
+          gender: "male",
+          age: 31,
+        },
+      },
+    };
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    mockSceneSessions.doctor.state = makeSessionState({
+      sessionId: "doctor-session",
+      messages: [
+        {
+          cursor: "1",
+          type: "ai",
+          content: "patient details",
+          assetRefs: [],
+          inlineCards: [
+            {
+              cardType: "patient_card",
+              payload: patientCard,
+            },
+          ],
+        },
+      ],
+    });
+
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    expect(screen.getByTestId("doctor-scene-shell")).toBeInTheDocument();
+    expect(lastDoctorSceneProps?.cards).toEqual({
+      patient_card: patientCard,
+    });
   });
 
   it("measures patient chat from submit to committed assistant render", async () => {
@@ -620,10 +741,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
     const apiClient = buildApiClientStub({ streamTurn });
     const view = renderWorkspace(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
 
     now = 2500;
@@ -636,9 +757,11 @@ describe("WorkspacePage patient triage submission wiring", () => {
     view.rerenderWorkspace();
 
     now = 4200;
-    vi.runOnlyPendingTimers();
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
 
-    await waitFor(() => expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed"));
+    expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
     expect(screen.getByTestId("latency-ms")).toHaveTextContent("3200");
   });
 
@@ -655,10 +778,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
     const apiClient = buildApiClientStub({ streamTurn });
     const view = renderWorkspace(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
 
     now = 1800;
@@ -671,9 +794,11 @@ describe("WorkspacePage patient triage submission wiring", () => {
     view.rerenderWorkspace();
 
     now = 2600;
-    vi.runOnlyPendingTimers();
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
 
-    await waitFor(() => expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed"));
+    expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
     expect(screen.getByTestId("latency-ms")).toHaveTextContent("1600");
   });
 
@@ -690,10 +815,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
     const apiClient = buildApiClientStub({ streamTurn });
     const view = renderWorkspace(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
     now = 2000;
     callbacks.get("patient-session")?.({
       type: "message.done",
@@ -704,21 +829,23 @@ describe("WorkspacePage patient triage submission wiring", () => {
     view.rerenderWorkspace();
 
     now = 3100;
-    vi.runOnlyPendingTimers();
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
 
-    await waitFor(() => expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed"));
+    expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
     expect(screen.getByTestId("latency-ms")).toHaveTextContent("2100");
 
     fireEvent.click(screen.getByRole("button", { name: /doctor scene/i }));
     view.rerenderWorkspace();
 
-    await waitFor(() => expect(screen.getByTestId("doctor-scene-shell")).toBeInTheDocument());
+    expect(screen.getByTestId("doctor-scene-shell")).toBeInTheDocument();
     expect(screen.getByTestId("doctor-scene-shell")).toHaveAttribute("data-latency-kind", "idle");
 
     fireEvent.click(screen.getByRole("button", { name: /set doctor draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit doctor draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(2));
+    expect(streamTurn).toHaveBeenCalledTimes(2);
     now = 3600;
     callbacks.get("doctor-session")?.({
       type: "message.done",
@@ -729,15 +856,17 @@ describe("WorkspacePage patient triage submission wiring", () => {
     view.rerenderWorkspace();
 
     now = 4800;
-    vi.runOnlyPendingTimers();
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
 
-    await waitFor(() => expect(screen.getByTestId("doctor-scene-shell")).toHaveAttribute("data-latency-kind", "completed"));
+    expect(screen.getByTestId("doctor-scene-shell")).toHaveAttribute("data-latency-kind", "completed");
     expect(screen.getByTestId("doctor-latency-ms")).toHaveTextContent("1700");
 
-    fireEvent.click(screen.getByRole("button", { name: /patient scene/i }));
+    mockSceneSessions.setActiveScene("patient");
     view.rerenderWorkspace();
 
-    await waitFor(() => expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed"));
+    expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
     expect(screen.getByTestId("latency-ms")).toHaveTextContent("2100");
   });
 
@@ -752,17 +881,17 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspace(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
 
     now = 1500;
     fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(2));
+    expect(streamTurn).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
   });
 
@@ -790,14 +919,14 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
 
     now = 1500;
     fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(2));
+    expect(streamTurn).toHaveBeenCalledTimes(2);
 
     taps[0]?.({
       type: "trace.summary",
@@ -843,7 +972,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     const apiClient = buildApiClientStub({ streamTurn, resetSession });
     const view = renderWorkspace(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
     now = 2000;
@@ -856,14 +985,72 @@ describe("WorkspacePage patient triage submission wiring", () => {
     view.rerenderWorkspace();
 
     now = 3200;
-    vi.runOnlyPendingTimers();
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
 
-    await waitFor(() => expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed"));
+    expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
 
-    fireEvent.click(within(screen.getByTestId("workspace-toolbar")).getAllByRole("button")[2]);
+    fireEvent.click(screen.getByRole("button", { name: "重置当前场景" }));
 
-    await waitFor(() => expect(resetSession).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(resetSession).toHaveBeenCalledTimes(1);
+    expect(mockSceneSessions.applyResponseToScene).toHaveBeenCalledWith(
+      "patient",
+      expect.objectContaining({
+        snapshot: expect.objectContaining({
+          messages: [],
+          cards: [],
+          roadmap: [],
+          plan: [],
+          references: [],
+        }),
+      }),
+    );
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("idle");
+  });
+
+  it("recreates the active scene when reset finds a stale backend session", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    mockSceneSessions.doctor.state = makeSessionState({
+      sessionId: "doctor-session",
+      currentPatientId: 1024,
+      cards: {
+        patient_card: {
+          type: "patient_card",
+          patient_id: "1024",
+          data: { patient_info: { age: 58 } },
+        },
+      },
+    });
+
+    const replacement = makeSessionResponse({
+      session_id: "doctor-session-new",
+      scene: "doctor",
+      snapshot: {
+        current_patient_id: null,
+        cards: [],
+        messages: [],
+      },
+    });
+    const resetSession = vi.fn(async () => {
+      throw Object.assign(new Error("Session not found"), { status: 404 });
+    });
+    const createSession = vi.fn(async () => replacement);
+    const apiClient = buildApiClientStub({ resetSession, createSession });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: "重置当前场景" }));
+
+    await waitFor(() => expect(resetSession).toHaveBeenCalledWith("doctor-session"));
+    await waitFor(() => expect(createSession).toHaveBeenCalledWith("doctor"));
+    expect(mockSceneSessions.applyResponseToScene).toHaveBeenCalledWith("doctor", replacement);
+    expect(mockSceneSessions.doctor.state.sessionId).toBe("doctor-session-new");
+    expect(mockSceneSessions.doctor.state.currentPatientId).toBeNull();
+    expect(mockSceneSessions.doctor.state.cards).toEqual({});
   });
 
   it("aborts an incomplete probe when switching scenes", async () => {
@@ -875,17 +1062,18 @@ describe("WorkspacePage patient triage submission wiring", () => {
     const streamTurn = vi.fn(async () => undefined);
     const apiClient = buildApiClientStub({ streamTurn });
 
-    renderWorkspace(apiClient);
+    const view = renderWorkspace(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
 
     fireEvent.click(screen.getByRole("button", { name: /doctor scene/i }));
+    view.rerenderWorkspace();
 
-    await waitFor(() => expect(screen.getByTestId("doctor-scene-shell")).toBeInTheDocument());
+    expect(screen.getByTestId("doctor-scene-shell")).toBeInTheDocument();
     expect(screen.getByTestId("doctor-scene-shell")).toHaveAttribute("data-latency-kind", "idle");
   });
 
@@ -899,10 +1087,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
     const apiClient = buildApiClientStub({ streamTurn });
     const view = renderWorkspace(apiClient);
 
-    fireEvent.click(await screen.findByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
-    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
 
     mockSceneSessions.patient.state = {
@@ -913,6 +1101,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
         recoverable: true,
       },
     };
+    view.rerenderWorkspace();
     view.rerenderWorkspace();
 
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("idle");

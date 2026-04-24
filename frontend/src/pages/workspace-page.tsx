@@ -3,15 +3,15 @@
 import { buildChatLatencyTraceAnalysis, createChatLatencyTraceStore } from "../app/api/chat-latency-trace";
 import { ApiClientError } from "../app/api/client";
 import { generateTraceId } from "../app/api/generate-trace-id";
-import type { ChatTurnRequest, FrontendMessage, JsonObject, Scene, SessionState } from "../app/api/types";
+import type { ChatTurnRequest, FrontendMessage, JsonObject, Scene, SessionResponse, SessionState } from "../app/api/types";
 import type { StreamTraceTap } from "../app/api/stream";
 import { mergeMessageHistory, reduceStreamEvent } from "../app/store/stream-reducer";
 import { useApiClient } from "../app/providers";
-import { WorkspaceLayout } from "../components/layout/workspace-layout";
-import { ClinicalCardsPanel } from "../features/cards/clinical-cards-panel";
 import { ConversationPanel, type ConversationLatencyStatus } from "../features/chat/conversation-panel";
+import { ClinicalTopNav } from "../components/layout/clinical-top-nav";
 import { DoctorSceneShell } from "../features/doctor/doctor-scene-shell";
 import { ExecutionPlanPanel } from "../features/execution-plan/execution-plan-panel";
+import { PatientBackgroundPanel } from "../features/cards/patient-background-panel";
 import { PatientIdentityPanel } from "../features/patient-identity/patient-identity-panel";
 import { RoadmapPanel } from "../features/roadmap/roadmap-panel";
 import { UploadsPanel } from "../features/uploads/uploads-panel";
@@ -41,6 +41,8 @@ type TurnLatencyProbe = {
 };
 
 type RecentCompletedProbes = Record<Scene, TurnLatencyProbe | null>;
+
+const DEFAULT_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
 
 type ChatLatencyDebugSurface = {
   readonly latestTrace: unknown;
@@ -77,6 +79,51 @@ function readText(value: unknown): string | null {
   return null;
 }
 
+function readUploadMaxBytes(): number {
+  const importMetaEnv = import.meta as ImportMeta & {
+    env?: Record<string, string | boolean | undefined>;
+  };
+  const configured = readFiniteNumber(importMetaEnv.env?.VITE_API_UPLOAD_MAX_BYTES);
+  return configured && configured > 0 ? configured : DEFAULT_UPLOAD_MAX_BYTES;
+}
+
+function formatUploadSize(bytes: number): string {
+  const units: Array<[string, number]> = [
+    ["GB", 1024 * 1024 * 1024],
+    ["MB", 1024 * 1024],
+    ["KB", 1024],
+  ];
+
+  for (const [unit, size] of units) {
+    if (bytes >= size) {
+      const value = bytes / size;
+      const formatted = Number.isInteger(value) ? String(value) : value.toFixed(1).replace(/\.0$/, "");
+      return `${formatted} ${unit}`;
+    }
+  }
+
+  return `${bytes} 字节`;
+}
+
+function uploadTooLargeMessage(maxBytes = readUploadMaxBytes()): string {
+  return `文件过大，最大上传大小为 ${formatUploadSize(maxBytes)}。`;
+}
+
+function readUploadMaxBytesFromError(error: ApiClientError): number | null {
+  const detail =
+    typeof error.detail === "object" && error.detail && "detail" in error.detail
+      ? (error.detail as { detail: unknown }).detail
+      : error.message;
+  const source = typeof detail === "string" ? detail : error.message;
+  const match = /maximum size is (\d+) bytes/i.exec(source);
+  if (!match) {
+    return null;
+  }
+
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 function isChatLatencyDebugEnabled(): boolean {
   if (typeof window !== "undefined") {
     try {
@@ -96,6 +143,9 @@ function isChatLatencyDebugEnabled(): boolean {
 
 function readErrorMessage(error: unknown): string {
   if (error instanceof ApiClientError) {
+    if (error.status === 413) {
+      return uploadTooLargeMessage(readUploadMaxBytesFromError(error) ?? readUploadMaxBytes());
+    }
     return error.message;
   }
 
@@ -103,7 +153,19 @@ function readErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  return "Workspace request failed.";
+  return "工作区请求失败。";
+}
+
+function isNotFoundApiError(error: unknown): boolean {
+  if (error instanceof ApiClientError) {
+    return error.status === 404;
+  }
+
+  if (typeof error === "object" && error !== null && "status" in error) {
+    return (error as { status?: unknown }).status === 404;
+  }
+
+  return false;
 }
 
 function isAbortError(error: unknown): boolean {
@@ -150,6 +212,19 @@ function stripTriageQuestionCard(cards: Record<string, JsonObject>): Record<stri
   return rest;
 }
 
+function cardsWithInlineCards(
+  cards: Record<string, JsonObject>,
+  messages: FrontendMessage[],
+): Record<string, JsonObject> {
+  const merged = { ...cards };
+  for (const message of messages) {
+    for (const card of message.inlineCards ?? []) {
+      merged[card.cardType] = card.payload;
+    }
+  }
+  return merged;
+}
+
 function triageVisibilityContext(findings: SessionState["findings"]): {
   encounterTrack: string | null;
   activeInquiry: boolean;
@@ -167,9 +242,12 @@ function readActiveTriageQuestionId(cards: SessionState["cards"]): string | null
   return readText(questionCard?.question_id);
 }
 
-function sceneLabel(scene: Scene): string {
-  return scene === "patient" ? "👤 患者端" : "🩺 医生端";
-}
+const PATIENT_NAV_ITEMS = [
+  { key: "profile", label: "资料填写" },
+  { key: "symptoms", label: "症状", disabled: true },
+  { key: "upload", label: "上传", disabled: true },
+  { key: "care-plan", label: "照护计划", disabled: true },
+];
 
 function currentSceneError(
   sceneError: string | null,
@@ -268,23 +346,23 @@ export function WorkspacePage() {
   const patientVisibleCards = useMemo(
     () =>
       stripTriageQuestionCard(
-        getVisibleCards(patient.state.cards, {
+        getVisibleCards(cardsWithInlineCards(patient.state.cards, patient.state.messages), {
           isDatabaseDetailActive: false,
           encounterTrack: patientEncounterTrack,
           activeInquiry: patientActiveInquiry,
         }),
       ),
-    [patient.state.cards, patientEncounterTrack, patientActiveInquiry],
+    [patient.state.cards, patient.state.messages, patientEncounterTrack, patientActiveInquiry],
   );
 
   const doctorVisibleCards = useMemo(
     () =>
-      getVisibleCards(doctor.state.cards, {
+      getVisibleCards(cardsWithInlineCards(doctor.state.cards, doctor.state.messages), {
         isDatabaseDetailActive: false,
         encounterTrack: null,
         activeInquiry: false,
       }),
-    [doctor.state.cards],
+    [doctor.state.cards, doctor.state.messages],
   );
 
   function emitTraceConsoleSummary(traceId: string) {
@@ -668,13 +746,20 @@ export function WorkspacePage() {
     const sessionId = patient.state.sessionId;
 
     if (!sessionId) {
-      setSceneError("Patient session is not ready for uploads.");
+      setSceneError("患者会话尚未准备好上传。");
+      return;
+    }
+
+    const uploadMaxBytes = readUploadMaxBytes();
+    if (file.size > uploadMaxBytes) {
+      setSceneError(uploadTooLargeMessage(uploadMaxBytes));
+      setUploadStatus(null);
       return;
     }
 
     setIsUploading(true);
     setSceneError(null);
-    setUploadStatus(`Uploading ${file.name}...`);
+    setUploadStatus(`正在上传 ${file.name}...`);
 
     try {
       const response = await apiClient.uploadFile(sessionId, file);
@@ -694,7 +779,7 @@ export function WorkspacePage() {
         ...current,
         patientIdentity: refreshed.snapshot.patient_identity ?? null,
       }));
-      setUploadStatus(`Uploaded ${response.filename}`);
+      setUploadStatus(`已上传 ${response.filename}`);
     } catch (error) {
       setSceneError(readErrorMessage(error));
       setUploadStatus(null);
@@ -723,8 +808,7 @@ export function WorkspacePage() {
     setIsStreaming(false);
     setSceneError(null);
 
-    try {
-      const response = await apiClient.resetSession(sessionId);
+    const applyResetResponse = (response: SessionResponse) => {
       applyResponseToScene(activeScene, response);
       if (activeScene === "patient") {
         patient.setState((current) => ({
@@ -736,7 +820,22 @@ export function WorkspacePage() {
       if (activeScene === "patient") {
         setUploadStatus(null);
       }
+      setSceneError(null);
+    };
+
+    try {
+      const response = await apiClient.resetSession(sessionId);
+      applyResetResponse(response);
     } catch (error) {
+      if (isNotFoundApiError(error)) {
+        try {
+          const response = await apiClient.createSession(activeScene);
+          applyResetResponse(response);
+        } catch (replacementError) {
+          setSceneError(readErrorMessage(replacementError));
+        }
+        return;
+      }
       setSceneError(readErrorMessage(error));
     }
   }
@@ -745,7 +844,7 @@ export function WorkspacePage() {
     const sessionId = doctor.state.sessionId;
 
     if (!sessionId) {
-      setSceneError("Doctor session is not ready for patient binding.");
+      setSceneError("医生会话尚未准备好绑定患者。");
       return false;
     }
 
@@ -762,15 +861,15 @@ export function WorkspacePage() {
   }
 
   if (bootstrapStatus === "loading") {
-    return <main className="workspace-shell"><div className="workspace-card">Loading workspace...</div></main>;
+    return <main className="workspace-shell"><div className="workspace-card">正在加载工作区...</div></main>;
   }
 
   if (bootstrapStatus === "error") {
     return (
       <main className="workspace-shell">
         <div className="workspace-card">
-          <h2>Workspace bootstrap failed</h2>
-          <p className="workspace-copy workspace-copy-alert">{bootstrapError ?? "Unknown bootstrap error."}</p>
+          <h2>工作区初始化失败</h2>
+          <p className="workspace-copy workspace-copy-alert">{bootstrapError ?? "未知初始化错误。"}</p>
         </div>
       </main>
     );
@@ -781,38 +880,21 @@ export function WorkspacePage() {
   const patientLatencyStatus = conversationLatencyStatusForScene("patient", activeProbeRef.current, recentCompletedProbes);
   const doctorLatencyStatus = conversationLatencyStatusForScene("doctor", activeProbeRef.current, recentCompletedProbes);
 
-  const toolbar = (
-    <>
-      <button
-        type="button"
-        className={activeScene === "patient" ? "workspace-primary-button" : "workspace-secondary-button"}
-        onClick={() => handleSceneSwitch("patient")}
-        aria-label="patient scene"
-      >
-        {sceneLabel("patient")}
-      </button>
-      <button
-        type="button"
-        className={activeScene === "doctor" ? "workspace-primary-button" : "workspace-secondary-button"}
-        onClick={() => handleSceneSwitch("doctor")}
-        aria-label="doctor scene"
-      >
-        {sceneLabel("doctor")}
-      </button>
-      <button
-        type="button"
-        className="workspace-secondary-button"
-        onClick={() => void handleResetActiveScene()}
-      >
-        🔄 重置当前场景
-      </button>
-    </>
+  const topNavActions = (
+    <button
+      type="button"
+      className="clinical-reset-button"
+      onClick={() => void handleResetActiveScene()}
+    >
+      重置当前场景
+    </button>
   );
 
   if (activeScene === "doctor") {
     return (
       <DoctorSceneShell
-        toolbar={toolbar}
+        toolbar={topNavActions}
+        onSwitchScene={() => handleSceneSwitch("patient")}
         currentPatientId={doctorPatientId}
         patientRegistry={patientRegistry}
         databaseWorkbench={databaseWorkbench}
@@ -840,64 +922,79 @@ export function WorkspacePage() {
   }
 
   return (
-      <WorkspaceLayout
-      toolbar={(
-        <div className="workspace-toolbar-row" style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
-          {toolbar}
-        </div>
-      )}
-      leftRail={(
-        <div className="workspace-panel-stack">
-          <UploadsPanel
-            uploadedAssets={patient.state.uploadedAssets}
-            disabled={isUploading || isStreaming}
-            statusMessage={uploadStatus}
-            onUpload={(file) => void handleUpload(file)}
-          />
-        </div>
-      )}
-      centerWorkspace={(
-            <div className="workspace-panel-stack">
-              <ConversationPanel
-                messages={patient.state.messages}
-                draft={activeDraft}
-                activeTriageQuestionId={activePatientTriageQuestionId}
-            statusNode={patient.state.statusNode}
-            isStreaming={isStreaming}
-            isLoadingHistory={isLoadingHistory}
-            canLoadHistory={Boolean(patient.state.messagesNextBeforeCursor)}
-            disabled={isStreaming || isUploading}
-                errorMessage={activeError}
-                latencyStatus={patientLatencyStatus}
-                onLoadHistory={() => void loadMessageHistory()}
-                onDraftChange={(value) => updateDraft("patient", value)}
-                onSubmit={() => void submitPrompt()}
-                onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
-                  void submitMessage("patient", prompt, context)
-                }
-              />
-            </div>
-          )}
-      rightInspector={(
-        <div className="workspace-panel-stack">
-          <PatientIdentityPanel
-            sessionId={patient.state.sessionId}
-            patientIdentity={patient.state.patientIdentity ?? null}
-            onSaved={(identity) => {
-              patient.setState((current) => ({
-                ...current,
-                patientIdentity: identity,
-              }));
-            }}
-          />
-          <ClinicalCardsPanel 
-            title="患者背景信息" 
-            emptyMessage="当前暂无患者背景信息" 
-            cards={patientVisibleCards} 
-            selectedCardType={null} 
-          />
-        </div>
-      )}
-    />
+    <main className="clinical-app-shell clinical-app-shell-patient">
+      <ClinicalTopNav
+        brandLabel="LangGraph 临床助理"
+        navLabel="患者工作台"
+        items={PATIENT_NAV_ITEMS}
+        activeKey="profile"
+        onSelect={() => undefined}
+        actions={topNavActions}
+        statusLabel="安全会话"
+        statusTone="safe"
+        profileLabel="患者"
+        profileAriaLabel="doctor scene"
+        onProfileClick={() => handleSceneSwitch("doctor")}
+        className="clinical-top-nav-patient"
+      />
+      <div className="clinical-patient-dashboard" data-testid="workspace-layout">
+        <aside className="clinical-patient-left-column" data-testid="workspace-left-rail">
+          <div className="workspace-panel-stack">
+            <PatientIdentityPanel
+              sessionId={patient.state.sessionId}
+              patientIdentity={patient.state.patientIdentity ?? null}
+              onSaved={(identity) => {
+                patient.setState((current) => ({
+                  ...current,
+                  patientIdentity: identity,
+                }));
+              }}
+            />
+            <PatientBackgroundPanel
+              title="患者背景信息"
+              emptyMessage="当前暂无患者背景信息"
+              cards={patientVisibleCards}
+            />
+          </div>
+        </aside>
+        <section className="clinical-patient-center-column" data-testid="workspace-center">
+          <div className="workspace-panel-stack">
+            <ConversationPanel
+              messages={patient.state.messages}
+              draft={activeDraft}
+              activeTriageQuestionId={activePatientTriageQuestionId}
+              statusNode={patient.state.statusNode}
+              isStreaming={isStreaming}
+              isLoadingHistory={isLoadingHistory}
+              canLoadHistory={Boolean(patient.state.messagesNextBeforeCursor)}
+              disabled={isStreaming || isUploading}
+              errorMessage={activeError}
+              latencyStatus={patientLatencyStatus}
+              onLoadHistory={() => void loadMessageHistory()}
+              onDraftChange={(value) => updateDraft("patient", value)}
+              onSubmit={() => void submitPrompt()}
+              onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
+                void submitMessage("patient", prompt, context)
+              }
+            />
+          </div>
+        </section>
+        <aside className="clinical-patient-right-column" data-testid="workspace-right">
+          <div className="workspace-panel-stack">
+            <UploadsPanel
+              uploadedAssets={patient.state.uploadedAssets}
+              disabled={isUploading || isStreaming}
+              statusMessage={uploadStatus}
+              onUpload={(file) => void handleUpload(file)}
+            />
+          </div>
+        </aside>
+      </div>
+    </main>
   );
+
 }
+
+
+
+

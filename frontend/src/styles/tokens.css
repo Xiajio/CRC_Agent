@@ -1,12 +1,20 @@
 :root {
   color-scheme: light;
-  --bg-canvas: #fbf6f5;
-  --bg-panel: rgba(255, 255, 255, 0.92);
-  --bg-accent: linear-gradient(135deg, #ffeae7 0%, #fff8f7 52%, #ffd9d4 100%);
-  --text-primary: #2a1b1f;
-  --text-secondary: #6d5459;
-  --border-subtle: rgba(165, 73, 83, 0.14);
-  --shadow-panel: 0 18px 44px rgba(133, 70, 78, 0.11);
-  --radius-panel: 24px;
+  --bg-canvas: #f5f8fc;
+  --bg-panel: #ffffff;
+  --bg-accent: linear-gradient(135deg, #eef6ff 0%, #ffffff 55%, #f2fbf6 100%);
+  --text-primary: #182434;
+  --text-secondary: #5c6b7d;
+  --border-subtle: #dbe5ef;
+  --shadow-panel: 0 12px 30px rgba(23, 43, 77, 0.08);
+  --radius-panel: 8px;
+  --clinical-navy: #061f3d;
+  --clinical-navy-2: #082b52;
+  --clinical-primary: #1466d8;
+  --clinical-primary-soft: #eaf4ff;
+  --clinical-success: #24a66a;
+  --clinical-warning: #f06423;
+  --clinical-danger: #cc2f47;
+  --clinical-muted: #7d8ba0;
   --font-body: "Noto Sans SC", "IBM Plex Sans", "Segoe UI", sans-serif;
 }

@@ -103,7 +103,8 @@ describe("triage question card rendering", () => {
     });
     expect(screen.getByRole("button", { name: "Pain" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Other" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Submit answer" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Submit answer" })).not.toBeInTheDocument();
+    expect(screen.getByText("\u5df2\u63d0\u4ea4\u3002")).toBeInTheDocument();
   });
 
   it("renders stale triage question cards as read-only", () => {

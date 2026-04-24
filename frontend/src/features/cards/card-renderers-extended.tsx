@@ -196,14 +196,14 @@ function TriageQuestionCardView({
 }) {
   const questionId = asString(payload.question_id) ?? "triage-question";
   const fieldKey = asString(payload.field_key);
-  const prompt = asString(payload.prompt) ?? "Please choose an answer.";
+  const prompt = asString(payload.prompt) ?? "请选择一个答案。";
   const helpText = asString(payload.help_text);
   const selectionMode = asSelectionMode(payload.selection_mode) ?? "single";
   const options = normalizeTriageQuestionOptions(payload.options);
   const allowOther = asBoolean(payload.allow_other);
-  const otherLabel = asString(payload.other_label) ?? "Other";
-  const otherPlaceholder = asString(payload.other_placeholder) ?? "Describe other details";
-  const submitLabel = asString(payload.submit_label) ?? "Submit answer";
+  const otherLabel = asString(payload.other_label) ?? "其他";
+  const otherPlaceholder = asString(payload.other_placeholder) ?? "补充说明";
+  const submitLabel = asString(payload.submit_label) ?? "提交答案";
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [otherText, setOtherText] = useState("");
   const [submitted, setSubmitted] = useState(false);

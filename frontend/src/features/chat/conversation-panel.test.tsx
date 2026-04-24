@@ -29,8 +29,8 @@ describe("ConversationPanel latency status", () => {
 
     expect(screen.getByTestId("status-node")).toHaveTextContent("planner");
     expect(screen.queryByTestId("latency-status")).not.toBeInTheDocument();
-    expect(screen.queryByText("\u672c\u8f6e\u8017\u65f6\u8ba1\u65f6\u4e2d...")).not.toBeInTheDocument();
-    expect(screen.queryByText(/\u672c\u8f6e\u754c\u9762\u5b8c\u6210/)).not.toBeInTheDocument();
+    expect(screen.queryByText("本轮正在生成...")).not.toBeInTheDocument();
+    expect(screen.queryByText(/界面完成/)).not.toBeInTheDocument();
   });
 
   it("renders the streaming latency label", () => {
@@ -40,7 +40,7 @@ describe("ConversationPanel latency status", () => {
       },
     });
 
-    expect(screen.getByTestId("latency-status")).toHaveTextContent("\u672c\u8f6e\u8017\u65f6\u8ba1\u65f6\u4e2d...");
+    expect(screen.getByTestId("latency-status")).toHaveTextContent("本轮正在生成...");
   });
 
   it("renders the completed latency label with seconds", () => {
@@ -51,6 +51,6 @@ describe("ConversationPanel latency status", () => {
       },
     });
 
-    expect(screen.getByTestId("latency-status")).toHaveTextContent("\u672c\u8f6e\u754c\u9762\u5b8c\u6210 1.23s");
+    expect(screen.getByTestId("latency-status")).toHaveTextContent("界面完成 1.23 秒");
   });
 });

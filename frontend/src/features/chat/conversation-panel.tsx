@@ -32,18 +32,16 @@ const INTERNAL_LINE_PATTERNS = [
   /^\s*\[Router\].*$/gm,
   /^\s*\[Intent\].*$/gm,
   /^\s*\[Planner\].*$/gm,
-  /^\s*审核[:：].*$/gm,
-  /^\s*\*\*知识检索完成\*\*.*$/gm,
 ];
 
 function executionStatusLabel(statusNode: string | null, isStreaming: boolean): string {
   if (statusNode === "memory_manager") {
-    return "整理上下文";
+    return "记忆管理";
   }
   if (statusNode) {
     return statusNode;
   }
-  return isStreaming ? "生成中..." : "就绪";
+  return isStreaming ? "生成中..." : "空闲";
 }
 
 function latencyStatusLabel(latencyStatus?: ConversationLatencyStatus): string | null {
@@ -52,10 +50,10 @@ function latencyStatusLabel(latencyStatus?: ConversationLatencyStatus): string |
   }
 
   if (latencyStatus.kind === "streaming") {
-    return "\u672c\u8f6e\u8017\u65f6\u8ba1\u65f6\u4e2d...";
+    return "本轮正在生成...";
   }
 
-  return `\u672c\u8f6e\u754c\u9762\u5b8c\u6210 ${(latencyStatus.uiCompleteMs / 1000).toFixed(2)}s`;
+  return `界面完成 ${(latencyStatus.uiCompleteMs / 1000).toFixed(2)} 秒`;
 }
 
 function messageLabel(message: FrontendMessage): string {
@@ -83,19 +81,11 @@ function normalizeMessageText(content: unknown): { text: string } {
       JSON.parse(trimmed);
       return { text: "" };
     } catch {
-      // Keep non-JSON content as-is.
+      // Keep non-JSON content as user-facing text.
     }
   }
 
   return { text: trimmed };
-}
-
-function stripGenericInlineCardHints(text: string): string {
-  return text
-    .replace(/点击卡片查看详情。?/g, "")
-    .replace(/已为您生成(?:以下)?卡片。?/g, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }
 
 function shouldHideInlineMessageText(text: string, message: FrontendMessage): boolean {
@@ -109,25 +99,12 @@ function renderMessageContent(text: string, thinkText?: string) {
   return (
     <>
       {thinkText ? (
-        <details className="workspace-card-disclosure" style={{ marginBottom: "12px" }}>
-          <summary style={{ fontSize: "0.85rem", color: "#8e4a55" }}>思考过程</summary>
-          <div
-            style={{
-              padding: "10px 14px",
-              fontSize: "0.8rem",
-              whiteSpace: "pre-wrap",
-              color: "var(--text-secondary)",
-            }}
-          >
-            {thinkText}
-          </div>
+        <details className="workspace-card-disclosure clinical-thinking-disclosure">
+          <summary>推理过程</summary>
+          <div>{thinkText}</div>
         </details>
       ) : null}
-      {text ? (
-        <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.65 }}>
-          {text}
-        </div>
-      ) : null}
+      {text ? <div className="clinical-message-text">{text}</div> : null}
     </>
   );
 }
@@ -154,42 +131,35 @@ export function ConversationPanel({
   const textareaDisabled = draftDisabled ?? disabled;
 
   return (
-    <div
-      className="workspace-card"
-      data-testid="conversation-panel"
-      style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}
-    >
-      <h2 style={{ display: "flex", alignItems: "center", gap: "8px", margin: 0, paddingBottom: "12px", borderBottom: "1px solid rgba(165, 73, 83, 0.1)" }}>
-        <span style={{ fontSize: "1.2rem" }}>💬</span> 智能对话
-      </h2>
+    <section className="workspace-card clinical-conversation-card" data-testid="conversation-panel">
+      <div className="clinical-panel-header clinical-conversation-header">
+        <span className="clinical-panel-icon clinical-chat-icon" aria-hidden="true" />
+        <h2>对话</h2>
+      </div>
 
-      {errorMessage ? <p className="workspace-copy workspace-copy-alert" style={{ marginTop: "12px" }}>{errorMessage}</p> : null}
+      {errorMessage ? <p className="workspace-copy workspace-copy-alert clinical-error-copy">{errorMessage}</p> : null}
 
-      <div style={{ flex: 1, overflowY: "auto", paddingRight: "4px", marginTop: "16px" }}>
+      <div className="clinical-conversation-scroll">
         {canLoadHistory ? (
-          <div style={{ textAlign: "center", marginBottom: "16px" }}>
+          <div className="clinical-history-row">
             <button
               type="button"
               className="workspace-secondary-button"
-              style={{ marginTop: 0 }}
               disabled={isLoadingHistory}
               onClick={onLoadHistory}
             >
-              {isLoadingHistory ? "加载历史中..." : "加载更早消息"}
+              {isLoadingHistory ? "正在加载历史..." : "加载更早消息"}
             </button>
           </div>
         ) : null}
 
         {messages.length > 0 ? (
-          <ol className="workspace-message-list" style={{ paddingTop: 0 }}>
+          <ol className="workspace-message-list clinical-message-list">
             {messages.map((message) => {
               const isUser = message.type !== "ai";
               const { text: normalizedText } = normalizeMessageText(message.content);
               const thinkText = (message.thinking ?? "").trim();
-              const displayText = message.inlineCards?.length
-                ? stripGenericInlineCardHints(normalizedText)
-                : normalizedText;
-              const hideText = shouldHideInlineMessageText(displayText, message) || (!displayText && !thinkText);
+              const hideText = shouldHideInlineMessageText(normalizedText, message) || (!normalizedText && !thinkText);
 
               if (hideText && (!message.inlineCards || message.inlineCards.length === 0)) {
                 return null;
@@ -198,14 +168,14 @@ export function ConversationPanel({
               return (
                 <li
                   key={message.cursor}
-                  className={`workspace-message-bubble ${isUser ? "bubble-user" : "bubble-ai"}`}
+                  className={`workspace-message-bubble clinical-message-bubble ${isUser ? "bubble-user" : "bubble-ai"}`}
                 >
-                  <div className="bubble-header">
+                  <div className="bubble-header clinical-bubble-header">
                     <strong>{messageLabel(message)}</strong>
                   </div>
                   {!hideText || thinkText ? (
                     <div className="bubble-content">
-                      {renderMessageContent(hideText ? "" : displayText, thinkText || undefined)}
+                      {renderMessageContent(hideText ? "" : normalizedText, thinkText || undefined)}
                     </div>
                   ) : null}
                   {message.inlineCards?.length ? (
@@ -238,40 +208,32 @@ export function ConversationPanel({
             })}
           </ol>
         ) : (
-          <p className="workspace-copy" style={{ marginTop: 0 }}>
-            还没有对话内容。
-          </p>
+          <p className="workspace-copy clinical-empty-conversation">暂无对话。</p>
         )}
       </div>
 
-      <div
-        style={{
-          marginTop: "16px",
-          paddingTop: "12px",
-          borderTop: "1px solid rgba(165, 73, 83, 0.1)",
-        }}
-      >
-        <div className="workspace-status-row" style={{ marginTop: 0, marginBottom: "12px" }}>
-          <span className="workspace-meta" style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ fontSize: "1.1rem" }}>⚙️</span> 执行节点
+      <div className="clinical-composer-region">
+        <div className="workspace-status-row clinical-status-row">
+          <span className="workspace-meta clinical-runtime-label">
+            <span className="clinical-status-pulse" aria-hidden="true" /> 运行状态
           </span>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <strong className="workspace-status-node" data-testid="status-node" style={{ color: "#8e4a55", background: "rgba(165, 73, 83, 0.08)", padding: "4px 10px", borderRadius: "12px", fontSize: "0.85rem" }}>
+          <div className="clinical-runtime-pills">
+            <strong className="workspace-status-node" data-testid="status-node">
               {executionLabel}
             </strong>
             {latencyLabel ? (
-              <strong className="workspace-status-node" data-testid="latency-status" style={{ color: "#8e4a55", background: "rgba(165, 73, 83, 0.08)", padding: "4px 10px", borderRadius: "12px", fontSize: "0.85rem" }}>
+              <strong className="workspace-status-node" data-testid="latency-status">
                 {latencyLabel}
               </strong>
             ) : null}
           </div>
         </div>
 
-        <div className="workspace-composer" style={{ marginTop: 0 }}>
-          <div style={{ position: "relative" }}>
+        <div className="workspace-composer clinical-composer">
+          <div className="clinical-composer-box">
             <textarea
               className="workspace-composer-input"
-              placeholder="输入你的问题，例如分诊症状、治疗方案或数据库查询"
+              placeholder="询问评估、治疗方案、引用依据或相似病例"
               value={draft}
               disabled={textareaDisabled}
               onChange={(event) => onDraftChange(event.target.value)}
@@ -283,11 +245,6 @@ export function ConversationPanel({
                   }
                 }
               }}
-              style={{
-                boxShadow: "inset 0 2px 6px rgba(133, 70, 78, 0.04)",
-                border: "1px solid rgba(165, 73, 83, 0.2)",
-                paddingRight: "50px"
-              }}
             />
             <button
               type="button"
@@ -295,34 +252,15 @@ export function ConversationPanel({
               disabled={textareaDisabled || !draft.trim()}
               onClick={onSubmit}
               aria-label="发送消息"
-              style={{
-                position: "absolute",
-                right: "12px",
-                bottom: "16px",
-                width: "36px",
-                height: "36px",
-                padding: 0,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "10px",
-                background: (textareaDisabled || !draft.trim()) ? "rgba(165, 73, 83, 0.15)" : "linear-gradient(135deg, #8e4a55 0%, #a35d68 100%)",
-                color: (textareaDisabled || !draft.trim()) ? "rgba(142, 74, 85, 0.5)" : "#ffffff",
-                border: "none",
-                cursor: (textareaDisabled || !draft.trim()) ? "not-allowed" : "pointer",
-                transition: "all 0.2s ease",
-                boxShadow: (textareaDisabled || !draft.trim()) ? "none" : "0 2px 8px rgba(142, 74, 85, 0.25)",
-              }}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="22" y1="2" x2="11" y2="13"></line>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <line x1="22" y1="2" x2="11" y2="13" />
+                <polygon points="22 2 15 22 11 13 2 9 22 2" />
               </svg>
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </section>
   );
 }
-

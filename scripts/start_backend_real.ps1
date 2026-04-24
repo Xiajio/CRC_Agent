@@ -6,9 +6,16 @@ $ErrorActionPreference = "Stop"
 
 function Resolve-CommandPath {
   param(
+    [string[]]$PreferredPaths = @(),
     [string[]]$CommandNames,
     [string]$DisplayName
   )
+
+  foreach ($preferredPath in $PreferredPaths) {
+    if ($preferredPath -and (Test-Path -LiteralPath $preferredPath)) {
+      return $preferredPath
+    }
+  }
 
   foreach ($commandName in $CommandNames) {
     $command = Get-Command $commandName -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -23,7 +30,16 @@ function Resolve-CommandPath {
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$pythonExe = Resolve-CommandPath -CommandNames @("python", "py") -DisplayName "Python"
+$defaultCondaEnv = "D:\anaconda3\envs\LangG"
+if (Test-Path -LiteralPath $defaultCondaEnv) {
+  $env:PATH = "$defaultCondaEnv;$env:PATH"
+}
+$preferredPythonPaths = @()
+if ($env:CONDA_PREFIX) {
+  $preferredPythonPaths += Join-Path $env:CONDA_PREFIX "python.exe"
+}
+$preferredPythonPaths += Join-Path $defaultCondaEnv "python.exe"
+$pythonExe = Resolve-CommandPath -PreferredPaths $preferredPythonPaths -CommandNames @("python", "py") -DisplayName "Python"
 
 Set-Location $repoRoot
 

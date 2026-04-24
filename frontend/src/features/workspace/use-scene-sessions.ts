@@ -57,7 +57,7 @@ function readErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  return "Workspace bootstrap failed.";
+  return "工作区初始化失败。";
 }
 
 function sceneStorageKey(scene: Scene): string {
@@ -71,7 +71,7 @@ type LoadedSessionResult = {
 
 export function useSceneSessions() {
   const apiClient = useApiClient();
-  const [activeScene, setActiveScene] = useState<Scene>("patient");
+  const [activeScene, setActiveScene] = useState<Scene>("doctor");
   const [bootstrapStatus, setBootstrapStatus] = useState<SceneBootstrapStatus>("loading");
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [patientState, setPatientState] = useState<SessionState>(() => createInitialSessionState());
