@@ -326,7 +326,29 @@ def _looks_like_non_gi_vague_symptom(text: str) -> bool:
 
 def _has_crc_assessment_anchor(text: str) -> bool:
     compact = _compact(text).lower()
-    markers = ("????", "???", "???", "??", "??", "??", "??", "?", "adenocarcinoma", "tnm", "??", "??", "??", "??", "??", "??", "??", "??", "mmr", "msi", "cea")
+    markers = (
+        "结直肠癌",
+        "直肠癌",
+        "结肠癌",
+        "病理",
+        "活检",
+        "腺癌",
+        "肿瘤",
+        "癌",
+        "adenocarcinoma",
+        "tnm",
+        "分期",
+        "治疗",
+        "方案",
+        "化疗",
+        "放疗",
+        "手术",
+        "靶向",
+        "免疫",
+        "mmr",
+        "msi",
+        "cea",
+    )
     return any(str(marker).lower() in compact for marker in markers) or bool(re.search(r"(?:c?t[0-4x]|c?n[0-3x]|c?m[01x])", compact))
 
 

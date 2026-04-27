@@ -380,7 +380,7 @@ def _log_review_shadow(label: str, shadow_payload: dict[str, Any]) -> None:
 def node_llm_judge(model, streaming: bool = False, show_thinking: bool = True):
     prompt = ChatPromptTemplate.from_messages([
         ("system", LLM_JUDGE_SYSTEM_PROMPT),
-        ("human", "ç¼æ’¹î†‘(JSON): {decision_json}\nå¯®æ› æ•¤éï¿ ç™: {citation_report}\nå¯®æ› æ•¤é‰ãƒ¦ç°®: {references}\néªžæƒ°î”‘éŽ¶ãƒ¥æ†¡: {subagent_reports}"),
+        ("human", "结论(JSON): {decision_json}\n引用校验: {citation_report}\n引用来源: {references}\n并行报告: {subagent_reports}"),
     ])
 
     def _run(state: CRCAgentState) -> Dict[str, Any]:

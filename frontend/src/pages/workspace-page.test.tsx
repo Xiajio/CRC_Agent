@@ -1266,7 +1266,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     renderWorkspaceWithSceneSessions(apiClient);
 
     await waitFor(() =>
-      expect(screen.getByText("患者名称：王小明")).toBeInTheDocument(),
+      expect(screen.getByText("患者姓名：王小明")).toBeInTheDocument(),
     );
     expect(screen.getByText("患者编号：P-2001")).toBeInTheDocument();
     expect(screen.getByText("如需修改，请在医生端数据库中处理")).toBeInTheDocument();

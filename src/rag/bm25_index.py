@@ -1,21 +1,21 @@
 ﻿"""
-BM25 鍏抽敭璇嶇储寮曟ā鍧?
+BM25 keyword index module.
 
-杞婚噺绾х殑 BM25 鍏抽敭璇嶆绱㈠疄鐜帮紝鐢ㄤ簬娣峰悎妫€绱腑鐨勫叧閿瘝鍖归厤閮ㄥ垎銆?
+Lightweight BM25 keyword retrieval for the keyword-matching part of hybrid search.
 
-鐗规€?
-1. 鍩轰簬 rank_bm25 瀹炵幇锛屾棤闇€澶栭儴鏈嶅姟
-2. 鏀寔涓嫳鏂囧垎璇嶏紙jieba 绮剧‘妯″紡锛?
-3. 鏀寔澧為噺鏇存柊鍜屾寔涔呭寲
-4. 涓?Chroma 鍚戦噺搴撳崗鍚屽伐浣?
-5. 澧炲己鐨勬寔涔呭寲锛氱増鏈鏌ャ€佸帇缂┿€佸畬鏁存€ф牎楠?
+Features:
+1. Based on rank_bm25, no external service required.
+2. Supports Chinese and English tokenization with jieba precise mode.
+3. Supports incremental updates and persistence.
+4. Works alongside the Chroma vector store.
+5. Adds persistence checks for version, compression, and data integrity.
 
-鎸佷箙鍖栫瓥鐣?
-- 浣跨敤 pickle + gzip 鍘嬬缉瀛樺偍
-- 鍖呭惈鐗堟湰鍙峰拰鏍￠獙鍜?
-- 鏀寔鑷姩鎭㈠鍜岄噸寤?
+Persistence strategy:
+- 使用 pickle + gzip 压缩存储
+- Stores version and checksum metadata.
+- Supports automatic recovery and rebuild.
 
-鍚庣画鍙墿灞曞埌 ElasticSearch 浠ユ敮鎸佹洿澶ц妯℃暟鎹€?
+Can later be extended to Elasticsearch for larger datasets.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-# 绱㈠紩鐗堟湰鍙凤紙淇敼绱㈠紩缁撴瀯鏃堕渶瑕侀€掑锛?
+# Index version. Increment when index structure changes.
 INDEX_VERSION = "1.1.0"
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -41,7 +41,7 @@ def _resolve_index_path(index_path: str) -> Path:
     candidate = Path(index_path).expanduser()
     if candidate.is_absolute():
         return candidate
-    return PROJECT_ROOT / candidate
+# BM25 dependency
 
 # BM25 渚濊禆
 try:
@@ -51,10 +51,10 @@ except ImportError:
     HAS_BM25 = False
     print("[BM25] Warning: rank_bm25 not installed. Install with: pip install rank-bm25")
 
-# 涓枃鍒嗚瘝渚濊禆
+# Chinese tokenizer dependency
 try:
     import jieba
-    # 璁剧疆 jieba 涓洪潤榛樻ā寮?
+    # Keep jieba quiet by default.
     jieba.setLogLevel(jieba.logging.INFO)
     HAS_JIEBA = True
 except ImportError:
@@ -70,19 +70,19 @@ class IndexMetadata:
     updated_at: float
     document_count: int
     total_tokens: int
-    checksum: str  # 鏁版嵁瀹屾暣鎬ф牎楠?
+    checksum: str  # Data integrity checksum
 
 
 class BM25Index:
     """
-    BM25 鍏抽敭璇嶇储寮?
+    BM25 keyword index.
     
-    鐢ㄤ簬娣峰悎妫€绱腑鐨勫叧閿瘝鍖归厤閮ㄥ垎锛屼笌鍚戦噺妫€绱簰琛ャ€?
+    Used as the keyword-matching half of hybrid retrieval with vector search.
     
-    鎸佷箙鍖栧寮?
-    - 浣跨敤 gzip 鍘嬬缉锛屽噺灏戠鐩樺崰鐢?
-    - 鐗堟湰妫€鏌ワ紝绱㈠紩缁撴瀯鍙樻洿鏃惰嚜鍔ㄩ噸寤?
-    - 瀹屾暣鎬ф牎楠岋紝闃叉鏁版嵁鎹熷潖
+    Persistence enhancements:
+    - Uses gzip compression to reduce disk usage.
+    - Checks the version and rebuilds when the index format changes.
+    - Validates data integrity to prevent corrupted indexes.
     """
     
     # Medical terms for jieba tokenization
@@ -105,60 +105,60 @@ class BM25Index:
         self,
         index_path: str = "bm25_index",
         tokenizer: str = "auto",  # auto, jieba, simple
-        use_compression: bool = True,  # 鏄惁浣跨敤鍘嬬缉
+        use_compression: bool = True,  # Whether to use gzip compression
     ):
         """
-        鍒濆鍖?BM25 绱㈠紩
+        Initialize the BM25 index.
         
         Args:
-            index_path: 绱㈠紩瀛樺偍璺緞
-            tokenizer: 鍒嗚瘝鍣ㄧ被鍨?(auto/jieba/simple)
-            use_compression: 鏄惁浣跨敤 gzip 鍘嬬缉瀛樺偍
+            index_path: Index storage path
+            tokenizer: Tokenizer type (auto/jieba/simple)
+            use_compression: Whether to store index data with gzip compression
         """
         self.index_path = _resolve_index_path(index_path)
         self.tokenizer_type = tokenizer
         self.use_compression = use_compression
         
-        # 绱㈠紩鏁版嵁
-        self.documents: List[Dict[str, Any]] = []  # 鍘熷鏂囨。
-        self.corpus: List[List[str]] = []  # 鍒嗚瘝鍚庣殑璇枡
+        # Index data
+        self.documents: List[Dict[str, Any]] = []  # Original documents
+        self.corpus: List[List[str]] = []  # Tokenized corpus
         self.bm25: Optional[BM25Okapi] = None
         self.metadata: Optional[IndexMetadata] = None
         
-        # 鍒涘缓瀛樺偍鐩綍
+        # Create storage directory
         self.index_path.mkdir(parents=True, exist_ok=True)
         
-        # 娣诲姞鍖荤枟璇嶆眹鍒?jieba 璇嶅吀
+        # Add medical vocabulary to jieba dictionary
         if HAS_JIEBA:
             for term in self.MEDICAL_TERMS:
                 jieba.add_word(term)
         
-        # 鍔犺浇宸叉湁绱㈠紩
+        # 加载已有索引
         self._load_index()
         
         print(f"[BM25Index] Initialized with {len(self.documents)} docs")
     
     def _tokenize(self, text: str) -> List[str]:
         """
-        鍒嗚瘝
+        Tokenize text.
         
         Args:
             text: 杈撳叆鏂囨湰
             
         Returns:
-            鍒嗚瘝缁撴灉鍒楄〃
+            Tokenized result list
         """
         if not text:
             return []
         
-        # 棰勫鐞嗭細杞皬鍐欙紝绉婚櫎鐗规畩瀛楃
+        # Preprocess: lowercase and remove special characters
         text = text.lower()
         
         if self.tokenizer_type == "jieba" or (self.tokenizer_type == "auto" and HAS_JIEBA):
-            # 浣跨敤 jieba 鍒嗚瘝锛堜腑鏂囦紭鍖栵級
+            # Use jieba tokenization for Chinese text.
             tokens = list(jieba.cut(text))
         else:
-            # 绠€鍗曞垎璇嶏細绌烘牸 + 闈炲瓧姣嶆暟瀛楀瓧绗﹀垎鍓?
+            # Simple tokenization: whitespace plus non-alphanumeric separators.
             tokens = re.findall(r'[\u4e00-\u9fff]+|[a-zA-Z0-9]+', text)
         
         # Filter out stop words and very short tokens
@@ -177,12 +177,12 @@ class BM25Index:
         id_field: str = "id",
     ) -> None:
         """
-        娣诲姞鏂囨。鍒扮储寮?
+        Add documents to the index.
         
         Args:
-            documents: 鏂囨。鍒楄〃锛屾瘡涓枃妗ｆ槸涓€涓瓧鍏?
-            text_field: 鏂囨湰鍐呭瀛楁鍚?
-            id_field: 鏂囨。ID瀛楁鍚?
+            documents: List of documents; each document is a dict.
+            text_field: Field name containing document text.
+            id_field: Field name containing document ID.
         """
         if not HAS_BM25:
             print("[BM25] rank_bm25 is unavailable; skipping index build")
@@ -199,17 +199,17 @@ class BM25Index:
                 new_docs.append(doc)
                 new_corpus.append(tokens)
         
-        # 杩藉姞鍒扮幇鏈夋暟鎹?
+        # Append to existing data.
         self.documents.extend(new_docs)
         self.corpus.extend(new_corpus)
         
-        # 閲嶅缓 BM25 绱㈠紩
+        # 重建 BM25 索引
         if self.corpus:
             self.bm25 = BM25Okapi(self.corpus)
         
         print(f"[BM25] Added {len(new_docs)} docs; total={len(self.documents)}")
         
-        # 淇濆瓨绱㈠紩
+        # Save index.
         self._save_index()
     
     def search(
@@ -219,28 +219,28 @@ class BM25Index:
         score_threshold: float = 0.0,
     ) -> List[Tuple[Dict[str, Any], float]]:
         """
-        鎼滅储鏂囨。
+        Search documents.
         
         Args:
-            query: 鏌ヨ鏂囨湰
-            k: 杩斿洖缁撴灉鏁伴噺
-            score_threshold: 鏈€浣庡垎鏁伴槇鍊?
+            query: Query text
+            k: 返回结果数量
+            score_threshold: Minimum score threshold
             
         Returns:
-            [(鏂囨。, 鍒嗘暟)] 鍒楄〃锛屾寜鍒嗘暟闄嶅簭
+            [(文档, 分数)] 列表，按分数降序
         """
         if not HAS_BM25 or self.bm25 is None:
             return []
         
-        # 鍒嗚瘝
+        # Tokenize query.
         query_tokens = self._tokenize(query)
         if not query_tokens:
             return []
         
-        # 璁＄畻 BM25 鍒嗘暟
+        # 计算 BM25 分数
         scores = self.bm25.get_scores(query_tokens)
         
-        # 鑾峰彇 top-k 缁撴灉
+        # 获取 top-k 结果
         scored_docs = [(self.documents[i], scores[i]) for i in range(len(scores))]
         scored_docs = [(doc, score) for doc, score in scored_docs if score > score_threshold]
         scored_docs.sort(key=lambda x: x[1], reverse=True)
@@ -254,27 +254,27 @@ class BM25Index:
         id_field: str = "id",
     ) -> List[Tuple[str, float]]:
         """
-        鎼滅储骞惰繑鍥炴枃妗D鍜屽垎鏁?
+        Search and return document IDs and scores.
         
         Args:
-            query: 鏌ヨ鏂囨湰
-            k: 杩斿洖缁撴灉鏁伴噺
-            id_field: ID瀛楁鍚?
+            query: Query text
+            k: 返回结果数量
+            id_field: ID field name
             
         Returns:
-            [(鏂囨。ID, 鍒嗘暟)] 鍒楄〃
+            [(文档ID, 分数)] 列表
         """
         results = self.search(query, k)
         return [(doc.get(id_field, str(i)), score) for i, (doc, score) in enumerate(results)]
     
     def clear(self) -> None:
-        """娓呯┖绱㈠紩"""
+        """清空索引"""
         self.documents = []
         self.corpus = []
         self.bm25 = None
         self.metadata = None
         
-        # 鍒犻櫎鎵€鏈夋寔涔呭寲鏂囦欢
+        # Delete all persisted files.
         for suffix in [".pkl", ".pkl.gz", ".meta.json"]:
             index_file = self.index_path / f"bm25_data{suffix}"
             if index_file.exists():
@@ -284,23 +284,23 @@ class BM25Index:
     
     def _compute_checksum(self) -> str:
         """Compute a lightweight checksum."""
-        # 浣跨敤鏂囨。鏁伴噺鍜岃鏂欓暱搴﹁绠楃畝鍗曟牎楠屽拰
+        # Use document count and corpus length as a lightweight checksum.
         content = f"{len(self.documents)}:{sum(len(c) for c in self.corpus)}"
         return hashlib.md5(content.encode()).hexdigest()[:16]
     
     def _save_index(self) -> None:
         """
-        淇濆瓨绱㈠紩鍒扮鐩橈紙澧炲己鐗堬級
+        Save index to disk with metadata and atomic writes.
         
-        鐗规€?
-        - 鍙€?gzip 鍘嬬缉
-        - 淇濆瓨鍏冩暟鎹紙鐗堟湰銆佹椂闂淬€佹牎楠屽拰锛?
-        - 鍘熷瓙鍐欏叆锛堝厛鍐欎复鏃舵枃浠跺啀閲嶅懡鍚嶏級
+        Features:
+        - Optional gzip compression
+        - Stores version, timestamp, and checksum metadata
+        - 原子写入（先写临时文件再重命名）
         """
         try:
             now = time.time()
             
-            # 鏋勫缓鍏冩暟鎹?
+            # Build metadata.
             self.metadata = IndexMetadata(
                 version=INDEX_VERSION,
                 created_at=self.metadata.created_at if self.metadata else now,
@@ -310,7 +310,7 @@ class BM25Index:
                 checksum=self._compute_checksum(),
             )
             
-            # 鍑嗗鏁版嵁
+            # Prepare data.
             data = {
                 "documents": self.documents,
                 "corpus": self.corpus,
@@ -324,7 +324,7 @@ class BM25Index:
                 }
             }
             
-            # 閫夋嫨鏂囦欢鍚?
+            # Select target file name.
             if self.use_compression:
                 index_file = self.index_path / "bm25_data.pkl.gz"
                 temp_file = self.index_path / "bm25_data.pkl.gz.tmp"
@@ -332,7 +332,7 @@ class BM25Index:
                 index_file = self.index_path / "bm25_data.pkl"
                 temp_file = self.index_path / "bm25_data.pkl.tmp"
             
-            # 鍘熷瓙鍐欏叆锛氬厛鍐欎复鏃舵枃浠?
+            # Atomic write: write temp file first.
             if self.use_compression:
                 with gzip.open(temp_file, "wb", compresslevel=6) as f:
                     pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -340,10 +340,10 @@ class BM25Index:
                 with open(temp_file, "wb") as f:
                     pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
             
-            # 閲嶅懡鍚嶄负姝ｅ紡鏂囦欢
+            # Rename temp file into place.
             temp_file.replace(index_file)
             
-            # 鍚屾椂淇濆瓨鍙鐨勫厓鏁版嵁 JSON
+            # Also save readable metadata JSON.
             meta_file = self.index_path / "bm25_data.meta.json"
             with open(meta_file, "w", encoding="utf-8") as f:
                 json.dump(data["metadata"], f, indent=2, ensure_ascii=False)
@@ -358,17 +358,17 @@ class BM25Index:
     
     def _load_index(self) -> None:
         """
-        浠庣鐩樺姞杞界储寮曪紙澧炲己鐗堬級
+        Load index from disk with validation.
         
-        鐗规€?
-        - 鐗堟湰妫€鏌ワ紝涓嶅吋瀹瑰垯璺宠繃
-        - 瀹屾暣鎬ф牎楠?
-        - 鏀寔鍘嬬缉鍜岄潪鍘嬬缉鏍煎紡
-        - 鍔犺浇澶辫触鏃舵竻绌虹储寮曪紙绛夊緟閲嶅缓锛?
+        Features:
+        - Checks version and skips incompatible indexes.
+        - Validates data integrity.
+        - Supports compressed and uncompressed formats.
+        - Clears the index on load failure so it can be rebuilt.
         """
         loaded = False
         
-        # 浼樺厛鍔犺浇鍘嬬缉鏍煎紡
+        # Prefer compressed format.
         for compressed in [True, False]:
             if compressed:
                 index_file = self.index_path / "bm25_data.pkl.gz"
@@ -379,7 +379,7 @@ class BM25Index:
                 continue
             
             try:
-                # 璇诲彇鏁版嵁
+                # 读取数据
                 if compressed:
                     with gzip.open(index_file, "rb") as f:
                         data = pickle.load(f)
@@ -387,7 +387,7 @@ class BM25Index:
                     with open(index_file, "rb") as f:
                         data = pickle.load(f)
                 
-                # 妫€鏌ョ増鏈?
+                # Check version.
                 meta = data.get("metadata", {})
                 saved_version = meta.get("version", "0.0.0")
                 
@@ -395,11 +395,11 @@ class BM25Index:
                     print(f"[BM25] Index version mismatch (saved={saved_version}, current={INDEX_VERSION}); rebuilding")
                     continue
                 
-                # 鍔犺浇鏁版嵁
+                # 加载数据
                 self.documents = data.get("documents", [])
                 self.corpus = data.get("corpus", [])
                 
-                # 鏍￠獙瀹屾暣鎬?
+                # Validate integrity.
                 saved_checksum = meta.get("checksum", "")
                 current_checksum = self._compute_checksum()
                 
@@ -409,11 +409,11 @@ class BM25Index:
                     self.corpus = []
                     continue
                 
-                # 閲嶅缓 BM25 瀵硅薄
+                # Rebuild BM25 object.
                 if self.corpus and HAS_BM25:
                     self.bm25 = BM25Okapi(self.corpus)
                 
-                # 鎭㈠鍏冩暟鎹?
+                # Restore metadata.
                 self.metadata = IndexMetadata(
                     version=saved_version,
                     created_at=meta.get("created_at", 0),
@@ -437,12 +437,12 @@ class BM25Index:
     
     def rebuild(self) -> None:
         """
-        寮哄埗閲嶅缓绱㈠紩
+        强制重建索引
         
-        鍦ㄤ互涓嬫儏鍐典笅璋冪敤锛?
-        - 鍒嗚瘝鍣ㄥ彉鏇?
-        - 绱㈠紩鎹熷潖
-        - 闇€瑕侀噸鏂拌绠?BM25 鍙傛暟
+        Use when:
+        - Tokenizer changes
+        - 索引损坏
+        - BM25 parameters need recalculation
         """
         if not self.corpus:
             print("[BM25] No corpus available to rebuild")
@@ -450,7 +450,7 @@ class BM25Index:
         
         print(f"[BM25] Rebuilding index from {len(self.documents)} docs...")
         
-        # 閲嶆柊鍒嗚瘝锛堜娇鐢ㄥ綋鍓嶅垎璇嶅櫒锛?
+        # Retokenize with the current tokenizer.
         new_corpus = []
         for doc in self.documents:
             text = doc.get("content", "")
@@ -459,20 +459,20 @@ class BM25Index:
         
         self.corpus = new_corpus
         
-        # 閲嶅缓 BM25
+        # Rebuild BM25.
         if HAS_BM25 and self.corpus:
             self.bm25 = BM25Okapi(self.corpus)
         
-        # 淇濆瓨
+        # Save.
         self._save_index()
         print("[BM25] Index rebuild complete")
     
     def export_to_jsonl(self, output_path: str) -> None:
         """
-        瀵煎嚭绱㈠紩涓?JSONL 鏍煎紡锛堢敤浜庤縼绉诲埌 Elasticsearch锛?
+        Export index as JSONL for Elasticsearch migration.
         
         Args:
-            output_path: 杈撳嚭鏂囦欢璺緞
+            output_path: Output file path
         """
         with open(output_path, "w", encoding="utf-8") as f:
             for doc in self.documents:
@@ -480,7 +480,7 @@ class BM25Index:
         print(f"[BM25] Exported {len(self.documents)} docs to {output_path}")
     
     def get_stats(self) -> Dict[str, Any]:
-        """鑾峰彇绱㈠紩缁熻淇℃伅"""
+        """Get index statistics."""
         if not self.corpus:
             return {"document_count": 0, "avg_doc_length": 0}
         
@@ -497,17 +497,17 @@ class BM25Index:
 
 class HybridScorer:
     """
-    娣峰悎璇勫垎鍣?
+    Hybrid scorer.
     
-    缁撳悎鍚戦噺妫€绱㈠垎鏁板拰 BM25 鍒嗘暟杩涜娣峰悎鎺掑簭銆?
+    Combines vector-search scores and BM25 scores for hybrid ranking.
     """
     
     def __init__(self, alpha: float = 0.7):
         """
-        鍒濆鍖栨贩鍚堣瘎鍒嗗櫒
+        Initialize hybrid scorer.
         
         Args:
-            alpha: 鍚戦噺妫€绱㈡潈閲?(0-1)锛屽墿浣欎负 BM25 鏉冮噸
+            alpha: Vector-search weight (0-1); remaining weight goes to BM25.
         """
         self.alpha = alpha
     
@@ -518,29 +518,29 @@ class HybridScorer:
         normalize: bool = True,
     ) -> List[Tuple[str, float]]:
         """
-        鍚堝苟鍚戦噺妫€绱㈠拰 BM25 鐨勫垎鏁?
+        Combine vector-search and BM25 scores.
         
         Args:
-            vector_results: 鍚戦噺妫€绱㈢粨鏋?[(doc_id, score)]
-            bm25_results: BM25 妫€绱㈢粨鏋?[(doc_id, score)]
-            normalize: 鏄惁褰掍竴鍖栧垎鏁?
+            vector_results: Vector-search results [(doc_id, score)]
+            bm25_results: BM25 search results [(doc_id, score)]
+            normalize: Whether to normalize scores.
             
         Returns:
-            鍚堝苟鍚庣殑缁撴灉 [(doc_id, combined_score)]锛屾寜鍒嗘暟闄嶅簭
+            合并后的结果 [(doc_id, combined_score)]，按分数降序
         """
-        # 褰掍竴鍖栧垎鏁?
+        # Normalize scores.
         if normalize:
             vector_results = self._normalize_scores(vector_results)
             bm25_results = self._normalize_scores(bm25_results)
         
-        # 杞崲涓哄瓧鍏?
+        # Convert to dictionaries.
         vector_scores = {doc_id: score for doc_id, score in vector_results}
         bm25_scores = {doc_id: score for doc_id, score in bm25_results}
         
-        # 鍚堝苟鎵€鏈夋枃妗D
+        # Merge all document IDs.
         all_doc_ids = set(vector_scores.keys()) | set(bm25_scores.keys())
         
-        # 璁＄畻娣峰悎鍒嗘暟
+        # 计算混合分数
         combined = []
         for doc_id in all_doc_ids:
             v_score = vector_scores.get(doc_id, 0.0)
@@ -548,13 +548,13 @@ class HybridScorer:
             combined_score = self.alpha * v_score + (1 - self.alpha) * b_score
             combined.append((doc_id, combined_score))
         
-        # 鎸夊垎鏁伴檷搴忔帓鍒?
+        # Sort by score descending.
         combined.sort(key=lambda x: x[1], reverse=True)
         
         return combined
     
     def _normalize_scores(self, results: List[Tuple[str, float]]) -> List[Tuple[str, float]]:
-        """褰掍竴鍖栧垎鏁板埌 0-1 鑼冨洿"""
+        """归一化分数到 0-1 范围"""
         if not results:
             return []
         
@@ -575,9 +575,9 @@ class HybridScorer:
 
 def create_bm25_index(index_path: str = None) -> BM25Index:
     """
-    鍒涘缓 BM25 绱㈠紩瀹炰緥
+    创建 BM25 索引实例
     
-    浼樺厛浠庨厤缃枃浠跺姞杞藉弬鏁?
+    Prefer loading settings from configuration.
     """
     try:
         from ..config import load_settings

@@ -96,28 +96,28 @@ def get_patient_case_info(patient_id: int) -> Dict[str, Any]:
 @tool
 def upsert_patient_info(json_data: str) -> Dict[str, Any]:
     """
-    ???????????????????????????????????????????????????lassification.xlsx??????????
+    将患者结构化信息写入 classification.xlsx。
     """
     excel_path = str(CLASSIFICATION_FILE)
     try:
         data = json.loads(json_data)
     except Exception as e:
-        return {"error": f"JSON????: {str(e)}"}
+        return {"error": f"JSON 解析失败: {str(e)}"}
 
     if not isinstance(data, dict):
         return {"error": "JSON payload must be an object"}
 
     try:
         upsert_case_record(excel_path, data)
-        return {"status": "success", "message": f"???????? {excel_path}"}
+        return {"status": "success", "message": f"已同步到 {excel_path}"}
     except PermissionError:
         backup_path = f"backup_{excel_path}"
         upsert_case_record(backup_path, data)
-        return {"status": "success", "message": f"?? Excel ??????????? {backup_path}"}
+        return {"status": "success", "message": f"Excel 被占用，已写入备份文件 {backup_path}"}
     except ValueError as exc:
-        return {"error": f"????????: {exc}"}
+        return {"error": f"数据校验失败: {exc}"}
     except Exception as exc:
-        return {"error": f"?? Excel ??: {exc}"}
+        return {"error": f"写入 Excel 失败: {exc}"}
 
 @tool
 def get_patient_imaging(patient_id: str) -> Dict[str, Any]:

@@ -122,10 +122,13 @@ describe("DoctorSceneShell", () => {
     renderDoctorSceneShell();
 
     const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
+    expect(navButtons.map((navButton) => navButton.textContent)).toEqual(["会诊", "患者数据库"]);
     expect(navButtons).toHaveLength(2);
     for (const navButton of navButtons) {
       expect(navButton).not.toBeDisabled();
     }
+    expect(screen.queryByRole("button", { name: "多模态" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "报表" })).not.toBeInTheDocument();
   });
 
   it("renders the clinical assistant dashboard chrome for consultation mode", () => {

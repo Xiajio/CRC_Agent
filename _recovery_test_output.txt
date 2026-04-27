@@ -1,0 +1,69 @@
+L  44 OLD: # [鏂板] 骞惰瀛愭櫤鑳戒綋鑺傜偣
+      NEW: # [新�?] 并�?子智能体节点
+
+L  46 OLD: # [鏂板] 寮曞叆褰卞儚鍖荤敓鏅鸿兘浣撹妭鐐?
+      NEW: # [新�?] 引入影像医生智能体节�?
+
+L  49 OLD: # [鏂板] 寮曞叆缃戠粶鎼滅储鍜屽伐鍏锋墽琛岃妭鐐?
+      NEW: # [新�?] 引入网络搜索和工具执行节�?
+
+L  57 OLD: # [浼樺寲] 寮曞叆鍏ㄥ眬 Retriever 棰勭儹
+      NEW: # [优化] 引入全局 Retriever 预热
+
+L  64 OLD: # === 1. 瀹氫箟鑺傜偣鍚嶇О甯搁噺 (Type Safety) ===
+      NEW: # === 1. 定义节点名称常量 (Type Safety) ===
+
+L  68 OLD:     PLANNER = "planner"  # [鏂板] 瑙勫垝鑺傜偣
+      NEW:     PLANNER = "planner"  # [新�?] 规划节点
+
+L  70 OLD:     CASE_DATABASE = "case_database"  # 鏂板锛氱梾渚嬫暟鎹簱鏌ヨ
+      NEW:     CASE_DATABASE = "case_database"  # 新�?：病例数�?��查�?
+
+L  71 OLD:     RAD_AGENT = "rad_agent"  # [鏂板] 褰卞儚鍖荤敓鏅鸿兘浣?
+      NEW:     RAD_AGENT = "rad_agent"  # [新�?] 影像医生智能�?
+
+L  72 OLD:     PATH_AGENT = "path_agent"  # [鏂板] 鐥呯悊鍖荤敓鏅鸿兘浣?
+      NEW:     PATH_AGENT = "path_agent"  # [新�?] 病理医生智能�?
+
+L  73 OLD:     WEB_SEARCH = "web_search"  # [鏂板] 缃戠粶鎼滅储鏅鸿兘浣?
+      NEW:     WEB_SEARCH = "web_search"  # [新�?] 网络搜索智能�?
+
+L  74 OLD:     TOOL_EXECUTOR = "tool_executor"  # [鏂板] 閫氱敤宸ュ叿鎵ц鍣?
+      NEW:     TOOL_EXECUTOR = "tool_executor"  # [新�?] 通用工具执�?�?
+
+L  75 OLD:     PARALLEL_SUBAGENTS = "parallel_subagents"  # [鏂板] 骞惰瀛愭櫤鑳戒綋
+      NEW:     PARALLEL_SUBAGENTS = "parallel_subagents"  # [新�?] 并�?子智能体
+
+L  85 OLD:     MEMORY = "memory_manager"  # [鏂板] 鍐呭瓨绠＄悊鑺傜偣 (GC & Summary)
+      NEW:     MEMORY = "memory_manager"  # [新�?] 内存管理节点 (GC & Summary)
+
+L  86 OLD:     CHAT_MAIN = "chat_main"  # [鏂板] 鑱婂ぉ涓昏妭鐐?
+      NEW:     CHAT_MAIN = "chat_main"  # [新�?] 聊天主节�?
+
+L 148 OLD:     # [淇 v2] 鎰忓浘鐔旀柇鏈哄埗锛堟渶楂樹紭鍏堢骇锛?
+      NEW:     # [�?? v2] 意图熔断机制（最高优先级�?
+
+L 158 OLD:         # 娌℃湁璁″垝锛岀洿鎺ョ粨鏉?
+      NEW:         # 没有计划，直接结�?
+
+L 164 OLD:     # === 1. 妫€鏌ュけ璐ユ楠?===
+      NEW:     # === 1. �?查失败�?�?===
+
+L 167 OLD:         # 澶辫触闇€瑕佸洖鍒?Planner 杩涜鑷垜绾犻敊
+      NEW:         # 失败�?要回�?Planner 进�?�?��纠错
+
+L 183 OLD:     # === 1.5 妫€鏌ュ苟琛屼换鍔＄粍 ===
+      NEW:     # === 1.5 �?查并行任务组 ===
+
+L 189 OLD:     # === 2. 妫€鏌ュ緟鎵ц姝ラ - 鐩存帴璺敱锛堢粫杩?Planner锛?==
+      NEW:     # === 2. �?查待执�?步�? - 直接�?��（绕�?Planner�?==
+
+L 210 OLD:         elif any(kw in tool_type for kw in ["imaging", "褰卞儚", "tumor", "鑲跨槫", "ct", "mri"]):
+      NEW:         elif any(kw in tool_type for kw in ["imaging", "影像", "tumor", "肿瘤", "ct", "mri"]):
+
+L 215 OLD:             # [淇 v2] 鍙岄噸淇濋櫓锛氬彧鏈夐潪闂茶亰鎰忓浘鎵嶅幓 assessment
+      NEW:             # [�?? v2] 双重保险：只有非闲聊意图才去 assessment
+
+L 222 OLD:             # 鍏滃簳锛氶粯璁ゅ幓 knowledge 鑺傜偣
+      NEW:             # 兜底：默认去 knowledge 节点
+
