@@ -696,6 +696,23 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(screen.getByRole("button", { name: "重置当前场景" })).toBeInTheDocument();
   });
 
+  it("keeps patient workspace shell copy in UTF-8 Chinese", () => {
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    const navigation = screen.getByRole("navigation", { name: "患者工作台" });
+    const navButtons = within(navigation).getAllByRole("button");
+
+    expect(screen.getByText("临床助手")).toBeInTheDocument();
+    expect(navButtons.map((navButton) => navButton.textContent)).toEqual(["资料填写", "上传"]);
+    expect(screen.queryByRole("button", { name: "症状" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "照护计划" })).not.toBeInTheDocument();
+    expect(screen.getByText("安全会话")).toBeInTheDocument();
+    expect(lastPatientBackgroundProps).toMatchObject({
+      title: "患者背景信息",
+      emptyMessage: "当前暂无患者背景信息",
+    });
+  });
+
   it("omits placeholder-only patient top nav items in production", () => {
     renderWorkspaceWithSceneSessions(buildApiClientStub());
 
@@ -753,6 +770,65 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(profileTab).toHaveAttribute("aria-current", "page");
     expect(screen.getByTestId("patient-identity-panel")).toBeInTheDocument();
     expect(screen.getByTestId("patient-background-panel")).toBeInTheDocument();
+  });
+
+  it("keeps upload progress and success status copy in UTF-8 Chinese", async () => {
+    let finishUpload!: (value: {
+      asset_id: string;
+      filename: string;
+      content_type: string;
+      size: number;
+      sha256: string;
+      reused: boolean;
+      derived: { record_id: number };
+    }) => void;
+    const uploadFile = vi.fn(() =>
+      new Promise<{
+        asset_id: string;
+        filename: string;
+        content_type: string;
+        size: number;
+        sha256: string;
+        reused: boolean;
+        derived: { record_id: number };
+      }>((resolve) => {
+        finishUpload = resolve;
+      }),
+    );
+    const getSession = vi.fn(async () =>
+      makeSessionResponse({
+        session_id: "patient-session",
+        snapshot: {
+          uploaded_assets: {
+            "1": {
+              filename: "report.pdf",
+              derived: { record_id: 1 },
+            },
+          },
+        },
+      }),
+    );
+    const apiClient = buildApiClientStub({ uploadFile, getSession });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /^trigger upload$/i }));
+
+    await waitFor(() => expect(lastUploadsPanelProps?.statusMessage).toBe("正在上传 report.pdf..."));
+
+    await act(async () => {
+      finishUpload({
+        asset_id: "1",
+        filename: "report.pdf",
+        content_type: "application/pdf",
+        size: 7,
+        sha256: "sha",
+        reused: false,
+        derived: { record_id: 1 },
+      });
+    });
+
+    await waitFor(() => expect(lastUploadsPanelProps?.statusMessage).toBe("已上传 report.pdf"));
   });
 
   it("uses inline cards from doctor messages as visible doctor cards", async () => {
@@ -1266,7 +1342,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     renderWorkspaceWithSceneSessions(apiClient);
 
     await waitFor(() =>
-      expect(screen.getByText("患者姓名：王小明")).toBeInTheDocument(),
+      expect(screen.getByText("患者名称：王小明")).toBeInTheDocument(),
     );
     expect(screen.getByText("患者编号：P-2001")).toBeInTheDocument();
     expect(screen.getByText("如需修改，请在医生端数据库中处理")).toBeInTheDocument();

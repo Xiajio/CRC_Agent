@@ -49,4 +49,14 @@ describe("clinical card view model adapter", () => {
 
     expect(viewModels.map((vm) => vm.tone)).toEqual(["blue", "green", "red"]);
   });
+
+  it("keeps report-class card titles in UTF-8 Chinese", () => {
+    const viewModels = toClinicalCardViewModels({
+      pathology_card: {} as JsonObject,
+      pathology_slide_card: {} as JsonObject,
+      radiomics_report_card: {} as JsonObject,
+    });
+
+    expect(viewModels.map((vm) => vm.title)).toEqual(["病理报告", "病理切片", "影像组学报告"]);
+  });
 });

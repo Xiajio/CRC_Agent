@@ -134,7 +134,7 @@ def _instrument_node(node_name: NodeName, node_fn: Callable[..., Any]) -> Callab
     return _sync_wrapped
 
 
-# === 2. 璺敱閫昏緫 (Routing Logic) ===
+# === 2. 路由逻辑 (Routing Logic) ===
 
 def _plan_driven_router(state: CRCAgentState) -> str:
     """Route planner-driven tasks after intent classification."""

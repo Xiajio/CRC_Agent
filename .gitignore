@@ -30,6 +30,10 @@ tmp/
 /tmp*
 /pytest-cache-files*
 *.log
+/_fix_*.txt
+/_ftfy_fixed.py
+/_garbled_analysis.txt
+/_recovery_test_output.txt
 
 # Local indexes and data kept out of version control
 chroma_db/

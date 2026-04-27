@@ -9,6 +9,7 @@ from typing import Iterable
 
 
 QUESTION_RUN = re.compile(r"\?{3,}")
+PRIVATE_USE_OR_REPLACEMENT = re.compile(r"[\uE000-\uF8FF\uFFFD]")
 COMMON_CHINESE_CODEPOINTS = {
     0x4E2D,
     0x4E34,
@@ -132,6 +133,8 @@ def _count_latin_mojibake(text: str) -> int:
 def _scan_text(path: Path, text: str, root: Path) -> Iterable[EncodingIssue]:
     relative = path.relative_to(root).as_posix()
     for line_number, line in enumerate(text.splitlines(), start=1):
+        if PRIVATE_USE_OR_REPLACEMENT.search(line):
+            yield EncodingIssue(relative, line_number, "private_use_or_replacement", line.strip()[:120])
         recovered = _recover_gbk_mojibake(line)
         if (
             recovered != line

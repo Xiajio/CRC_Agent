@@ -1,4 +1,4 @@
-﻿"""
+"""
 BM25 keyword index module.
 
 Lightweight BM25 keyword retrieval for the keyword-matching part of hybrid search.
