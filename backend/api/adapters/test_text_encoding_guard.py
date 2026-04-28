@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import sys
+import uuid
 from pathlib import Path
 
 
@@ -35,3 +37,35 @@ def test_detects_private_use_mojibake_fragments() -> None:
     issues = list(checker._scan_text(sample, f"# === 2. {mojibake_fragment} (Routing Logic) ===\n", sample_root))
 
     assert any(issue.kind == "private_use_or_replacement" for issue in issues)
+
+
+def test_detects_short_gbk_mojibake_ui_labels() -> None:
+    checker = _load_encoding_checker()
+    sample_root = Path("sample-root")
+    sample = sample_root / "uploads-panel.tsx"
+    mojibake_label = "\u8d44\u6599\u4e0a\u4f20".encode("utf-8").decode("gbk")
+
+    issues = list(checker._scan_text(sample, f"<h2>{mojibake_label}</h2>\n", sample_root))
+
+    assert any(issue.kind == "gbk_mojibake" for issue in issues)
+
+
+def test_scans_ignored_superpowers_specs(monkeypatch) -> None:
+    checker = _load_encoding_checker()
+    temp_root = ROOT / "_tmp" / f"text-encoding-guard-{uuid.uuid4().hex}"
+    try:
+        temp_root.mkdir(parents=True)
+        spec_path = temp_root / "docs" / "superpowers" / "specs" / "damaged-design.md"
+        spec_path.parent.mkdir(parents=True)
+        mojibake_title = "\u8d44\u6599\u4e0a\u4f20".encode("utf-8").decode("gbk")
+        spec_path.write_text(f"# {mojibake_title}\n", encoding="utf-8")
+        monkeypatch.setattr(checker, "_tracked_files", lambda root: [])
+
+        issues = checker.find_text_encoding_issues(temp_root)
+
+        assert any(
+            issue.path == "docs/superpowers/specs/damaged-design.md" and issue.kind == "gbk_mojibake"
+            for issue in issues
+        )
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)

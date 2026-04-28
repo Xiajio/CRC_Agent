@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+﻿import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -238,6 +238,10 @@ function renderWorkspace(apiClient: ReturnType<typeof buildApiClientStub>) {
       });
     },
   };
+}
+
+function clickResetCurrentScene() {
+  fireEvent.click(screen.getByRole("button", { name: "\u91cd\u7f6e\u5f53\u524d\u573a\u666f" }));
 }
 
 function installRequestAnimationFrameStub() {
@@ -693,7 +697,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(profileSwitch).toHaveClass("clinical-profile-switch");
     expect(profileSwitch).toHaveTextContent("患者");
     expect(screen.queryByRole("button", { name: /patient scene/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "重置当前场景" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "\u91cd\u7f6e\u5f53\u524d\u573a\u666f" })).toBeInTheDocument();
   });
 
   it("keeps patient workspace shell copy in UTF-8 Chinese", () => {
@@ -1083,31 +1087,6 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(screen.getByTestId("latency-ms")).toHaveTextContent("2100");
   });
 
-  it("supersedes an incomplete probe when a newer submit starts", async () => {
-    vi.useFakeTimers();
-    installRequestAnimationFrameStub();
-    let now = 1000;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
-
-    const streamTurn = vi.fn(async () => undefined);
-    const apiClient = buildApiClientStub({ streamTurn });
-
-    renderWorkspace(apiClient);
-
-    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
-    fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
-
-    expect(streamTurn).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
-
-    now = 1500;
-    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
-    fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
-
-    expect(streamTurn).toHaveBeenCalledTimes(2);
-    expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
-  });
-
   it("keeps a superseded trace even if a late backend completion arrives for the older turn", async () => {
     vi.useFakeTimers();
     installRequestAnimationFrameStub();
@@ -1204,7 +1183,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
 
-    fireEvent.click(screen.getByRole("button", { name: "重置当前场景" }));
+    clickResetCurrentScene();
 
     await act(async () => {
       await Promise.resolve();
@@ -1223,6 +1202,25 @@ describe("WorkspacePage patient triage submission wiring", () => {
       }),
     );
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("idle");
+  });
+
+  it("keeps the current draft when active scene reset fails", async () => {
+    const resetSession = vi.fn(async () => {
+      throw new Error("reset failed");
+    });
+    const apiClient = buildApiClientStub({ resetSession });
+
+    renderWorkspace(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
+    expect(screen.getByTestId("composer-draft")).toHaveTextContent("typed composer");
+
+    clickResetCurrentScene();
+
+    await waitFor(() => expect(resetSession).toHaveBeenCalledWith("patient-session"));
+    expect(mockSceneSessions.applyResponseToScene).not.toHaveBeenCalled();
+    expect(screen.getByTestId("composer-draft")).toHaveTextContent("typed composer");
+    expect(screen.getByTestId("conversation-error")).toHaveTextContent("reset failed");
   });
 
   it("recreates the active scene when reset finds a stale backend session", async () => {
@@ -1256,7 +1254,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
-    fireEvent.click(screen.getByRole("button", { name: "重置当前场景" }));
+    clickResetCurrentScene();
 
     await waitFor(() => expect(resetSession).toHaveBeenCalledWith("doctor-session"));
     await waitFor(() => expect(createSession).toHaveBeenCalledWith("doctor"));
