@@ -20,6 +20,8 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Base
 from langchain_core.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate
 
+from src.rag.evidence import evidence_to_references, extract_evidence_block
+
 
 # ==============================================================================
 # 1. 子智能体上下文（沙箱）
@@ -293,6 +295,11 @@ class SubAgentContext:
     
     def _extract_references(self, tool_result: str):
         """从工具结果中提取引用"""
+        evidence = extract_evidence_block(tool_result)
+        if evidence:
+            self._collected_references.extend(evidence_to_references(evidence))
+            return
+
         pattern = r"<retrieved_metadata>(.*?)</retrieved_metadata>"
         match = re.search(pattern, tool_result, re.DOTALL)
         if match:

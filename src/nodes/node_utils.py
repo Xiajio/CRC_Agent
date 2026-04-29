@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import math
@@ -13,6 +13,8 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langchain_core.prompts import BasePromptTemplate
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
+
+from src.rag.evidence import evidence_to_references, extract_evidence_block, strip_evidence_block
 
 
 _STREAM_CALLBACK: ContextVar[Callable[[dict[str, Any]], None] | None] = ContextVar(
@@ -51,6 +53,10 @@ _REASONING_PREFIXES = (
     "根据系统提示",
 )
 _POSTOP_MARKERS = ("术后", "post-op", "postop", "anastomosis", "stoma")
+_RETRIEVED_METADATA_PATTERN = re.compile(
+    r"<retrieved_metadata>(.*?)</retrieved_metadata>",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 class ThinkingColors:
@@ -383,6 +389,31 @@ def _extract_and_update_references(content: str) -> tuple[str, list[dict[str, An
         )
     cleaned = pattern.sub("", text).strip()
     return cleaned, references
+
+
+def _extract_structured_evidence(content: str) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    text = content or ""
+    evidence = extract_evidence_block(text)
+    cleaned = strip_evidence_block(text)
+
+    metadata_refs: list[dict[str, Any]] = []
+    metadata_match = _RETRIEVED_METADATA_PATTERN.search(cleaned)
+    if metadata_match:
+        try:
+            payload = json.loads(metadata_match.group(1))
+            if isinstance(payload, list):
+                metadata_refs = [item for item in payload if isinstance(item, dict)]
+        except json.JSONDecodeError:
+            metadata_refs = []
+        cleaned = _RETRIEVED_METADATA_PATTERN.sub("", cleaned).strip()
+
+    if evidence:
+        return cleaned, evidence_to_references(evidence), evidence
+    if metadata_refs:
+        return cleaned, metadata_refs, []
+
+    legacy_cleaned, legacy_refs = _extract_and_update_references(cleaned)
+    return legacy_cleaned, legacy_refs, []
 
 
 def _calculate_text_similarity(left: str, right: str) -> float:
@@ -825,6 +856,7 @@ __all__ = [
     "_clean_and_validate_json",
     "_unwrap_nested_json",
     "_extract_and_update_references",
+    "_extract_structured_evidence",
     "_calculate_text_similarity",
     "_parse_thinking_tags",
     "_split_inline_thinking",

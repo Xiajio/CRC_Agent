@@ -13,6 +13,7 @@ from langchain_core.runnables import Runnable, RunnableLambda
 from langchain_core.tools import BaseTool
 
 from ..state import CRCAgentState, PatientProfile
+from ..rag.evidence import make_rag_trace
 from ..prompts import (
     SEARCH_PLANNER_SYSTEM_PROMPT,
     SUFFICIENCY_EVALUATOR_SYSTEM_PROMPT,
@@ -27,7 +28,7 @@ from .node_utils import (
     _user_text,
     _invoke_with_streaming,
     _ensure_message,
-    _extract_and_update_references,
+    _extract_structured_evidence,
     _unwrap_nested_json,  # Important: Use the unwrapper!
     _create_rag_digest,
     _truncate_message_history,
@@ -398,7 +399,7 @@ def node_knowledge_retrieval(
                 print(f"  ✅ 步骤完成")
 
                 # 提取引用
-                final_content, refs = _extract_and_update_references(result_content)
+                final_content, refs, evidence = _extract_structured_evidence(result_content)
                 if not use_patient_context:
                     final_content = _filter_context_for_general_knowledge(user_query, final_content)
 
@@ -454,6 +455,20 @@ def node_knowledge_retrieval(
 
                 if refs:
                     updates["retrieved_references"] = refs
+                if evidence:
+                    updates["retrieved_evidence"] = evidence
+                    updates["rag_trace"] = [
+                        make_rag_trace(
+                            tool_name=str(current_step.tool_needed or "knowledge"),
+                            query=_extract_search_query(
+                                current_step.description,
+                                state,
+                                use_patient_context=use_patient_context,
+                            ),
+                            retrieval_profile="knowledge",
+                            evidence=evidence,
+                        )
+                    ]
 
                 return updates
                 
@@ -481,13 +496,25 @@ def node_knowledge_retrieval(
         local_context = ""
         retrieved_refs = []
         local_refs = []
+        retrieved_evidence = []
+        rag_trace = []
         if local_rag_tool and use_patient_context:
             try:
                 # Simple query for RAG
                 raw_res = local_rag_tool.invoke({"query": user_query, "top_k": 4})
-                local_context, refs = _extract_and_update_references(str(raw_res))
+                local_context, refs, evidence = _extract_structured_evidence(str(raw_res))
                 local_refs = refs
                 retrieved_refs.extend(refs)
+                retrieved_evidence.extend(evidence)
+                if evidence:
+                    rag_trace.append(
+                        make_rag_trace(
+                            tool_name=str(getattr(local_rag_tool, "name", "search_clinical_guidelines")),
+                            query=user_query,
+                            retrieval_profile="general",
+                            evidence=evidence,
+                        )
+                    )
                 if show_thinking:
                     print(f"📚 [Knowledge] Local RAG retrieved {len(refs)} references")
             except Exception as e:
@@ -705,6 +732,10 @@ def node_knowledge_retrieval(
             }
             if retrieved_refs:
                 updates["retrieved_references"] = retrieved_refs
+            if retrieved_evidence:
+                updates["retrieved_evidence"] = retrieved_evidence
+            if rag_trace:
+                updates["rag_trace"] = rag_trace
             
             return updates
 

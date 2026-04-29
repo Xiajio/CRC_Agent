@@ -264,6 +264,8 @@ class RetrievedReference(BaseModel):
     title: str = Field(default="", description="来源标题")
     url: str = Field(default="", description="来源URL")
     page: Optional[int] = Field(default=None, description="页码")
+    evidence_id: Optional[str] = None
+    section: Optional[str] = None
     snippet: str = Field(description="内容片段")
     retrieved_at: datetime = Field(default_factory=datetime.utcnow, description="检索时间")
     relevance: float = Field(default=1.0, description="相关性评分")
@@ -338,6 +340,8 @@ class RetrievedReference(BaseModel):
             "title": str(title),
             "url": str(url),
             "page": page,
+            "evidence_id": d.get("evidence_id"),
+            "section": d.get("section"),
             "snippet": snippet,
             "relevance": relevance,
         }
@@ -391,6 +395,24 @@ def append_list(left: List[Dict[str, Any]] | None, right: List[Dict[str, Any]] |
     if right:
         return left + right
     return left
+
+
+def merge_evidence_by_id(
+    left: List[Dict[str, Any]] | None,
+    right: List[Dict[str, Any]] | None,
+) -> List[Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+    anonymous = 0
+    for item in (left or []) + (right or []):
+        if not isinstance(item, dict):
+            continue
+        evidence_id = str(item.get("evidence_id") or "").strip()
+        if not evidence_id:
+            anonymous += 1
+            evidence_id = f"anon:{anonymous}"
+            item = {**item, "evidence_id": evidence_id}
+        merged[evidence_id] = item
+    return list(merged.values())
 
 
 def update_profile(left: Optional[PatientProfile], right: Optional[PatientProfile]) -> Optional[PatientProfile]:
@@ -467,11 +489,13 @@ class CRCAgentState(BaseModel):
     medical_card: Optional[Dict[str, Any]] = None
     final_output: Optional[str] = None
     
+    retrieved_evidence: Annotated[List[Dict[str, Any]], merge_evidence_by_id] = Field(default_factory=list)
     retrieved_references: List[RetrievedReference] = Field(default_factory=list)
     subagent_reports: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
     node_timings: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
     stage_timings: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
     retrieval_timings: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
+    rag_trace: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
     
     # [增强] 结构化引用源（使用 RetrievedReference 类型，支持 source_id 追溯）
     # 并行子智能体汇总报告

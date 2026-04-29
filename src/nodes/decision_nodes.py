@@ -22,6 +22,7 @@ from ..policies.review_policy import (
 from ..policies.turn_facts import build_turn_facts
 from ..policies.types import DegradedSignal, ReviewDecision
 from ..state import CRCAgentState
+from ..rag.evidence import make_rag_trace
 from ..rag.retriever import consume_retrieval_metrics, reset_retrieval_metrics
 from ..tools.rag_tools import get_guideline_tool, TreatmentSearchTool
 from ..prompts import (
@@ -33,7 +34,7 @@ from .node_utils import (
     _select_tools,
     _generate_fallback_plan,
     _needs_full_decision,
-    _extract_and_update_references,
+    _extract_structured_evidence,
     _invoke_structured_with_recovery,
     _is_repeated_rejection,
     auto_update_roadmap_from_state,
@@ -1846,12 +1847,18 @@ def node_decision(
         # Planner 不再为 treatment_decision 生成知识检索步骤，所有检索在此统一完成
         rag_context = ""
         retrieved_refs = []
+        retrieved_evidence = []
+        rag_trace = []
         reuse_cached_rag = _should_reuse_cached_rag(state)
         sub_agent_succeeded = False
         if reuse_cached_rag:
             retrieved_refs = [
                 r.model_dump(mode="json") if hasattr(r, "model_dump") else r
                 for r in (state.retrieved_references or [])
+            ]
+            retrieved_evidence = [
+                e.model_dump(mode="json") if hasattr(e, "model_dump") else e
+                for e in (getattr(state, "retrieved_evidence", []) or [])
             ]
             rag_context = _build_cached_rag_context_from_references(retrieved_refs)
             stage_record["cached_rag_reused"] = True
@@ -1949,11 +1956,22 @@ def node_decision(
                                 "tool_name": tool_name,
                                 "invoke_ms": invoke_ms,
                             })
-                        ctx, refs = _extract_and_update_references(str(res))
+                        ctx, refs, evidence = _extract_structured_evidence(str(res))
                         if ctx:
                             merged_context_parts.append(f"[Query] {q}\n{ctx}")
                         if refs:
                             merged_refs.extend(refs)
+                        if evidence:
+                            retrieved_evidence.extend(evidence)
+                            rag_trace.append(
+                                make_rag_trace(
+                                    tool_name=tool_name,
+                                    query=q,
+                                    retrieval_profile=str(evidence[0].get("retrieval_profile") or "decision"),
+                                    evidence=evidence,
+                                    latency_ms=int(invoke_ms) if invoke_ms is not None else None,
+                                )
+                            )
 
                     rag_context = "\n\n".join(merged_context_parts)
                     # 去重引用（按 source+page+ref_id）
@@ -2011,6 +2029,8 @@ def node_decision(
                     "retrieval_timings": retrieval_profiles,
                     "decision_json": decision_dict,
                     "retrieved_references": retrieved_refs,
+                    "retrieved_evidence": retrieved_evidence,
+                    "rag_trace": rag_trace,
                     "iteration_count": iteration + 1,
                     "error": None,
                     "findings": {"decision_strategy": "template_fast"},
@@ -2105,6 +2125,8 @@ def node_decision(
                 "retrieval_timings": retrieval_profiles,
                 "decision_json": decision_dict,  # 完整数据仍存在 decision_json 中
                 "retrieved_references": retrieved_refs,
+                "retrieved_evidence": retrieved_evidence,
+                "rag_trace": rag_trace,
                 "findings": {"decision_strategy": decision_strategy},
                 "iteration_count": iteration + 1,
                 "error": None
