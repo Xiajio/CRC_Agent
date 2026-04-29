@@ -498,10 +498,11 @@ def node_knowledge_retrieval(
                 rag_payload = _extract_rag_payload(str(raw_res))
                 local_context = rag_payload["content"]
                 refs = rag_payload["retrieved_references"]
-                retrieved_evidence.extend(rag_payload["retrieved_evidence"])
-                rag_trace.extend(rag_payload["rag_trace"])
+                evidence = rag_payload["retrieved_evidence"]
                 local_refs = refs
                 retrieved_refs.extend(refs)
+                retrieved_evidence.extend(evidence)
+                rag_trace.extend(rag_payload["rag_trace"])
                 if show_thinking:
                     print(f"📚 [Knowledge] Local RAG retrieved {len(refs)} references")
             except Exception as e:

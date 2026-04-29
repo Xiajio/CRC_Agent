@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import json
 import math
@@ -60,8 +60,6 @@ _REASONING_PREFIXES = (
     "根据系统提示",
 )
 _POSTOP_MARKERS = ("术后", "post-op", "postop", "anastomosis", "stoma")
-
-
 class ThinkingColors:
     THINKING_HEADER = ""
     THINKING = ""
@@ -429,6 +427,14 @@ def _extract_rag_payload(content: str) -> dict[str, Any]:
 def _extract_and_update_references(content: str) -> tuple[str, list[dict[str, Any]]]:
     payload = _extract_rag_payload(content)
     return payload["content"], payload["retrieved_references"]
+
+
+def _extract_structured_evidence(content: str) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
+    payload = _extract_rag_payload(content)
+    evidence = payload["retrieved_evidence"]
+    if parse_retrieved_metadata(content) and not parse_retrieved_evidence(content):
+        return payload["content"], payload["retrieved_references"], []
+    return payload["content"], payload["retrieved_references"], evidence
 
 
 def _calculate_text_similarity(left: str, right: str) -> float:
@@ -883,6 +889,7 @@ __all__ = [
     "_unwrap_nested_json",
     "_extract_and_update_references",
     "_extract_rag_payload",
+    "_extract_structured_evidence",
     "_calculate_text_similarity",
     "_parse_thinking_tags",
     "_split_inline_thinking",
