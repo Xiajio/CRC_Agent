@@ -43,6 +43,15 @@ The current RAG stack already has the right broad shape:
 
 The main gap is that direct node paths do not have a single structured evidence contract from tool output into graph state. Evidence can be visible in the LLM prompt while still being weak or incomplete in `retrieved_references`.
 
+More specifically, current direct extraction is format-mismatched:
+
+- `src/nodes/node_utils.py::_extract_and_update_references` primarily matches blocks shaped like `[1] source=...`.
+- `src/tools/rag_tools.py::_format_docs` emits readable chunks shaped like `[REF_1] [[Source:...|Page:...]]`.
+- `src/tools/rag_tools.py::_format_docs` appends structured JSON only at the end in `<retrieved_metadata>...</retrieved_metadata>`.
+- The current direct path does not consume that metadata block as the canonical source of truth.
+
+This mismatch is one reason P0 introduces `<retrieved_evidence>` as the canonical tool-to-node evidence payload.
+
 ## Design Principle
 
 Evidence should be a first-class structured object across the backend:
@@ -110,6 +119,7 @@ Rules:
 - `snippet` is a compact preview for references and frontend display.
 - `frontend.display_text` must not contain synthetic enhancement text when raw citation text is available.
 - Missing metadata should be represented as `None`, not omitted.
+- Serialized evidence blocks must use standard JSON. That means missing values are written as `null` in XML payloads and parsed back to Python `None`.
 
 ### RagTrace
 
@@ -145,7 +155,7 @@ P0 trace is intentionally small. It should be enough to answer: what was searche
     "section": "Treatment",
     "text": "...",
     "snippet": "...",
-    "query": "III期结肠癌辅助化疗",
+    "query": "stage III colon cancer adjuvant chemotherapy",
     "tool_name": "search_treatment_recommendations",
     "retrieval_profile": "treatment",
     "scores": {
@@ -175,23 +185,43 @@ The existing `<retrieved_metadata>` block should remain for compatibility during
 
 Direct node paths must extract structured evidence from tool outputs and merge it into graph state.
 
+Implementation should update `src/state.py`, not only pass ad hoc dictionaries around. The readable dictionary syntax below describes the state payload, but the actual implementation must extend `CRCAgentState`.
+
 State fields:
 
 ```python
-state["retrieved_evidence"] = list[RetrievedEvidence]
-state["retrieved_references"] = list[dict]
-state["rag_trace"] = list[RagTrace]
+retrieved_evidence: Annotated[List[Dict[str, Any]], merge_evidence_by_id]
+retrieved_references: List[RetrievedReference]
+rag_trace: Annotated[List[Dict[str, Any]], append_list]
 ```
 
 Rules:
 
 - `retrieved_evidence` is the canonical structured evidence list.
 - `retrieved_references` remains backward-compatible for existing prompts, UI, and logs.
-- `rag_trace` is append-only per request.
-- Duplicate evidence should be deduplicated by `evidence_id`.
+- `rag_trace` is append-only per request and should use the same reducer style as the existing `retrieval_timings`.
+- `retrieved_evidence` must merge across node updates and deduplicate by `evidence_id`. If the same `evidence_id` appears twice, the later object should win so tool-specific fields can fill earlier gaps.
 - If `retrieved_evidence` exists, references should be derived from it rather than reparsed from LLM prose.
 
-Compatibility reference shape:
+`merge_evidence_by_id` should be a small reducer in `src/state.py`:
+
+```python
+def merge_evidence_by_id(
+    left: List[Dict[str, Any]] | None,
+    right: List[Dict[str, Any]] | None,
+) -> List[Dict[str, Any]]:
+    merged: dict[str, Dict[str, Any]] = {}
+    for item in (left or []) + (right or []):
+        if not isinstance(item, dict):
+            continue
+        evidence_id = str(item.get("evidence_id") or "").strip()
+        if not evidence_id:
+            evidence_id = f"anon:{len(merged) + 1}"
+        merged[evidence_id] = item
+    return list(merged.values())
+```
+
+Compatibility reference payload before validation:
 
 ```python
 {
@@ -204,6 +234,15 @@ Compatibility reference shape:
     "evidence_id": str,
 }
 ```
+
+Current `RetrievedReference` uses `source_id`, `title`, `snippet`, and `relevance` as its primary fields. It already normalizes `ref_id`, `source`, and `score`, but it does not preserve `evidence_id` or `section` unless the model is extended. P0 should add explicit optional fields to `RetrievedReference`:
+
+```python
+evidence_id: Optional[str] = None
+section: Optional[str] = None
+```
+
+The existing model validator should pass these fields through when present. This prevents evidence IDs from being documented in the contract but discarded at runtime.
 
 ## Integration Points
 
@@ -230,8 +269,12 @@ Responsibilities:
   - `search_treatment_recommendations`: `treatment`
   - `search_staging_criteria`: `staging`
   - `search_drug_information`: `drug`
+  - `search_by_guideline_source`: `source_filter`
+  - `hybrid_guideline_search`: `hybrid`
   - `list_guideline_toc`: `toc`
   - `read_guideline_chapter`: `chapter`
+
+If `search_by_guideline_source` or `hybrid_guideline_search` are not returned by the default enhanced tool set in a given graph, their profile names should still be defined centrally so future enabling does not create a second naming convention.
 
 ### `src/nodes/node_utils.py`
 
@@ -240,6 +283,14 @@ Responsibilities:
 - Parse `<retrieved_evidence>` from direct tool outputs.
 - Fall back to existing reference parsing when structured evidence is absent.
 - Merge evidence into state without losing existing references.
+
+The direct extractor should prefer payloads in this order:
+
+1. `<retrieved_evidence>...</retrieved_evidence>`
+2. `<retrieved_metadata>...</retrieved_metadata>`
+3. Legacy prose blocks matched by `_extract_and_update_references`
+
+This makes the current `_format_docs` output compatible while moving new code toward the stronger contract.
 
 ### `src/nodes/knowledge_nodes.py`
 
@@ -255,6 +306,16 @@ Responsibilities:
 - Preserve evidence returned during internal decision RAG.
 - Ensure treatment decision output includes state-level evidence and trace.
 - Keep existing decision prompt behavior unchanged for P0.
+
+### `src/nodes/sub_agent.py`
+
+Responsibilities:
+
+- Prefer `<retrieved_evidence>` when parsing sub-agent tool output.
+- Fall back to the existing `<retrieved_metadata>` parser.
+- Return evidence in the same shape as direct nodes.
+
+This prevents a split where direct nodes use the new evidence contract while sub-agent paths keep producing only legacy metadata references.
 
 ## Error Handling
 
@@ -293,6 +354,14 @@ Required tests:
    - Pass invalid JSON inside `<retrieved_evidence>`.
    - Assert parser returns no evidence and no exception escapes.
 
+6. State reducer deduplicates evidence
+   - Pass existing and incoming evidence lists with one shared `evidence_id`.
+   - Assert the merged list contains one object for that ID and keeps the later value.
+
+7. Sub-agent extraction prefers structured evidence
+   - Pass sub-agent output containing both `<retrieved_evidence>` and `<retrieved_metadata>`.
+   - Assert parsed evidence comes from `<retrieved_evidence>` and legacy metadata remains a fallback.
+
 ## Migration Strategy
 
 Implement this in a backward-compatible way:
@@ -301,8 +370,10 @@ Implement this in a backward-compatible way:
 2. Add tests for the evidence helpers before production changes.
 3. Update RAG tool formatting to emit `<retrieved_evidence>` while keeping existing text and metadata blocks.
 4. Update direct extraction to prefer structured evidence.
-5. Update knowledge and decision state returns only where needed to preserve evidence fields.
-6. Run focused tests first, then the existing relevant test suite.
+5. Update sub-agent extraction to prefer structured evidence and fall back to legacy metadata.
+6. Update `CRCAgentState` with `retrieved_evidence`, `rag_trace`, and the required `RetrievedReference` compatibility fields.
+7. Update knowledge and decision state returns only where needed to preserve evidence fields.
+8. Run focused tests first, then the existing relevant test suite.
 
 No database migration or index rebuild is required for P0.
 
@@ -348,6 +419,9 @@ P0 is complete when:
 - RAG tool output includes `<retrieved_evidence>` for guideline search results.
 - Direct `use_sub_agent=False` paths can populate `retrieved_evidence`.
 - `retrieved_references` remains populated for compatibility.
+- `RetrievedReference` preserves `evidence_id` when derived from structured evidence.
 - `rag_trace` exists for RAG tool calls where data is available.
+- Sub-agent parsing prefers `<retrieved_evidence>` and remains compatible with `<retrieved_metadata>`.
 - Malformed evidence payloads do not break answer generation.
 - Focused tests cover serialization, parsing, conversion, tool formatting, and fail-soft behavior.
+
