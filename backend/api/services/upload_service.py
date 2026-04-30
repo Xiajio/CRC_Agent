@@ -4,14 +4,13 @@ import hashlib
 import json
 import os
 import shutil
-from copy import deepcopy
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from langchain_core.messages import HumanMessage
 
-from backend.api.services.patient_registry_service import PatientRegistryService
+from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.session_store import InMemorySessionStore, SessionMeta
 from backend.api.services.upload_fixture_cards import load_fixture_upload_card
 from src.services.document_converter import convert_uploaded_file
@@ -236,6 +235,15 @@ def _cleanup_asset_root(session_assets_root: Path, asset_root: Path) -> None:
             session_assets_root.rmdir()
 
 
+def _cleanup_empty_stable_roots(stable_original_root: Path, stable_derived_root: Path, patient_root: Path) -> None:
+    for path in (stable_derived_root, stable_original_root, stable_original_root.parent, patient_root):
+        if path.exists():
+            try:
+                path.rmdir()
+            except OSError:
+                pass
+
+
 def _response_payload(asset_record: dict[str, Any], *, reused: bool) -> dict[str, Any]:
     return {
         "asset_id": asset_record["asset_id"],
@@ -273,7 +281,7 @@ def reserve_upload_session(session_store: InMemorySessionStore, session_id: str)
 def store_session_upload(
     *,
     session_store: InMemorySessionStore,
-    patient_registry: PatientRegistryService,
+    patient_commands: PatientCommandService,
     assets_root: Path,
     session_id: str,
     filename: str,
@@ -308,11 +316,9 @@ def store_session_upload(
                     return _response_payload(existing_asset, reused=True)
             meta.processed_files.pop(processed_key, None)
 
-        temp_asset_id = f"asset_{uuid4().hex}"
-        session_assets_root = assets_root / session_id
-        asset_root = session_assets_root / temp_asset_id
-        original_root = asset_root / "original"
-        derived_root = asset_root / "derived"
+        patient_asset_root = assets_root / str(patient_id)
+        stable_original_root = patient_asset_root / sha256 / "original"
+        stable_derived_root = patient_asset_root / sha256 / "derived"
         context_message: HumanMessage | None = None
         document_type = "parse_failed"
         ingest_decision = "asset_only"
@@ -324,19 +330,38 @@ def store_session_upload(
         summary_text = f"Parse failed for {normalized_filename}"
         patient_snapshot: dict[str, Any] = {}
         record_id: int | None = None
-        previous_medical_card = deepcopy(meta.context_state.get("medical_card"))
-        medical_card_context_written = False
 
         try:
-            original_root.mkdir(parents=True, exist_ok=False)
-            derived_root.mkdir(parents=True, exist_ok=False)
+            stable_original_root.mkdir(parents=True, exist_ok=True)
+            stable_derived_root.mkdir(parents=True, exist_ok=True)
 
-            original_path = original_root / normalized_filename
+            original_path = stable_original_root / normalized_filename
+            original_existed = original_path.exists()
             original_path.write_bytes(file_bytes)
+            upload_result = patient_commands.record_upload_received(
+                patient_id=patient_id,
+                filename=normalized_filename,
+                content_type=normalized_content_type,
+                size_bytes=len(file_bytes),
+                sha256=sha256,
+                storage_path=str(original_path),
+                source_session_id=session_id,
+            )
+            asset_id = str(upload_result.asset_id)
+            if upload_result.reused and not original_existed:
+                original_path.unlink(missing_ok=True)
+                _cleanup_empty_stable_roots(stable_original_root, stable_derived_root, patient_asset_root)
 
             try:
                 medical_card = convert_upload_to_medical_card(file_bytes, normalized_filename, normalized_content_type)
             except Exception as exc:
+                failed_result = patient_commands.record_upload_parse_failed(
+                    patient_id=patient_id,
+                    asset_id=int(upload_result.asset_id),
+                    error_code="CONVERTER_ERROR",
+                    error_message=str(exc),
+                    source_session_id=session_id,
+                )
                 record_payload = {
                     "document_type": "parse_failed",
                     "filename": normalized_filename,
@@ -349,12 +374,12 @@ def store_session_upload(
                     "medical_card_created": False,
                     "record_id": None,
                     "patient_id": patient_id,
+                    "patient_version": failed_result.patient_version,
                 }
-                (derived_root / "parse_failed.json").write_text(
+                (stable_derived_root / "parse_failed.json").write_text(
                     json.dumps(record_payload, ensure_ascii=False, indent=2),
                     encoding="utf-8",
                 )
-                asset_id = f"asset_{uuid4().hex}"
                 asset_record = {
                     "asset_id": asset_id,
                     "record_id": None,
@@ -363,7 +388,7 @@ def store_session_upload(
                     "content_type": normalized_content_type,
                     "size": len(file_bytes),
                     "sha256": sha256,
-                    "reused": False,
+                    "reused": bool(upload_result.reused or failed_result.reused),
                     "derived": derived_payload,
                 }
                 meta.uploaded_assets[asset_id] = asset_record
@@ -386,15 +411,12 @@ def store_session_upload(
             record_payload = dict(record_payload)
             record_payload["document_type"] = document_type
             record_payload["ingest_decision"] = ingest_decision
-            (derived_root / "medical_card.json").write_text(
+            (stable_derived_root / "medical_card.json").write_text(
                 json.dumps(record_payload, ensure_ascii=False, indent=2),
                 encoding="utf-8",
             )
-            session_store.merge_context_state(session_id, {"medical_card": record_payload})
-            medical_card_context_written = True
 
             if ingest_decision == "asset_only":
-                asset_id = f"asset_{uuid4().hex}"
                 asset_record = {
                     "asset_id": asset_id,
                     "record_id": None,
@@ -403,13 +425,14 @@ def store_session_upload(
                     "content_type": normalized_content_type,
                     "size": len(file_bytes),
                     "sha256": sha256,
-                    "reused": False,
+                    "reused": bool(upload_result.reused),
                     "derived": {
                         "medical_card_created": False,
                         "document_type": document_type,
                         "ingest_decision": ingest_decision,
                         "record_id": None,
                         "patient_id": patient_id,
+                        "patient_version": upload_result.patient_version,
                     },
                 }
                 meta.uploaded_assets[asset_id] = asset_record
@@ -418,24 +441,20 @@ def store_session_upload(
                     "record_id": None,
                 }
                 session_store.bump_snapshot_version(session_id)
-                return _response_payload(asset_record, reused=False)
+                return _response_payload(asset_record, reused=bool(upload_result.reused))
 
-            registry_write = patient_registry.write_medical_card_record(
+            registry_write = patient_commands.record_medical_card_extracted(
                 patient_id=patient_id,
-                asset_row={
-                    "filename": normalized_filename,
-                    "content_type": normalized_content_type,
-                    "sha256": sha256,
-                    "storage_path": str(original_path),
-                    "source": "patient_generated",
-                },
+                asset_id=int(upload_result.asset_id),
                 patient_snapshot=patient_snapshot,
                 record_payload=record_payload,
                 summary_text=summary_text,
-                record_type="medical_card",
+                document_type=document_type,
+                ingest_decision=ingest_decision,
+                source_session_id=session_id,
             )
-            asset_id = str(registry_write["asset_id"])
-            record_id = int(registry_write["record_id"])
+            asset_id = str(registry_write.asset_id)
+            record_id = int(registry_write.record_id)
             asset_record = {
                 "asset_id": asset_id,
                 "record_id": record_id,
@@ -444,13 +463,14 @@ def store_session_upload(
                 "content_type": normalized_content_type,
                 "size": len(file_bytes),
                 "sha256": sha256,
-                "reused": bool(registry_write["reused"]),
+                "reused": bool(upload_result.reused or registry_write.reused),
                 "derived": {
                     "medical_card_created": True,
                     "document_type": document_type,
                     "ingest_decision": ingest_decision,
                     "record_id": record_id,
                     "patient_id": patient_id,
+                    "patient_version": registry_write.patient_version,
                 },
             }
             context_message = build_upload_reference_message(
@@ -462,9 +482,6 @@ def store_session_upload(
                 ingest_decision=ingest_decision,
             )
 
-            if registry_write["reused"]:
-                _cleanup_asset_root(session_assets_root, asset_root)
-
             meta.uploaded_assets[asset_id] = asset_record
             meta.processed_files[processed_key] = {
                 "asset_id": asset_id,
@@ -473,7 +490,7 @@ def store_session_upload(
             session_store.enqueue_context_message(session_id, context_message)
             session_store.bump_snapshot_version(session_id)
 
-            return _response_payload(asset_record, reused=bool(registry_write["reused"]))
+            return _response_payload(asset_record, reused=bool(upload_result.reused or registry_write.reused))
         except Exception as exc:
             if "asset_id" in locals():
                 meta.uploaded_assets.pop(asset_id, None)
@@ -484,9 +501,6 @@ def store_session_upload(
                 meta.pending_context_messages = [
                     message for message in meta.pending_context_messages if message != context_message
                 ]
-            if medical_card_context_written:
-                session_store.merge_context_state(session_id, {"medical_card": previous_medical_card})
-            _cleanup_asset_root(session_assets_root, asset_root)
             raise UploadProcessingError(str(exc)) from exc
     finally:
         if acquired_here:
