@@ -26,6 +26,7 @@ from backend.api.services.graph_factory import (
     should_warm_rag,
 )
 from backend.api.services.graph_service import DoctorGraphService, PatientGraphService, SceneGraphRouter
+from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_registry_service import PatientRegistryService
 from backend.api.services.settings import RuntimeSettings, load_runtime_settings
 from backend.api.services.session_store import InMemorySessionStore
@@ -37,6 +38,7 @@ class AppRuntime:
     runner_mode: str
     session_store: object
     patient_registry_service: object
+    patient_command_service: object
     patient_graph: object
     doctor_graph: object
     patient_graph_service: object
@@ -92,10 +94,12 @@ def _build_lifespan():
         assets_root = runtime_root / "assets"
         assets_root.mkdir(parents=True, exist_ok=True)
         patient_registry_service = PatientRegistryService(runtime_root / "patient_registry.db")
+        patient_command_service = PatientCommandService(patient_registry_service)
 
         session_store = InMemorySessionStore()
         session_routes.session_store = session_store
         session_routes.patient_registry_service = patient_registry_service
+        session_routes.patient_command_service = patient_command_service
         patient_graph = get_patient_graph(
             settings,
             runner_mode=runner_mode,
@@ -133,6 +137,7 @@ def _build_lifespan():
             runner_mode=runner_mode,
             session_store=session_store,
             patient_registry_service=patient_registry_service,
+            patient_command_service=patient_command_service,
             patient_graph=patient_graph,
             doctor_graph=doctor_graph,
             patient_graph_service=patient_graph_service,
