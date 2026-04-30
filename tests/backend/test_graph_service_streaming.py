@@ -359,6 +359,48 @@ async def collect_sse_events(stream) -> list[str]:
     return [chunk async for chunk in stream]
 
 
+def parse_sse_payloads(chunks: list[str | dict[str, Any]]) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for chunk in chunks:
+        if isinstance(chunk, dict):
+            payloads.append(chunk)
+            continue
+        data_line = next(
+            (line for line in chunk.splitlines() if line.startswith("data: ")),
+            None,
+        )
+        if data_line is not None:
+            payloads.append(json.loads(data_line.removeprefix("data: ")))
+    return payloads
+
+
+def find_event(events: list[dict[str, Any]], event_type: str) -> dict[str, Any]:
+    return next(event for event in events if event["type"] == event_type)
+
+
+@pytest.mark.asyncio
+async def test_done_event_includes_patient_version_used_for_bound_patient() -> None:
+    session_store = InMemorySessionStore()
+    meta = session_store.create_session(scene="doctor", patient_id=33)
+    graph = FakeStreamingGraph()
+    registry = FakePatientRegistry(
+        summary_message=HumanMessage(content="patient v3"),
+        patient_version=3,
+    )
+    service = DoctorGraphService(
+        compiled_graph=graph,
+        session_store=session_store,
+        patient_registry=registry,
+        heartbeat_interval_seconds=0,
+    )
+
+    chunks = await collect_sse_events(service.stream_turn(meta.session_id, make_chat_request("next")))
+    done = find_event(parse_sse_payloads(chunks), "done")
+
+    assert done["patient_version_used"] == 3
+    assert done["patient_context_stale"] is False
+
+
 @pytest.mark.asyncio
 async def test_doctor_graph_service_reinjects_when_patient_version_changes() -> None:
     session_store = InMemorySessionStore()
@@ -470,6 +512,8 @@ async def test_stream_turn_resolves_patient_context_before_payload_build() -> No
     assert payload["patient_context"]["projection_version"] == 3
     done_event = next(_decode_sse_event(chunk) for chunk in chunks if "event: done" in chunk)
     assert done_event["snapshot_version"] == 1
+    assert done_event["patient_version_used"] == 3
+    assert done_event["patient_context_stale"] is False
 
 
 @pytest.mark.asyncio
@@ -511,21 +555,33 @@ async def test_stream_turn_state_graph_node_receives_patient_context() -> None:
     assert not any("event: error" in chunk for chunk in chunks)
 
 
-def test_stream_turn_surfaces_patient_context_resolver_failures() -> None:
+@pytest.mark.asyncio
+async def test_stream_turn_surfaces_patient_context_resolver_failures() -> None:
     store = InMemorySessionStore()
     session = store.create_session(scene="patient", patient_id=1)
+    graph = CaptureGraph()
     service = GraphService(
-        CaptureGraph(),
+        graph,
         store,
         patient_context_resolver=FailingResolver(),
         heartbeat_interval_seconds=0,
     )
 
-    with pytest.raises(PatientContextStaleError, match="PATIENT_CONTEXT_STALE"):
+    chunks = await collect_sse_events(
         service.stream_turn(
             session.session_id,
             {"message": HumanMessage(content="hello")},
         )
+    )
+    error = find_event(chunks, "error")
+    done = find_event(chunks, "done")
+
+    assert error["code"] == "PATIENT_CONTEXT_STALE"
+    assert "projection unavailable" in error["message"]
+    assert done["patient_context_stale"] is True
+    assert done["patient_version_used"] is None
+    assert graph.payloads == []
+    assert store.get_session(session.session_id).active_run_id is None
 
 
 def test_scene_router_returns_patient_service_for_patient_session() -> None:

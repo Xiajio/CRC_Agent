@@ -25,6 +25,7 @@ from backend.api.services.context_maintenance import (
     CONTEXT_MAINTENANCE_FAILED_MESSAGE,
     CONTEXT_MAINTENANCE_RUNNING_MESSAGE,
 )
+from backend.api.services.patient_context_resolver import PatientContextStaleError
 from backend.api.services.payload_builder import build_graph_payload, restore_pending_context_messages
 from backend.api.services.session_store import InMemorySessionStore, SessionMeta
 from src.nodes.node_utils import clear_stream_callback, set_stream_callback
@@ -95,6 +96,50 @@ class GraphService:
         if meta is None:
             raise SessionNotFoundError(f"Session not found: {session_id}")
         return meta
+
+    def _patient_version_used(self, meta: SessionMeta) -> int | None:
+        context_state = meta.context_state if isinstance(meta.context_state, Mapping) else {}
+        cache = context_state.get("patient_context_cache")
+        if isinstance(cache, Mapping):
+            patient_version = cache.get("patient_version")
+            if isinstance(patient_version, int) and not isinstance(patient_version, bool):
+                return patient_version
+
+        if meta.scene == "doctor" and meta.patient_id is not None:
+            patient_version = context_state.get("last_injected_patient_version")
+            if isinstance(patient_version, int) and not isinstance(patient_version, bool):
+                return patient_version
+
+        return None
+
+    def _stale_patient_context_stream(
+        self,
+        *,
+        thread_id: str,
+        run_id: str,
+        snapshot_version: int,
+        patient_version_used: int | None,
+        exc: PatientContextStaleError,
+    ) -> AsyncIterator[str]:
+        async def _generator() -> AsyncIterator[str]:
+            yield encode_sse_event(
+                ErrorEvent(
+                    code="PATIENT_CONTEXT_STALE",
+                    message=str(exc),
+                    recoverable=True,
+                )
+            )
+            yield encode_sse_event(
+                DoneEvent(
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    snapshot_version=snapshot_version,
+                    patient_version_used=patient_version_used,
+                    patient_context_stale=True,
+                )
+            )
+
+        return _generator()
 
     def _load_agent_state_for_thread(self, thread_id: str) -> dict[str, Any] | None:
         loader = getattr(self._compiled_graph, "load_state", None)
@@ -503,9 +548,22 @@ class GraphService:
     def stream_turn(self, session_id: str, chat_request: Any) -> AsyncIterator[str]:
         meta = self._get_session_meta(session_id)
         meta = self._prepare_session_meta(session_id, chat_request, meta)
+        patient_version_used = self._patient_version_used(meta)
         if self._patient_context_resolver is not None:
-            self._patient_context_resolver.resolve(session_id)
-            meta = self._session_store.get_session(session_id) or meta
+            try:
+                self._patient_context_resolver.resolve(session_id)
+                meta = self._session_store.get_session(session_id) or meta
+                patient_version_used = self._patient_version_used(meta)
+            except PatientContextStaleError as exc:
+                meta = self._session_store.get_session(session_id) or meta
+                patient_version_used = self._patient_version_used(meta)
+                return self._stale_patient_context_stream(
+                    thread_id=meta.thread_id,
+                    run_id=f"run_{uuid4().hex}",
+                    snapshot_version=meta.snapshot_version,
+                    patient_version_used=patient_version_used,
+                    exc=exc,
+                )
         self._cancel_context_maintenance(session_id)
         thread_id = meta.thread_id
         starting_snapshot_version = meta.snapshot_version
@@ -627,6 +685,8 @@ class GraphService:
                     thread_id=thread_id,
                     run_id=run_id,
                     snapshot_version=snapshot_version,
+                    patient_version_used=patient_version_used,
+                    patient_context_stale=False,
                 )
                 self._schedule_context_maintenance(session_id, run_id)
                 release_run_lock()
@@ -655,6 +715,8 @@ class GraphService:
                     thread_id=thread_id,
                     run_id=run_id,
                     snapshot_version=starting_snapshot_version,
+                    patient_version_used=patient_version_used,
+                    patient_context_stale=False,
                 )
                 release_run_lock()
                 yield encode_sse_event(done_event)
