@@ -59,4 +59,5 @@ class PatientContextResolver:
             cache.get("patient_id") == patient_id
             and cache.get("patient_version") == projection.get("patient_version")
             and cache.get("projection_version") == projection.get("projection_version")
+            and isinstance(cache.get("medical_card_snapshot"), Mapping)
         )
