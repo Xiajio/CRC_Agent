@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import json
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
+import pytest
+
 from backend.api.services.patient_commands import PatientCommandService
-from backend.api.services.patient_registry_service import PatientRegistryService
+from backend.api.services.patient_registry_service import (
+    PatientNumberConflictError,
+    PatientRegistryService,
+)
 
 
 def _table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
@@ -110,3 +118,83 @@ def test_identity_set_appends_second_patient_version(tmp_path: Path) -> None:
             )
         ]
     assert versions == [1, 2]
+
+
+def test_identity_set_maps_unique_index_race_to_patient_number_conflict(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    created = commands.create_patient(created_by_session_id="sess_patient_1")
+
+    class RacingConnection:
+        def __init__(self, connection: sqlite3.Connection) -> None:
+            self._connection = connection
+
+        def execute(self, sql: str, parameters: tuple[object, ...] = ()) -> sqlite3.Cursor:
+            if "UPDATE patients" in sql and "patient_number_normalized" in sql:
+                raise sqlite3.IntegrityError("UNIQUE constraint failed: patients.patient_number_normalized")
+            return self._connection.execute(sql, parameters)
+
+    @contextmanager
+    def racing_transaction() -> Iterator[RacingConnection]:
+        with registry._connect() as connection:
+            yield RacingConnection(connection)
+
+    registry.transaction = racing_transaction  # type: ignore[method-assign]
+
+    with pytest.raises(PatientNumberConflictError):
+        commands.set_identity(
+            patient_id=created.patient_id,
+            patient_name="Alice",
+            patient_number="p-001",
+            source_session_id="sess_patient_1",
+        )
+
+
+def test_create_patient_reuses_existing_event_sourced_patient_for_session(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+
+    first = commands.create_patient(created_by_session_id="sess_patient_1")
+    second = commands.create_patient(created_by_session_id="sess_patient_1")
+
+    assert second.reused is True
+    assert second.patient_id == first.patient_id
+    assert second.patient_version == first.patient_version
+    assert second.event_ids == first.event_ids
+    with registry._connect() as connection:
+        patient_count = connection.execute("SELECT COUNT(*) AS count FROM patients").fetchone()
+        event_count = connection.execute("SELECT COUNT(*) AS count FROM patient_events").fetchone()
+    assert int(patient_count["count"]) == 1
+    assert int(event_count["count"]) == 1
+
+
+def test_identity_set_preserves_snapshot_summary_and_source_events(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    created = commands.create_patient(created_by_session_id="sess_patient_1")
+    identity = commands.set_identity(
+        patient_id=created.patient_id,
+        patient_name="Alice",
+        patient_number="p-001",
+        source_session_id="sess_patient_1",
+    )
+
+    with registry._connect() as connection:
+        snapshot = connection.execute(
+            """
+            SELECT summary_json, source_event_ids_json
+            FROM patient_snapshots
+            WHERE patient_id = ?
+            """,
+            (created.patient_id,),
+        ).fetchone()
+
+    assert json.loads(snapshot["summary_json"]) == {
+        "status": "draft",
+        "patient_name": "Alice",
+        "patient_number": "p-001",
+    }
+    assert json.loads(snapshot["source_event_ids_json"]) == [
+        created.event_ids[0],
+        identity.event_ids[0],
+    ]

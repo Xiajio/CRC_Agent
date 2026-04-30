@@ -37,6 +37,37 @@ class PatientCommandService:
     def __init__(self, registry: PatientRegistryService) -> None:
         self._registry = registry
 
+    def _load_json_mapping(self, value: Any) -> dict[str, Any]:
+        if isinstance(value, dict):
+            return dict(value)
+        if isinstance(value, str) and value.strip():
+            parsed = json.loads(value)
+            if isinstance(parsed, dict):
+                return dict(parsed)
+        return {}
+
+    def _load_json_list(self, value: Any) -> list[dict[str, Any]] | list[str]:
+        if isinstance(value, list):
+            return list(value)
+        if isinstance(value, str) and value.strip():
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return list(parsed)
+        return []
+
+    def _merge_source_event_ids(
+        self,
+        existing_event_ids: list[dict[str, Any]] | list[str],
+        incoming_event_ids: list[str] | None,
+    ) -> list[str]:
+        merged: list[str] = []
+        for event_id in [*existing_event_ids, *(incoming_event_ids or [])]:
+            if not isinstance(event_id, str):
+                continue
+            if event_id not in merged:
+                merged.append(event_id)
+        return merged
+
     def _next_patient_version(self, connection: sqlite3.Connection, patient_id: int) -> int:
         row = connection.execute(
             "SELECT COALESCE(MAX(patient_version), 0) AS version FROM patient_events WHERE patient_id = ?",
@@ -103,6 +134,57 @@ class PatientCommandService:
     ) -> None:
         now = _utc_now()
         projection_version = patient_version
+        existing = connection.execute(
+            """
+            SELECT
+                medical_card_snapshot_json,
+                summary_json,
+                active_alerts_json,
+                record_refs_json,
+                asset_refs_json,
+                source_event_ids_json
+            FROM patient_snapshots
+            WHERE patient_id = ?
+            """,
+            (patient_id,),
+        ).fetchone()
+        if existing is None:
+            merged_medical_card_snapshot = medical_card_snapshot or {}
+            merged_summary = summary or {}
+            merged_active_alerts = active_alerts or []
+            merged_record_refs = record_refs or []
+            merged_asset_refs = asset_refs or []
+            merged_source_event_ids = source_event_ids or []
+        else:
+            merged_medical_card_snapshot = self._load_json_mapping(
+                existing["medical_card_snapshot_json"]
+            )
+            if medical_card_snapshot is not None:
+                merged_medical_card_snapshot.update(medical_card_snapshot)
+
+            merged_summary = self._load_json_mapping(existing["summary_json"])
+            if summary is not None:
+                merged_summary.update(summary)
+
+            merged_active_alerts = (
+                active_alerts
+                if active_alerts is not None
+                else self._load_json_list(existing["active_alerts_json"])
+            )
+            merged_record_refs = (
+                record_refs
+                if record_refs is not None
+                else self._load_json_list(existing["record_refs_json"])
+            )
+            merged_asset_refs = (
+                asset_refs
+                if asset_refs is not None
+                else self._load_json_list(existing["asset_refs_json"])
+            )
+            merged_source_event_ids = self._merge_source_event_ids(
+                self._load_json_list(existing["source_event_ids_json"]),
+                source_event_ids,
+            )
         connection.execute(
             """
             INSERT INTO patient_snapshots (
@@ -132,12 +214,12 @@ class PatientCommandService:
                 patient_id,
                 patient_version,
                 projection_version,
-                json.dumps(medical_card_snapshot or {}, ensure_ascii=False),
-                json.dumps(summary or {}, ensure_ascii=False),
-                json.dumps(active_alerts or [], ensure_ascii=False),
-                json.dumps(record_refs or [], ensure_ascii=False),
-                json.dumps(asset_refs or [], ensure_ascii=False),
-                json.dumps(source_event_ids or [], ensure_ascii=False),
+                json.dumps(merged_medical_card_snapshot, ensure_ascii=False),
+                json.dumps(merged_summary, ensure_ascii=False),
+                json.dumps(merged_active_alerts, ensure_ascii=False),
+                json.dumps(merged_record_refs, ensure_ascii=False),
+                json.dumps(merged_asset_refs, ensure_ascii=False),
+                json.dumps(merged_source_event_ids, ensure_ascii=False),
                 now,
             ),
         )
@@ -167,9 +249,50 @@ class PatientCommandService:
             ),
         )
 
+    def _get_created_patient_for_session(
+        self,
+        connection: sqlite3.Connection,
+        created_by_session_id: str,
+    ) -> PatientCommandResult | None:
+        row = connection.execute(
+            """
+            SELECT
+                p.id AS patient_id,
+                e.patient_version,
+                e.event_id,
+                COALESCE(s.projection_version, e.patient_version) AS projection_version
+            FROM patients p
+            JOIN patient_events e ON e.patient_id = p.id
+            LEFT JOIN patient_snapshots s ON s.patient_id = p.id
+            WHERE p.created_by_session_id = ?
+              AND e.event_type = 'patient.created'
+              AND e.source_session_id = ?
+              AND e.idempotency_key = ?
+            ORDER BY p.id ASC
+            LIMIT 1
+            """,
+            (
+                created_by_session_id,
+                created_by_session_id,
+                f"patient.created:{created_by_session_id}",
+            ),
+        ).fetchone()
+        if row is None:
+            return None
+        return PatientCommandResult(
+            patient_id=int(row["patient_id"]),
+            patient_version=int(row["patient_version"]),
+            projection_version=int(row["projection_version"]),
+            event_ids=[str(row["event_id"])],
+            reused=True,
+        )
+
     def create_patient(self, *, created_by_session_id: str) -> PatientCommandResult:
         now = _utc_now()
         with self._registry.transaction() as connection:
+            existing = self._get_created_patient_for_session(connection, created_by_session_id)
+            if existing is not None:
+                return existing
             cursor = connection.execute(
                 """
                 INSERT INTO patients (
@@ -243,15 +366,20 @@ class PatientCommandService:
                 source_session_id=source_session_id,
                 idempotency_key=f"patient.identity_set:{patient_id}:{normalized_number}",
             )
-            connection.execute(
-                """
-                UPDATE patients
-                SET patient_name = ?, patient_number = ?, patient_number_normalized = ?,
-                    identity_locked = 1, updated_at = ?
-                WHERE id = ?
-                """,
-                (patient_name, patient_number, normalized_number, now, patient_id),
-            )
+            try:
+                connection.execute(
+                    """
+                    UPDATE patients
+                    SET patient_name = ?, patient_number = ?, patient_number_normalized = ?,
+                        identity_locked = 1, updated_at = ?
+                    WHERE id = ?
+                    """,
+                    (patient_name, patient_number, normalized_number, now, patient_id),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise PatientNumberConflictError(
+                    f"Patient number already exists: {normalized_number}"
+                ) from exc
             self._upsert_snapshot(
                 connection,
                 patient_id=patient_id,
