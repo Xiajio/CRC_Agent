@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -44,6 +45,7 @@ def test_resolver_refreshes_stale_cache(tmp_path: Path) -> None:
         session.session_id,
         {
             "medical_card": {"legacy": True},
+            "unrelated": {"keep": True},
             "patient_context_cache": {
                 "patient_id": patient.patient_id,
                 "patient_version": 0,
@@ -59,6 +61,7 @@ def test_resolver_refreshes_stale_cache(tmp_path: Path) -> None:
     assert context["patient_version"] == 1
     assert refreshed["patient_context_cache"]["patient_version"] == 1
     assert "medical_card" not in refreshed
+    assert refreshed["unrelated"] == {"keep": True}
 
 
 def test_resolver_fails_closed_when_projection_missing(tmp_path: Path) -> None:
@@ -83,6 +86,46 @@ def test_resolver_fails_closed_when_session_missing(tmp_path: Path) -> None:
         resolver.resolve("sess_missing")
 
 
+def test_resolver_fails_closed_when_projection_json_is_corrupted(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    with registry._connect() as connection:
+        connection.execute(
+            "UPDATE patient_snapshots SET summary_json = ? WHERE patient_id = ?",
+            ("{", patient.patient_id),
+        )
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient.patient_id)
+    resolver = PatientContextResolver(registry, store)
+
+    with pytest.raises(PatientContextStaleError, match="PATIENT_CONTEXT_STALE") as exc_info:
+        resolver.resolve(session.session_id)
+
+    assert "projection unavailable" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, json.JSONDecodeError)
+
+
+def test_resolver_fails_closed_when_projection_json_has_wrong_shape(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    with registry._connect() as connection:
+        connection.execute(
+            "UPDATE patient_snapshots SET active_alerts_json = ? WHERE patient_id = ?",
+            ("{}", patient.patient_id),
+        )
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient.patient_id)
+    resolver = PatientContextResolver(registry, store)
+
+    with pytest.raises(PatientContextStaleError, match="PATIENT_CONTEXT_STALE") as exc_info:
+        resolver.resolve(session.session_id)
+
+    assert "projection unavailable" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, TypeError)
+
+
 def test_resolver_returns_none_without_patient_id(tmp_path: Path) -> None:
     registry = PatientRegistryService(tmp_path / "patient_registry.db")
     store = InMemorySessionStore()
@@ -101,11 +144,18 @@ def test_resolver_returns_copy_when_cache_is_fresh(tmp_path: Path) -> None:
     fresh_cache = registry.get_patient_context_projection(patient.patient_id)
     fresh_cache["summary"]["local"] = "cached"
     store.set_patient_context_cache(session.session_id, fresh_cache)
+    store.merge_context_state(
+        session.session_id,
+        {"medical_card": {"legacy": True}, "unrelated": {"keep": True}},
+    )
     resolver = PatientContextResolver(registry, store)
 
     context = resolver.resolve(session.session_id)
     context["summary"]["local"] = "mutated"
 
-    cached = store.get_session(session.session_id).context_state["patient_context_cache"]
+    context_state = store.get_session(session.session_id).context_state
+    cached = context_state["patient_context_cache"]
     assert context is not cached
     assert cached["summary"]["local"] == "cached"
+    assert "medical_card" not in context_state
+    assert context_state["unrelated"] == {"keep": True}

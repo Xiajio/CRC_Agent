@@ -89,17 +89,18 @@ def _load_json_mapping(value: Any) -> dict[str, Any]:
     return {}
 
 
-def _load_json_list(value: Any) -> list[Any]:
-    if isinstance(value, list):
-        return list(value)
-    if isinstance(value, str) and value.strip():
-        try:
-            parsed = json.loads(value)
-        except json.JSONDecodeError:
-            return []
-        if isinstance(parsed, list):
-            return list(parsed)
-    return []
+def _load_projection_json_mapping(value: Any, column_name: str) -> dict[str, Any]:
+    parsed = json.loads(value) if isinstance(value, str) else value
+    if not isinstance(parsed, dict):
+        raise TypeError(f"{column_name} must contain a JSON object")
+    return dict(parsed)
+
+
+def _load_projection_json_list(value: Any, column_name: str) -> list[Any]:
+    parsed = json.loads(value) if isinstance(value, str) else value
+    if not isinstance(parsed, list):
+        raise TypeError(f"{column_name} must contain a JSON array")
+    return list(parsed)
 
 
 def _source_priority(document_type: str | None) -> int:
@@ -526,12 +527,24 @@ class PatientRegistryService:
             "patient_id": int(row["patient_id"]),
             "patient_version": int(row["patient_version"]),
             "projection_version": int(row["projection_version"]),
-            "medical_card_snapshot": _load_json_mapping(row["medical_card_snapshot_json"]),
-            "summary": _load_json_mapping(row["summary_json"]),
-            "alerts": _load_json_list(row["active_alerts_json"]),
-            "record_refs": _load_json_list(row["record_refs_json"]),
-            "asset_refs": _load_json_list(row["asset_refs_json"]),
-            "source_event_ids": _load_json_list(row["source_event_ids_json"]),
+            "medical_card_snapshot": _load_projection_json_mapping(
+                row["medical_card_snapshot_json"],
+                "medical_card_snapshot_json",
+            ),
+            "summary": _load_projection_json_mapping(row["summary_json"], "summary_json"),
+            "alerts": _load_projection_json_list(
+                row["active_alerts_json"],
+                "active_alerts_json",
+            ),
+            "record_refs": _load_projection_json_list(
+                row["record_refs_json"],
+                "record_refs_json",
+            ),
+            "asset_refs": _load_projection_json_list(row["asset_refs_json"], "asset_refs_json"),
+            "source_event_ids": _load_projection_json_list(
+                row["source_event_ids_json"],
+                "source_event_ids_json",
+            ),
             "cached_at": row["updated_at"],
         }
 
