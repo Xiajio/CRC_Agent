@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
+from langchain_core.messages import HumanMessage
 
+from backend.api.services.payload_builder import build_graph_payload
 from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_context_resolver import (
     PatientContextResolver,
@@ -159,3 +161,33 @@ def test_resolver_returns_copy_when_cache_is_fresh(tmp_path: Path) -> None:
     assert cached["summary"]["local"] == "cached"
     assert "medical_card" not in context_state
     assert context_state["unrelated"] == {"keep": True}
+
+
+def test_payload_builder_uses_patient_context_cache_not_legacy_medical_card() -> None:
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=1)
+    store.merge_context_state(
+        session.session_id,
+        {
+            "medical_card": {"legacy": True},
+            "patient_context_cache": {
+                "patient_id": 1,
+                "patient_version": 2,
+                "projection_version": 2,
+                "medical_card_snapshot": {"current": True},
+            },
+        },
+    )
+
+    prepared = build_graph_payload(
+        chat_request={"message": HumanMessage(content="hello")},
+        session_meta=store.get_session(session.session_id),
+        state_snapshot={},
+    )
+
+    assert prepared.payload["medical_card"] == {"current": True}
+    assert prepared.payload["patient_context"]["patient_version"] == 2
+    assert prepared.payload["patient_context"]["projection_version"] == 2
+    assert prepared.payload["patient_context"] is not store.get_session(
+        session.session_id
+    ).context_state["patient_context_cache"]

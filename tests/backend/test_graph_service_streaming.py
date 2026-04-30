@@ -4,7 +4,9 @@ import asyncio
 import json
 import time
 from datetime import datetime
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
+from copy import deepcopy
+from typing import Any
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -15,7 +17,8 @@ from backend.api.services.graph_service import (
     PatientGraphService,
     SceneGraphRouter,
 )
-from backend.api.services.session_store import InMemorySessionStore
+from backend.api.services.patient_context_resolver import PatientContextStaleError
+from backend.api.services.session_store import InMemorySessionStore, SessionMeta
 from src.nodes.assessment_nodes import node_doctor_assessment, node_patient_assessment
 from src.nodes.node_utils import _invoke_with_streaming
 from src.state import CRCAgentState
@@ -55,6 +58,31 @@ class FakeGraph:
     async def astream(self, payload: dict[str, object], config: dict[str, object]) -> AsyncIterator[dict[str, object]]:
         self.last_payload = payload
         yield {"general": {"messages": [AIMessage(content="ok")]}}
+
+
+class SnapshottingSessionStore(InMemorySessionStore):
+    def get_session(self, session_id: str) -> SessionMeta | None:
+        meta = super().get_session(session_id)
+        return deepcopy(meta) if meta is not None else None
+
+
+class CaptureGraph:
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, Any]] = []
+
+    def load_state(self, thread_id: str) -> dict[str, object]:
+        return {}
+
+    async def astream(
+        self,
+        payload: Mapping[str, Any],
+        *,
+        config: Mapping[str, Any] | None = None,
+    ):
+        del config
+        self.payloads.append(dict(payload))
+        if False:
+            yield {}
 
 
 class FakeStreamingGraph:
@@ -123,6 +151,35 @@ class FakePatientRegistry:
     def list_patient_alerts(self, patient_id: int) -> list[dict[str, object]]:
         self.requested_alert_patient_ids.append(patient_id)
         return list(self._alerts)
+
+
+class RefreshingResolver:
+    def __init__(self, store: InMemorySessionStore) -> None:
+        self._store = store
+        self.calls: list[str] = []
+
+    def resolve(self, session_id: str) -> dict[str, Any]:
+        self.calls.append(session_id)
+        cache = {
+            "patient_id": 1,
+            "patient_version": 3,
+            "projection_version": 3,
+            "medical_card_snapshot": {"current": True},
+        }
+        self._store.merge_context_state(
+            session_id,
+            {
+                "medical_card": {"legacy": True},
+                "patient_context_cache": cache,
+            },
+        )
+        return dict(cache)
+
+
+class FailingResolver:
+    def resolve(self, session_id: str) -> None:
+        del session_id
+        raise PatientContextStaleError("PATIENT_CONTEXT_STALE: projection unavailable")
 
 
 class _UnusedAssessmentModel:
@@ -263,6 +320,55 @@ async def test_stream_turn_keeps_request_scoped_stream_callbacks_isolated() -> N
 
     assert first_deltas == ["alpha-1", "alpha-2"]
     assert second_deltas == ["beta-1", "beta-2"]
+
+
+@pytest.mark.asyncio
+async def test_stream_turn_resolves_patient_context_before_payload_build() -> None:
+    store = SnapshottingSessionStore()
+    session = store.create_session(scene="patient", patient_id=1)
+    store.merge_context_state(session.session_id, {"medical_card": {"legacy": True}})
+    graph = CaptureGraph()
+    resolver = RefreshingResolver(store)
+    service = GraphService(
+        graph,
+        store,
+        patient_context_resolver=resolver,
+        heartbeat_interval_seconds=0,
+    )
+
+    chunks = [
+        chunk
+        async for chunk in service.stream_turn(
+            session.session_id,
+            {"message": HumanMessage(content="hello")},
+        )
+    ]
+
+    assert resolver.calls == [session.session_id]
+    assert graph.payloads
+    payload = graph.payloads[0]
+    assert payload["medical_card"] == {"current": True}
+    assert payload["patient_context"]["patient_version"] == 3
+    assert payload["patient_context"]["projection_version"] == 3
+    done_event = next(_decode_sse_event(chunk) for chunk in chunks if "event: done" in chunk)
+    assert done_event["snapshot_version"] == 1
+
+
+def test_stream_turn_surfaces_patient_context_resolver_failures() -> None:
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=1)
+    service = GraphService(
+        CaptureGraph(),
+        store,
+        patient_context_resolver=FailingResolver(),
+        heartbeat_interval_seconds=0,
+    )
+
+    with pytest.raises(PatientContextStaleError, match="PATIENT_CONTEXT_STALE"):
+        service.stream_turn(
+            session.session_id,
+            {"message": HumanMessage(content="hello")},
+        )
 
 
 def test_scene_router_returns_patient_service_for_patient_session() -> None:
