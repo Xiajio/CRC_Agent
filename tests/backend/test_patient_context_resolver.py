@@ -55,13 +55,14 @@ def test_resolver_refreshes_stale_cache(tmp_path: Path) -> None:
             },
         },
     )
-    resolver = PatientContextResolver(registry, store)
+    resolver = PatientContextResolver(registry, store, patient_commands=commands)
 
     context = resolver.resolve(session.session_id)
 
     refreshed = store.get_session(session.session_id).context_state
-    assert context["patient_version"] == 1
-    assert refreshed["patient_context_cache"]["patient_version"] == 1
+    assert context["patient_version"] == 2
+    assert refreshed["patient_context_cache"]["patient_version"] == 2
+    assert refreshed["patient_context_cache"]["medical_card_snapshot"] == {"legacy": True}
     assert "medical_card" not in refreshed
     assert refreshed["unrelated"] == {"keep": True}
 
@@ -179,6 +180,68 @@ def test_resolver_imports_session_only_legacy_medical_card_once(tmp_path: Path) 
             (patient_id,),
         ).fetchone()["count"]
     assert imported_events == 1
+
+
+def test_resolver_imports_healthy_projection_legacy_medical_card_once(
+    tmp_path: Path,
+) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient.patient_id)
+    store.merge_context_state(
+        session.session_id,
+        {
+            "medical_card": {
+                "document_type": "legacy_card",
+                "legacy_field": "session-only",
+            }
+        },
+    )
+    resolver = PatientContextResolver(registry, store, patient_commands=commands)
+
+    first = resolver.resolve(session.session_id)
+    second = resolver.resolve(session.session_id)
+
+    state = store.get_session(session.session_id).context_state
+    assert "medical_card" not in state
+    assert state["patient_context_cache"]["medical_card_snapshot"] == {
+        "document_type": "legacy_card",
+        "legacy_field": "session-only",
+    }
+    assert second == first
+    with registry._connect() as connection:
+        event_rows = connection.execute(
+            """
+            SELECT event_type
+            FROM patient_events
+            WHERE patient_id = ?
+            ORDER BY patient_version ASC
+            """,
+            (patient.patient_id,),
+        ).fetchall()
+    assert [row["event_type"] for row in event_rows] == [
+        "patient.created",
+        "patient.legacy_medical_card_imported",
+    ]
+
+
+def test_resolver_rejects_healthy_projection_non_mapping_legacy_medical_card_without_clearing(
+    tmp_path: Path,
+) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient.patient_id)
+    store.merge_context_state(session.session_id, {"medical_card": "not-a-mapping"})
+    resolver = PatientContextResolver(registry, store, patient_commands=commands)
+
+    with pytest.raises(PatientContextStaleError, match="PATIENT_CONTEXT_STALE"):
+        resolver.resolve(session.session_id)
+
+    assert store.get_session(session.session_id).context_state["medical_card"] == "not-a-mapping"
 
 
 def test_resolver_rejects_non_mapping_legacy_medical_card_without_clearing(
@@ -300,7 +363,7 @@ def test_resolver_returns_copy_when_cache_is_fresh(tmp_path: Path) -> None:
     store.set_patient_context_cache(session.session_id, fresh_cache)
     store.merge_context_state(
         session.session_id,
-        {"medical_card": {"legacy": True}, "unrelated": {"keep": True}},
+        {"unrelated": {"keep": True}},
     )
     resolver = PatientContextResolver(registry, store)
 
@@ -324,7 +387,6 @@ def test_resolver_refreshes_version_matching_cache_with_malformed_snapshot(tmp_p
     store.merge_context_state(
         session.session_id,
         {
-            "medical_card": {"legacy": True},
             "patient_context_cache": {
                 "patient_id": patient.patient_id,
                 "patient_version": 1,
