@@ -142,6 +142,95 @@ def test_resolver_imports_legacy_session_medical_card_once(tmp_path: Path) -> No
     assert event_count == first["patient_version"]
 
 
+def test_resolver_imports_session_only_legacy_medical_card_once(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    patient_id = registry.create_draft_patient(created_by_session_id="legacy_session")
+    commands = PatientCommandService(registry)
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient_id)
+    store.merge_context_state(
+        session.session_id,
+        {
+            "medical_card": {
+                "document_type": "legacy_card",
+                "clinical_stage": "cT2N0M0",
+            }
+        },
+    )
+    resolver = PatientContextResolver(registry, store, patient_commands=commands)
+
+    first = resolver.resolve(session.session_id)
+    second = resolver.resolve(session.session_id)
+
+    state = store.get_session(session.session_id).context_state
+    assert "medical_card" not in state
+    assert state["patient_context_cache"]["medical_card_snapshot"] == {
+        "document_type": "legacy_card",
+        "clinical_stage": "cT2N0M0",
+    }
+    assert second == first
+    with registry._connect() as connection:
+        imported_events = connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM patient_events
+            WHERE patient_id = ? AND event_type = 'patient.legacy_medical_card_imported'
+            """,
+            (patient_id,),
+        ).fetchone()["count"]
+    assert imported_events == 1
+
+
+def test_resolver_rejects_non_mapping_legacy_medical_card_without_clearing(
+    tmp_path: Path,
+) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    patient_id = registry.create_draft_patient(created_by_session_id="legacy_session")
+    commands = PatientCommandService(registry)
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient_id)
+    store.merge_context_state(session.session_id, {"medical_card": ["not", "a", "mapping"]})
+    resolver = PatientContextResolver(registry, store, patient_commands=commands)
+
+    with pytest.raises(PatientContextStaleError, match="PATIENT_CONTEXT_STALE"):
+        resolver.resolve(session.session_id)
+
+    assert store.get_session(session.session_id).context_state["medical_card"] == [
+        "not",
+        "a",
+        "mapping",
+    ]
+    with registry._connect() as connection:
+        event_count = connection.execute(
+            "SELECT COUNT(*) AS count FROM patient_events WHERE patient_id = ?",
+            (patient_id,),
+        ).fetchone()["count"]
+    assert event_count == 0
+
+
+def test_resolver_preserves_legacy_medical_card_when_projection_retry_fails(
+    tmp_path: Path,
+) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    with registry._connect() as connection:
+        connection.execute(
+            "UPDATE patient_snapshots SET summary_json = ? WHERE patient_id = ?",
+            ("{", patient.patient_id),
+        )
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient.patient_id)
+    legacy_card = {"document_type": "legacy_card"}
+    store.merge_context_state(session.session_id, {"medical_card": legacy_card})
+    resolver = PatientContextResolver(registry, store, patient_commands=commands)
+
+    with pytest.raises(PatientContextStaleError, match="PATIENT_CONTEXT_STALE"):
+        resolver.resolve(session.session_id)
+
+    assert store.get_session(session.session_id).context_state["medical_card"] == legacy_card
+
+
 def test_resolver_fails_closed_when_session_missing(tmp_path: Path) -> None:
     registry = PatientRegistryService(tmp_path / "patient_registry.db")
     store = InMemorySessionStore()
