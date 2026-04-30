@@ -10,7 +10,7 @@ import pytest
 from langchain_core.messages import HumanMessage
 from langgraph.graph import END, StateGraph
 
-from backend.api.services.graph_service import DoctorGraphService, GraphService
+from backend.api.services.graph_service import DoctorGraphService, GraphService, SessionBusyError
 from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_context_resolver import (
     PatientContextResolver,
@@ -343,6 +343,72 @@ async def test_doctor_graph_service_skips_reinjection_when_projection_fails_afte
     context_state = session_store.get_session(meta.session_id).context_state
     assert context_state["last_injected_patient_version"] == 1
     assert context_state["bound_patient_version"] == 1
+
+
+@pytest.mark.asyncio
+async def test_stream_turn_busy_session_skips_resolver_and_context_state_mutation() -> None:
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=1)
+    original_context_state = {
+        "medical_card": {"legacy": True},
+        "unchanged": {"value": True},
+    }
+    store.merge_context_state(session.session_id, original_context_state)
+    assert store.try_acquire_run_lock(session.session_id, "existing_run")
+    resolver = RefreshingResolver(store)
+    service = GraphService(
+        CaptureGraph(),
+        store,
+        patient_context_resolver=resolver,
+        heartbeat_interval_seconds=0,
+    )
+
+    try:
+        with pytest.raises(SessionBusyError):
+            service.stream_turn(
+                session.session_id,
+                {"message": HumanMessage(content="hello")},
+            )
+
+        assert resolver.calls == []
+        assert store.get_session(session.session_id).context_state == original_context_state
+    finally:
+        store.release_run_lock(session.session_id, "existing_run")
+
+
+@pytest.mark.asyncio
+async def test_doctor_stream_turn_busy_session_skips_registry_injection_and_context_mutation() -> None:
+    store = InMemorySessionStore()
+    session = store.create_session(scene="doctor", patient_id=33)
+    original_context_state = {"unchanged": {"value": True}}
+    store.merge_context_state(session.session_id, original_context_state)
+    assert store.try_acquire_run_lock(session.session_id, "existing_run")
+    registry = FakePatientRegistry(
+        summary_message=HumanMessage(content="patient v1"),
+        patient_version=1,
+    )
+    service = DoctorGraphService(
+        compiled_graph=FakeStreamingGraph(),
+        session_store=store,
+        patient_registry=registry,
+        heartbeat_interval_seconds=0,
+    )
+
+    try:
+        with pytest.raises(SessionBusyError):
+            service.stream_turn(
+                session.session_id,
+                {"message": HumanMessage(content="hello")},
+            )
+
+        refreshed = store.get_session(session.session_id)
+        assert registry.requested_patient_ids == []
+        assert registry.requested_alert_patient_ids == []
+        assert refreshed.context_state == original_context_state
+        assert "bound_patient_id" not in refreshed.context_state
+        assert refreshed.pending_context_messages == []
+    finally:
+        store.release_run_lock(session.session_id, "existing_run")
 
 
 @pytest.mark.asyncio
