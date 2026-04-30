@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
@@ -162,6 +163,17 @@ class PatientCommandService:
             event_ids=[],
             reused=True,
         )
+
+    def _missing_snapshot_fields(
+        self,
+        existing_snapshot: Mapping[str, Any],
+        incoming_snapshot: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            str(key): value
+            for key, value in incoming_snapshot.items()
+            if isinstance(key, str) and key not in existing_snapshot
+        }
 
     def _append_event(
         self,
@@ -427,7 +439,13 @@ class PatientCommandService:
             snapshot_changed=True,
         )
 
-    def bootstrap_legacy_patient(self, patient_id: int) -> PatientCommandResult:
+    def bootstrap_legacy_patient(
+        self,
+        patient_id: int,
+        *,
+        legacy_medical_card: Mapping[str, Any] | None = None,
+        source_session_id: str | None = None,
+    ) -> PatientCommandResult:
         try:
             with self._registry.transaction() as connection:
                 connection.execute("BEGIN IMMEDIATE")
@@ -443,8 +461,68 @@ class PatientCommandService:
                     raise PatientIdentityNotFoundError(f"Patient not found: {patient_id}")
 
                 existing = self._current_event_sourced_patient_result(connection, patient_id)
-                if existing is not None:
+                if existing is not None and legacy_medical_card is None:
                     return existing
+                card_idempotency_key = (
+                    f"patient.legacy_medical_card_imported:{patient_id}:"
+                    f"{source_session_id or 'unknown'}"
+                )
+                if existing is not None and legacy_medical_card is not None:
+                    imported = connection.execute(
+                        """
+                        SELECT event_id
+                        FROM patient_events
+                        WHERE patient_id = ? AND idempotency_key = ?
+                        LIMIT 1
+                        """,
+                        (patient_id, card_idempotency_key),
+                    ).fetchone()
+                    if imported is not None:
+                        return existing
+
+                    snapshot = connection.execute(
+                        """
+                        SELECT medical_card_snapshot_json
+                        FROM patient_snapshots
+                        WHERE patient_id = ?
+                        """,
+                        (patient_id,),
+                    ).fetchone()
+                    existing_medical_card_snapshot = (
+                        {}
+                        if snapshot is None
+                        else self._load_json_mapping(snapshot["medical_card_snapshot_json"])
+                    )
+                    session_snapshot = self._missing_snapshot_fields(
+                        existing_medical_card_snapshot,
+                        legacy_medical_card,
+                    )
+                    event_id, version = self._append_event(
+                        connection,
+                        patient_id=patient_id,
+                        event_type="patient.legacy_medical_card_imported",
+                        payload={
+                            "legacy": True,
+                            "medical_card": dict(legacy_medical_card),
+                        },
+                        source_session_id=source_session_id,
+                        idempotency_key=card_idempotency_key,
+                    )
+                    self._upsert_snapshot(
+                        connection,
+                        patient_id=patient_id,
+                        patient_version=version,
+                        medical_card_snapshot=session_snapshot,
+                        summary={"legacy_session_medical_card": True},
+                        source_event_ids=[event_id],
+                    )
+                    return PatientCommandResult(
+                        patient_id=patient_id,
+                        patient_version=version,
+                        projection_version=version,
+                        event_ids=[event_id],
+                        snapshot_changed=True,
+                    )
 
                 detail = self._registry.get_patient_detail_in_transaction(connection, patient_id)
                 record_rows = connection.execute(
@@ -499,7 +577,7 @@ class PatientCommandService:
                     for asset in asset_rows
                 ]
 
-                source_session_id = patient["created_by_session_id"]
+                created_source_session_id = patient["created_by_session_id"]
                 event_id, version = self._append_event(
                     connection,
                     patient_id=patient_id,
@@ -510,9 +588,31 @@ class PatientCommandService:
                         "record_refs": record_refs,
                         "asset_refs": asset_refs,
                     },
-                    source_session_id=source_session_id,
+                    source_session_id=created_source_session_id,
                     idempotency_key=f"patient.created.legacy:{patient_id}",
                 )
+                event_ids = [event_id]
+                snapshot_event_ids = [event_id]
+                final_medical_card_snapshot = dict(medical_card_snapshot)
+                if legacy_medical_card is not None:
+                    session_snapshot = self._missing_snapshot_fields(
+                        final_medical_card_snapshot,
+                        legacy_medical_card,
+                    )
+                    card_event_id, version = self._append_event(
+                        connection,
+                        patient_id=patient_id,
+                        event_type="patient.legacy_medical_card_imported",
+                        payload={
+                            "legacy": True,
+                            "medical_card": dict(legacy_medical_card),
+                        },
+                        source_session_id=source_session_id,
+                        idempotency_key=card_idempotency_key,
+                    )
+                    final_medical_card_snapshot.update(session_snapshot)
+                    event_ids.append(card_event_id)
+                    snapshot_event_ids.append(card_event_id)
                 summary: dict[str, Any] = {
                     "status": patient["status"],
                     "legacy": True,
@@ -524,11 +624,11 @@ class PatientCommandService:
                     connection,
                     patient_id=patient_id,
                     patient_version=version,
-                    medical_card_snapshot=medical_card_snapshot,
+                    medical_card_snapshot=final_medical_card_snapshot,
                     summary=summary,
                     record_refs=record_refs,
                     asset_refs=asset_refs,
-                    source_event_ids=[event_id],
+                    source_event_ids=snapshot_event_ids,
                 )
         except PatientEventConflictError:
             with self._registry.transaction() as connection:
@@ -541,7 +641,7 @@ class PatientCommandService:
             patient_id=patient_id,
             patient_version=version,
             projection_version=version,
-            event_ids=[event_id],
+            event_ids=event_ids,
             snapshot_changed=True,
         )
 

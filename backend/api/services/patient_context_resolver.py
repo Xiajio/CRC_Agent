@@ -32,6 +32,7 @@ class PatientContextResolver:
 
         context_state = session.context_state if isinstance(session.context_state, Mapping) else {}
         has_legacy_medical_card = "medical_card" in context_state
+        legacy_medical_card = context_state.get("medical_card")
         try:
             projection = self._registry.get_patient_context_projection(session.patient_id)
         except Exception as exc:
@@ -39,9 +40,16 @@ class PatientContextResolver:
                 raise PatientContextStaleError(
                     "PATIENT_CONTEXT_STALE: projection unavailable"
                 ) from exc
+            if not isinstance(legacy_medical_card, Mapping):
+                raise PatientContextStaleError(
+                    "PATIENT_CONTEXT_STALE: projection unavailable"
+                ) from exc
             try:
-                self._patient_commands.bootstrap_legacy_patient(session.patient_id)
-                self._session_store.clear_legacy_medical_card(session_id)
+                self._patient_commands.bootstrap_legacy_patient(
+                    session.patient_id,
+                    legacy_medical_card=legacy_medical_card,
+                    source_session_id=session_id,
+                )
                 projection = self._registry.get_patient_context_projection(session.patient_id)
             except Exception as migration_exc:
                 raise PatientContextStaleError(
