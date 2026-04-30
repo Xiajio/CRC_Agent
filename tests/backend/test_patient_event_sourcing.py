@@ -476,7 +476,7 @@ def test_medical_card_extracted_creates_record_and_snapshot(tmp_path: Path) -> N
     assert record["source_event_id"] in result.event_ids
     assert record["patient_version"] == 3
     assert asset["parse_status"] == "parsed"
-    assert str(result.record_id) in asset["record_ids_json"]
+    assert result.record_id in json.loads(asset["record_ids_json"])
 
 
 def test_medical_card_extracted_record_only_does_not_update_patient_facts(tmp_path: Path) -> None:
@@ -519,5 +519,212 @@ def test_medical_card_extracted_record_only_does_not_update_patient_facts(tmp_pa
             (patient.patient_id,),
         ).fetchone()
     assert asset["parse_status"] == "parsed"
-    assert str(result.record_id) in asset["record_ids_json"]
+    assert result.record_id in json.loads(asset["record_ids_json"])
+    assert snapshot["medical_card_snapshot_json"] == "{}"
+
+
+def test_medical_card_extracted_reuses_parsed_asset_on_retry(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="retry-report.pdf",
+        content_type="application/pdf",
+        size_bytes=11,
+        sha256="retry-report-sha",
+        storage_path=str(tmp_path / "assets" / "retry-report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+    first = commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=upload.asset_id,
+        patient_snapshot={"clinical_stage": "cT3N1M0"},
+        record_payload={"document_type": "patient_report"},
+        summary_text="cT3N1M0 rectal cancer",
+        document_type="patient_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+
+    second = commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=upload.asset_id,
+        patient_snapshot={"clinical_stage": "cT3N1M0"},
+        record_payload={"document_type": "patient_report"},
+        summary_text="cT3N1M0 rectal cancer",
+        document_type="patient_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+
+    assert second.reused is True
+    assert second.patient_id == patient.patient_id
+    assert second.patient_version == first.patient_version
+    assert second.projection_version == first.projection_version
+    assert second.event_ids == []
+    assert second.asset_id == upload.asset_id
+    assert second.record_id == first.record_id
+    assert second.snapshot_changed is False
+    with registry._connect() as connection:
+        event_count = connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM patient_events
+            WHERE patient_id = ? AND event_type = 'patient.medical_card_extracted'
+            """,
+            (patient.patient_id,),
+        ).fetchone()
+    assert int(event_count["count"]) == 1
+
+
+def test_medical_card_extracted_uses_explicit_document_type_for_record(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="pathology.pdf",
+        content_type="application/pdf",
+        size_bytes=11,
+        sha256="pathology-sha",
+        storage_path=str(tmp_path / "assets" / "pathology.pdf"),
+        source_session_id="sess_patient_1",
+    )
+    record_payload = {"data": {"diagnosis": "adenocarcinoma"}}
+
+    result = commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=upload.asset_id,
+        patient_snapshot={"tumor_location": "rectum"},
+        record_payload=record_payload,
+        summary_text="Pathology report",
+        document_type="pathology_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+
+    assert "document_type" not in record_payload
+    with registry._connect() as connection:
+        record = connection.execute(
+            """
+            SELECT document_type, normalized_payload_json
+            FROM patient_records
+            WHERE record_id = ?
+            """,
+            (result.record_id,),
+        ).fetchone()
+    assert record["document_type"] == "pathology_report"
+    assert json.loads(record["normalized_payload_json"])["document_type"] == "pathology_report"
+
+
+def test_medical_card_extracted_merges_snapshot_refs_and_preserves_asset_sha(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    first_upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="first-report.pdf",
+        content_type="application/pdf",
+        size_bytes=11,
+        sha256="first-report-sha",
+        storage_path=str(tmp_path / "assets" / "first-report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+    second_upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="second-report.pdf",
+        content_type="application/pdf",
+        size_bytes=12,
+        sha256="second-report-sha",
+        storage_path=str(tmp_path / "assets" / "second-report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    first_record = commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=first_upload.asset_id,
+        patient_snapshot={"clinical_stage": "cT3N1M0"},
+        record_payload={"document_type": "patient_report"},
+        summary_text="First report",
+        document_type="patient_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+    second_record = commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=second_upload.asset_id,
+        patient_snapshot={"tumor_location": "rectum"},
+        record_payload={"document_type": "imaging_report"},
+        summary_text="Second report",
+        document_type="imaging_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+
+    with registry._connect() as connection:
+        snapshot = connection.execute(
+            """
+            SELECT record_refs_json, asset_refs_json
+            FROM patient_snapshots
+            WHERE patient_id = ?
+            """,
+            (patient.patient_id,),
+        ).fetchone()
+    record_refs = json.loads(snapshot["record_refs_json"])
+    asset_refs = json.loads(snapshot["asset_refs_json"])
+    assert [ref["record_id"] for ref in record_refs] == [
+        first_record.record_id,
+        second_record.record_id,
+    ]
+    assert asset_refs == [
+        {
+            "asset_id": first_upload.asset_id,
+            "sha256": "first-report-sha",
+            "parse_status": "parsed",
+        },
+        {
+            "asset_id": second_upload.asset_id,
+            "sha256": "second-report-sha",
+            "parse_status": "parsed",
+        },
+    ]
+
+
+def test_medical_card_extracted_placeholder_snapshot_does_not_update_medical_card_snapshot(
+    tmp_path: Path,
+) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="placeholder-report.pdf",
+        content_type="application/pdf",
+        size_bytes=11,
+        sha256="placeholder-report-sha",
+        storage_path=str(tmp_path / "assets" / "placeholder-report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    result = commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=upload.asset_id,
+        patient_snapshot={"clinical_stage": "Unknown", "tumor_location": "pending_evaluation"},
+        record_payload={"document_type": "patient_report", "data": {"staging_block": {"clinical_stage": "Unknown"}}},
+        summary_text="Placeholder report",
+        document_type="patient_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+
+    assert result.record_id is not None
+    detail = registry.get_patient_detail(patient.patient_id)
+    assert detail["clinical_stage"] is None
+    assert detail["tumor_location"] is None
+    with registry._connect() as connection:
+        snapshot = connection.execute(
+            "SELECT medical_card_snapshot_json FROM patient_snapshots WHERE patient_id = ?",
+            (patient.patient_id,),
+        ).fetchone()
     assert snapshot["medical_card_snapshot_json"] == "{}"

@@ -73,19 +73,36 @@ class PatientCommandService:
         existing_asset_refs: list[dict[str, Any]] | list[str],
         incoming_asset_ref: dict[str, Any],
     ) -> list[dict[str, Any]]:
+        return self._merge_refs_by_key(existing_asset_refs, [incoming_asset_ref], "asset_id")
+
+    def _merge_refs_by_key(
+        self,
+        existing_refs: list[dict[str, Any]] | list[str],
+        incoming_refs: list[dict[str, Any]] | None,
+        key: str,
+    ) -> list[dict[str, Any]]:
         merged: list[dict[str, Any]] = []
-        incoming_asset_id = incoming_asset_ref.get("asset_id")
-        replaced = False
-        for asset_ref in existing_asset_refs:
-            if not isinstance(asset_ref, dict):
+        indexes: dict[Any, int] = {}
+        for ref in existing_refs:
+            if not isinstance(ref, dict):
                 continue
-            if asset_ref.get("asset_id") == incoming_asset_id:
-                merged.append(dict(incoming_asset_ref))
-                replaced = True
+            ref_key = ref.get(key)
+            if ref_key is None:
+                continue
+            indexes[ref_key] = len(merged)
+            merged.append(dict(ref))
+        for ref in incoming_refs or []:
+            if not isinstance(ref, dict):
+                continue
+            ref_key = ref.get(key)
+            if ref_key is None:
+                continue
+            if ref_key in indexes:
+                index = indexes[ref_key]
+                merged[index] = {**merged[index], **ref}
             else:
-                merged.append(dict(asset_ref))
-        if not replaced:
-            merged.append(dict(incoming_asset_ref))
+                indexes[ref_key] = len(merged)
+                merged.append(dict(ref))
         return merged
 
     def _snapshot_asset_refs_with(
@@ -186,8 +203,8 @@ class PatientCommandService:
             merged_medical_card_snapshot = medical_card_snapshot or {}
             merged_summary = summary or {}
             merged_active_alerts = active_alerts or []
-            merged_record_refs = record_refs or []
-            merged_asset_refs = asset_refs or []
+            merged_record_refs = self._merge_refs_by_key([], record_refs, "record_id")
+            merged_asset_refs = self._merge_refs_by_key([], asset_refs, "asset_id")
             merged_source_event_ids = source_event_ids or []
         else:
             merged_medical_card_snapshot = self._load_json_mapping(
@@ -206,12 +223,20 @@ class PatientCommandService:
                 else self._load_json_list(existing["active_alerts_json"])
             )
             merged_record_refs = (
-                record_refs
+                self._merge_refs_by_key(
+                    self._load_json_list(existing["record_refs_json"]),
+                    record_refs,
+                    "record_id",
+                )
                 if record_refs is not None
                 else self._load_json_list(existing["record_refs_json"])
             )
             merged_asset_refs = (
-                asset_refs
+                self._merge_refs_by_key(
+                    self._load_json_list(existing["asset_refs_json"]),
+                    asset_refs,
+                    "asset_id",
+                )
                 if asset_refs is not None
                 else self._load_json_list(existing["asset_refs_json"])
             )
@@ -573,6 +598,42 @@ class PatientCommandService:
             ).fetchone()
             if asset is None:
                 raise KeyError(f"Patient asset not found: {patient_id}/{asset_id}")
+            existing_record_ids = self._load_json_list(asset["record_ids_json"])
+            existing_record_id = next(
+                (
+                    int(record_id)
+                    for record_id in existing_record_ids
+                    if isinstance(record_id, (int, str)) and str(record_id).isdigit()
+                ),
+                None,
+            )
+            if asset["parse_status"] == "parsed" and existing_record_id is not None:
+                patient_version = int(asset["patient_version"])
+                snapshot = connection.execute(
+                    """
+                    SELECT projection_version
+                    FROM patient_snapshots
+                    WHERE patient_id = ?
+                    """,
+                    (patient_id,),
+                ).fetchone()
+                projection_version = (
+                    patient_version
+                    if snapshot is None
+                    else int(snapshot["projection_version"])
+                )
+                return PatientCommandResult(
+                    patient_id=patient_id,
+                    patient_version=patient_version,
+                    projection_version=projection_version,
+                    event_ids=[],
+                    asset_id=asset_id,
+                    record_id=existing_record_id,
+                    reused=True,
+                    snapshot_changed=False,
+                )
+
+            enriched_record_payload = {**record_payload, "document_type": document_type}
 
             event_id, version = self._append_event(
                 connection,
@@ -583,7 +644,7 @@ class PatientCommandService:
                     "document_type": document_type,
                     "ingest_decision": ingest_decision,
                     "summary_text": summary_text,
-                    "record_payload": record_payload,
+                    "record_payload": enriched_record_payload,
                     "patient_snapshot": patient_snapshot,
                 },
                 source_session_id=source_session_id,
@@ -601,7 +662,7 @@ class PatientCommandService:
                 patient_version=version,
                 asset_row=dict(asset),
                 patient_snapshot=merge_snapshot,
-                record_payload=record_payload,
+                record_payload=enriched_record_payload,
                 summary_text=summary_text,
                 record_type="medical_card",
             )
@@ -628,11 +689,19 @@ class PatientCommandService:
                 patient_id=patient_id,
                 patient_version=version,
                 medical_card_snapshot=(
-                    record_payload if ingest_decision == "record_and_snapshot" else {}
+                    enriched_record_payload
+                    if record_result["snapshot_contributed"]
+                    else {}
                 ),
                 summary={"summary_text": summary_text, "detail": detail},
                 record_refs=[{"record_id": record_id, "document_type": document_type}],
-                asset_refs=[{"asset_id": asset_id, "parse_status": "parsed"}],
+                asset_refs=[
+                    {
+                        "asset_id": asset_id,
+                        "sha256": str(asset["sha256"]),
+                        "parse_status": "parsed",
+                    }
+                ],
                 source_event_ids=[event_id],
             )
         return PatientCommandResult(
