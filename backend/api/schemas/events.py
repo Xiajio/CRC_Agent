@@ -175,5 +175,7 @@ class DoneEvent(BaseModel):
     thread_id: str
     run_id: str
     snapshot_version: int
+    patient_version_used: int | None = None
+    patient_context_stale: bool = False
 
     model_config = ConfigDict(extra="forbid")
