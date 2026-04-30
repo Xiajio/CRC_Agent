@@ -554,7 +554,7 @@ class PatientCommandService:
         self,
         *,
         patient_id: int,
-        asset_id: int | None,
+        asset_id: int,
         error_code: str,
         error_message: str,
         source_session_id: str | None,
@@ -562,7 +562,7 @@ class PatientCommandService:
         with self._registry.transaction() as connection:
             asset = connection.execute(
                 """
-                SELECT asset_id, sha256
+                SELECT asset_id, sha256, parse_status, parse_error_code, patient_version
                 FROM patient_assets
                 WHERE patient_id = ? AND asset_id = ?
                 """,
@@ -570,6 +570,17 @@ class PatientCommandService:
             ).fetchone()
             if asset is None:
                 raise KeyError(f"Patient asset not found: {patient_id}/{asset_id}")
+            if asset["parse_status"] == "failed" and asset["parse_error_code"] == error_code:
+                patient_version = int(asset["patient_version"])
+                return PatientCommandResult(
+                    patient_id=patient_id,
+                    patient_version=patient_version,
+                    projection_version=patient_version,
+                    event_ids=[],
+                    asset_id=asset_id,
+                    reused=True,
+                    snapshot_changed=False,
+                )
 
             event_id, version = self._append_event(
                 connection,
