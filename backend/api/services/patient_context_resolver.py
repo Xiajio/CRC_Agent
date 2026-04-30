@@ -17,9 +17,11 @@ class PatientContextResolver:
         self,
         registry: PatientRegistryService,
         session_store: InMemorySessionStore,
+        patient_commands: Any | None = None,
     ) -> None:
         self._registry = registry
         self._session_store = session_store
+        self._patient_commands = patient_commands
 
     def resolve(self, session_id: str) -> dict[str, Any] | None:
         session = self._session_store.get_session(session_id)
@@ -28,12 +30,23 @@ class PatientContextResolver:
         if session.patient_id is None:
             return None
 
+        context_state = session.context_state if isinstance(session.context_state, Mapping) else {}
+        has_legacy_medical_card = "medical_card" in context_state
         try:
             projection = self._registry.get_patient_context_projection(session.patient_id)
         except Exception as exc:
-            raise PatientContextStaleError(
-                "PATIENT_CONTEXT_STALE: projection unavailable"
-            ) from exc
+            if not has_legacy_medical_card or self._patient_commands is None:
+                raise PatientContextStaleError(
+                    "PATIENT_CONTEXT_STALE: projection unavailable"
+                ) from exc
+            try:
+                self._patient_commands.bootstrap_legacy_patient(session.patient_id)
+                self._session_store.clear_legacy_medical_card(session_id)
+                projection = self._registry.get_patient_context_projection(session.patient_id)
+            except Exception as migration_exc:
+                raise PatientContextStaleError(
+                    "PATIENT_CONTEXT_STALE: projection unavailable"
+                ) from migration_exc
 
         context_state = session.context_state if isinstance(session.context_state, Mapping) else {}
         cache = context_state.get("patient_context_cache")

@@ -79,6 +79,69 @@ def test_resolver_fails_closed_when_projection_missing(tmp_path: Path) -> None:
     assert isinstance(exc_info.value.__cause__, KeyError)
 
 
+def test_resolver_fails_closed_for_legacy_card_without_patient_commands(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    patient_id = registry.create_draft_patient(created_by_session_id="legacy_session")
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient_id)
+    store.merge_context_state(
+        session.session_id,
+        {"medical_card": {"document_type": "legacy_card"}},
+    )
+    resolver = PatientContextResolver(registry, store)
+
+    with pytest.raises(PatientContextStaleError, match="PATIENT_CONTEXT_STALE"):
+        resolver.resolve(session.session_id)
+
+    assert store.get_session(session.session_id).context_state["medical_card"] == {
+        "document_type": "legacy_card"
+    }
+
+
+def test_resolver_imports_legacy_session_medical_card_once(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    patient_id = registry.create_draft_patient(created_by_session_id="legacy_session")
+    registry.write_medical_card_record(
+        patient_id=patient_id,
+        asset_row={
+            "filename": "legacy.pdf",
+            "content_type": "application/pdf",
+            "sha256": "legacy-sha",
+            "storage_path": str(tmp_path / "assets" / "legacy.pdf"),
+            "source": "patient_generated",
+        },
+        patient_snapshot={"clinical_stage": "cT2N0M0"},
+        record_payload={"document_type": "patient_report"},
+        summary_text="legacy",
+        record_type="medical_card",
+    )
+    commands = PatientCommandService(registry)
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient_id)
+    store.merge_context_state(
+        session.session_id,
+        {"medical_card": {"document_type": "legacy_card"}},
+    )
+    resolver = PatientContextResolver(registry, store, patient_commands=commands)
+
+    first = resolver.resolve(session.session_id)
+    second = resolver.resolve(session.session_id)
+
+    state = store.get_session(session.session_id).context_state
+    assert "medical_card" not in state
+    assert state["patient_context_cache"]["patient_version"] >= 1
+    assert state["patient_context_cache"]["medical_card_snapshot"] == {
+        "document_type": "patient_report"
+    }
+    assert second == first
+    with registry._connect() as connection:
+        event_count = connection.execute(
+            "SELECT COUNT(*) AS count FROM patient_events WHERE patient_id = ?",
+            (patient_id,),
+        ).fetchone()["count"]
+    assert event_count == first["patient_version"]
+
+
 def test_resolver_fails_closed_when_session_missing(tmp_path: Path) -> None:
     registry = PatientRegistryService(tmp_path / "patient_registry.db")
     store = InMemorySessionStore()
