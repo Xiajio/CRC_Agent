@@ -29,6 +29,7 @@ tmp/
 /_tmp/
 /tmp*
 /pytest-cache-files*
+.worktrees/
 *.log
 /_fix_*.txt
 /_ftfy_fixed.py
