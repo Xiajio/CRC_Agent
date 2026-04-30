@@ -79,11 +79,13 @@ class GraphService:
         compiled_graph: Any,
         session_store: InMemorySessionStore,
         *,
+        patient_context_resolver: Any | None = None,
         context_finalizer: Any | None = None,
         heartbeat_interval_seconds: float = 15.0,
     ) -> None:
         self._compiled_graph = compiled_graph
         self._session_store = session_store
+        self._patient_context_resolver = patient_context_resolver
         self._context_finalizer = context_finalizer
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._context_tasks: dict[str, asyncio.Task[Any]] = {}
@@ -501,6 +503,9 @@ class GraphService:
     def stream_turn(self, session_id: str, chat_request: Any) -> AsyncIterator[str]:
         meta = self._get_session_meta(session_id)
         meta = self._prepare_session_meta(session_id, chat_request, meta)
+        if self._patient_context_resolver is not None:
+            self._patient_context_resolver.resolve(session_id)
+            meta = self._session_store.get_session(session_id) or meta
         self._cancel_context_maintenance(session_id)
         thread_id = meta.thread_id
         starting_snapshot_version = meta.snapshot_version
@@ -677,11 +682,13 @@ class PatientGraphService(GraphService):
         compiled_graph: Any,
         session_store: InMemorySessionStore,
         *,
+        patient_context_resolver: Any | None = None,
         heartbeat_interval_seconds: float = 15.0,
     ) -> None:
         super().__init__(
             compiled_graph,
             session_store,
+            patient_context_resolver=patient_context_resolver,
             context_finalizer=None,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
         )
@@ -694,6 +701,7 @@ class DoctorGraphService(GraphService):
         session_store: InMemorySessionStore,
         *,
         patient_registry: Any | None = None,
+        patient_context_resolver: Any | None = None,
         context_finalizer: Any | None = None,
         heartbeat_interval_seconds: float = 15.0,
     ) -> None:
@@ -701,6 +709,7 @@ class DoctorGraphService(GraphService):
         super().__init__(
             compiled_graph,
             session_store,
+            patient_context_resolver=patient_context_resolver,
             context_finalizer=context_finalizer,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
         )
