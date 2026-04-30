@@ -106,6 +106,20 @@ class PatientCommandService:
                 merged.append(dict(ref))
         return merged
 
+    def _deep_merge_mapping(
+        self,
+        existing_snapshot: Mapping[str, Any],
+        incoming_snapshot: Mapping[str, Any] | None,
+    ) -> dict[str, Any]:
+        merged = dict(existing_snapshot)
+        for key, value in (incoming_snapshot or {}).items():
+            existing_value = merged.get(key)
+            if isinstance(existing_value, Mapping) and isinstance(value, Mapping):
+                merged[key] = self._deep_merge_mapping(existing_value, value)
+            else:
+                merged[key] = value
+        return merged
+
     def _snapshot_asset_refs_with(
         self,
         connection: sqlite3.Connection,
@@ -249,7 +263,10 @@ class PatientCommandService:
             (patient_id,),
         ).fetchone()
         if existing is None:
-            merged_medical_card_snapshot = medical_card_snapshot or {}
+            merged_medical_card_snapshot = self._deep_merge_mapping(
+                {},
+                medical_card_snapshot,
+            )
             merged_summary = summary or {}
             merged_active_alerts = active_alerts or []
             merged_record_refs = self._merge_refs_by_key([], record_refs, "record_id")
@@ -260,7 +277,10 @@ class PatientCommandService:
                 existing["medical_card_snapshot_json"]
             )
             if medical_card_snapshot is not None:
-                merged_medical_card_snapshot.update(medical_card_snapshot)
+                merged_medical_card_snapshot = self._deep_merge_mapping(
+                    merged_medical_card_snapshot,
+                    medical_card_snapshot,
+                )
 
             merged_summary = self._load_json_mapping(existing["summary_json"])
             if summary is not None:
@@ -564,7 +584,8 @@ class PatientCommandService:
                     if record["summary_text"]:
                         summary_text = str(record["summary_text"])
                     if bool(record["snapshot_contributed"]):
-                        medical_card_snapshot.update(
+                        medical_card_snapshot = self._deep_merge_mapping(
+                            medical_card_snapshot,
                             self._load_json_mapping(record["normalized_payload_json"])
                         )
 
@@ -610,7 +631,10 @@ class PatientCommandService:
                         source_session_id=source_session_id,
                         idempotency_key=card_idempotency_key,
                     )
-                    final_medical_card_snapshot.update(session_snapshot)
+                    final_medical_card_snapshot = self._deep_merge_mapping(
+                        final_medical_card_snapshot,
+                        session_snapshot,
+                    )
                     event_ids.append(card_event_id)
                     snapshot_event_ids.append(card_event_id)
                 summary: dict[str, Any] = {
@@ -943,11 +967,7 @@ class PatientCommandService:
                 connection,
                 patient_id=patient_id,
                 patient_version=version,
-                medical_card_snapshot=(
-                    enriched_record_payload
-                    if record_result["snapshot_contributed"]
-                    else {}
-                ),
+                medical_card_snapshot=record_result["projection_medical_card_snapshot"],
                 summary={"summary_text": summary_text, "detail": detail},
                 record_refs=[{"record_id": record_id, "document_type": document_type}],
                 asset_refs=[
@@ -981,7 +1001,13 @@ class PatientCommandService:
         with self._registry.transaction() as connection:
             asset = connection.execute(
                 """
-                SELECT asset_id, sha256, parse_status, parse_error_code, patient_version
+                SELECT
+                    asset_id,
+                    sha256,
+                    parse_status,
+                    parse_error_code,
+                    record_ids_json,
+                    patient_version
                 FROM patient_assets
                 WHERE patient_id = ? AND asset_id = ?
                 """,
@@ -989,6 +1015,40 @@ class PatientCommandService:
             ).fetchone()
             if asset is None:
                 raise KeyError(f"Patient asset not found: {patient_id}/{asset_id}")
+            if asset["parse_status"] == "parsed":
+                patient_version = int(asset["patient_version"])
+                snapshot = connection.execute(
+                    """
+                    SELECT projection_version
+                    FROM patient_snapshots
+                    WHERE patient_id = ?
+                    """,
+                    (patient_id,),
+                ).fetchone()
+                projection_version = (
+                    patient_version
+                    if snapshot is None
+                    else int(snapshot["projection_version"])
+                )
+                existing_record_ids = self._load_json_list(asset["record_ids_json"])
+                existing_record_id = next(
+                    (
+                        int(record_id)
+                        for record_id in existing_record_ids
+                        if isinstance(record_id, (int, str)) and str(record_id).isdigit()
+                    ),
+                    None,
+                )
+                return PatientCommandResult(
+                    patient_id=patient_id,
+                    patient_version=patient_version,
+                    projection_version=projection_version,
+                    event_ids=[],
+                    asset_id=asset_id,
+                    record_id=existing_record_id,
+                    reused=True,
+                    snapshot_changed=False,
+                )
             if asset["parse_status"] == "failed" and asset["parse_error_code"] == error_code:
                 patient_version = int(asset["patient_version"])
                 return PatientCommandResult(
