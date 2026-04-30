@@ -718,13 +718,14 @@ class DoctorGraphService(GraphService):
         self,
         summary_message: Any,
         alerts: list[Mapping[str, Any]],
+        patient_version: int | None = None,
     ) -> HumanMessage | Any:
         if isinstance(summary_message, HumanMessage):
             summary_text = summary_message.content
         else:
             summary_text = str(summary_message)
 
-        if not alerts:
+        if not alerts and patient_version is None:
             return summary_message if isinstance(summary_message, HumanMessage) else HumanMessage(content=summary_text)
 
         warning_parts: list[str] = []
@@ -737,9 +738,18 @@ class DoctorGraphService(GraphService):
                 else:
                     warning_parts.append(kind)
 
+        context_lines: list[str] = []
         if warning_parts:
+            context_lines.append(f"Warnings: {'; '.join(warning_parts)}")
+        if patient_version is not None:
+            context_lines.append(f"Patient version: {patient_version}.")
+
+        if context_lines:
             summary_text = summary_text.rstrip()
-            summary_text = f"{summary_text}\nWarnings: {'; '.join(warning_parts)}"
+            if summary_text:
+                summary_text = f"{summary_text}\n" + "\n".join(context_lines)
+            else:
+                summary_text = "\n".join(context_lines)
 
         return HumanMessage(content=summary_text)
 
@@ -755,7 +765,22 @@ class DoctorGraphService(GraphService):
             return meta
 
         context_state = meta.context_state if isinstance(meta.context_state, Mapping) else {}
-        if context_state.get("bound_patient_id") == patient_id:
+        current_patient_version = None
+        get_patient_context_projection = getattr(self._patient_registry, "get_patient_context_projection", None)
+        if callable(get_patient_context_projection):
+            try:
+                projection = get_patient_context_projection(patient_id)
+            except Exception:
+                projection = None
+            if isinstance(projection, Mapping):
+                version = projection.get("patient_version")
+                if isinstance(version, int):
+                    current_patient_version = version
+
+        if (
+            context_state.get("bound_patient_id") == patient_id
+            and context_state.get("last_injected_patient_version") == current_patient_version
+        ):
             return meta
 
         get_summary_message = getattr(self._patient_registry, "get_patient_summary_message", None)
@@ -774,7 +799,11 @@ class DoctorGraphService(GraphService):
             if summary_message is not None:
                 self._session_store.enqueue_context_message(
                     session_id,
-                    self._compose_registry_context_message(summary_message, alerts),
+                    self._compose_registry_context_message(
+                        summary_message,
+                        alerts,
+                        patient_version=current_patient_version,
+                    ),
                 )
 
         bound_snapshot_version = None
@@ -791,6 +820,8 @@ class DoctorGraphService(GraphService):
             session_id,
             {
                 "bound_patient_id": patient_id,
+                "bound_patient_version": current_patient_version,
+                "last_injected_patient_version": current_patient_version,
                 "bound_patient_snapshot_version": bound_snapshot_version,
                 "bound_patient_alert_count": len(alerts),
             },
