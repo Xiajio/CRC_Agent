@@ -256,6 +256,22 @@ def _response_payload(asset_record: dict[str, Any], *, reused: bool) -> dict[str
     }
 
 
+def _record_upload_command_failure(
+    *,
+    patient_commands: PatientCommandService,
+    patient_id: int,
+    asset_id: int,
+    error_message: str,
+    source_session_id: str,
+) -> None:
+    patient_commands.record_upload_command_failed(
+        patient_id=patient_id,
+        asset_id=asset_id,
+        error_message=error_message,
+        source_session_id=source_session_id,
+    )
+
+
 def _require_session_meta(session_store: InMemorySessionStore, session_id: str) -> SessionMeta:
     meta = session_store.get_session(session_id)
     if meta is None:
@@ -397,7 +413,7 @@ def store_session_upload(
                     "record_id": None,
                 }
                 session_store.bump_snapshot_version(session_id)
-                return _response_payload(asset_record, reused=False)
+                return _response_payload(asset_record, reused=bool(upload_result.reused or failed_result.reused))
 
             card_payload = _card_to_dict(medical_card)
             document_type = classify_upload_document(normalized_filename, card_payload)
@@ -492,6 +508,15 @@ def store_session_upload(
 
             return _response_payload(asset_record, reused=bool(upload_result.reused or registry_write.reused))
         except Exception as exc:
+            if "upload_result" in locals() and upload_result.asset_id is not None:
+                (stable_derived_root / "medical_card.json").unlink(missing_ok=True)
+                _record_upload_command_failure(
+                    patient_commands=patient_commands,
+                    patient_id=patient_id,
+                    asset_id=int(upload_result.asset_id),
+                    error_message=str(exc),
+                    source_session_id=session_id,
+                )
             if "asset_id" in locals():
                 meta.uploaded_assets.pop(asset_id, None)
             processed_value = meta.processed_files.get(processed_key)

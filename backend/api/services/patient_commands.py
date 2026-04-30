@@ -801,3 +801,91 @@ class PatientCommandService:
             asset_id=asset_id,
             snapshot_changed=True,
         )
+
+    def record_upload_command_failed(
+        self,
+        *,
+        patient_id: int,
+        asset_id: int,
+        error_message: str,
+        source_session_id: str | None,
+    ) -> PatientCommandResult:
+        error_code = "UPLOAD_COMMAND_ERROR"
+        with self._registry.transaction() as connection:
+            asset = connection.execute(
+                """
+                SELECT asset_id, sha256, parse_status, parse_error_code, patient_version
+                FROM patient_assets
+                WHERE patient_id = ? AND asset_id = ?
+                """,
+                (patient_id, asset_id),
+            ).fetchone()
+            if asset is None:
+                raise KeyError(f"Patient asset not found: {patient_id}/{asset_id}")
+            if asset["parse_status"] == "failed" and asset["parse_error_code"] == error_code:
+                patient_version = int(asset["patient_version"])
+                return PatientCommandResult(
+                    patient_id=patient_id,
+                    patient_version=patient_version,
+                    projection_version=patient_version,
+                    event_ids=[],
+                    asset_id=asset_id,
+                    reused=True,
+                    snapshot_changed=False,
+                )
+
+            event_id, version = self._append_event(
+                connection,
+                patient_id=patient_id,
+                event_type="patient.upload_parse_failed",
+                payload={
+                    "asset_id": asset_id,
+                    "error_code": error_code,
+                    "error_message": error_message,
+                },
+                source_session_id=source_session_id,
+                idempotency_key=f"patient.upload_command_failed:{patient_id}:{asset_id}:{error_code}",
+                actor_type="system",
+            )
+            connection.execute(
+                """
+                UPDATE patient_assets
+                SET parse_status = ?,
+                    parse_error_code = ?,
+                    parse_error_message = ?,
+                    patient_version = ?
+                WHERE patient_id = ? AND asset_id = ?
+                """,
+                (
+                    "failed",
+                    error_code,
+                    error_message,
+                    version,
+                    patient_id,
+                    asset_id,
+                ),
+            )
+            asset_ref = {
+                "asset_id": int(asset["asset_id"]),
+                "sha256": str(asset["sha256"]),
+                "parse_status": "failed",
+            }
+            self._upsert_snapshot(
+                connection,
+                patient_id=patient_id,
+                patient_version=version,
+                asset_refs=self._snapshot_asset_refs_with(
+                    connection,
+                    patient_id=patient_id,
+                    asset_ref=asset_ref,
+                ),
+                source_event_ids=[event_id],
+            )
+        return PatientCommandResult(
+            patient_id=patient_id,
+            patient_version=version,
+            projection_version=version,
+            event_ids=[event_id],
+            asset_id=asset_id,
+            snapshot_changed=True,
+        )
