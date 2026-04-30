@@ -111,7 +111,8 @@ def test_parse_failed_upload_is_asset_only_and_does_not_update_snapshot(
         "patient.upload_received",
         "patient.upload_parse_failed",
     ]
-    assert "medical_card" not in session_store.get_session(session_id).context_state
+    context_state = session_store.get_session(session_id).context_state
+    assert "medical_card" not in context_state
 
 
 def test_patient_report_upload_is_record_and_snapshot_eligible(
@@ -144,7 +145,8 @@ def test_patient_report_upload_is_record_and_snapshot_eligible(
         "patient.upload_received",
         "patient.medical_card_extracted",
     ]
-    assert "medical_card" not in session_store.get_session(session_id).context_state
+    context_state = session_store.get_session(session_id).context_state
+    assert "medical_card" not in context_state
 
 
 def test_extraction_command_failure_marks_asset_failed_and_removes_derived_card(
