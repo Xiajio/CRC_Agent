@@ -432,3 +432,48 @@ def test_upload_parse_failed_reuses_existing_failure_for_same_error_code(tmp_pat
     assert int(event_count["count"]) == 1
     assert asset["patient_version"] == first.patient_version
     assert asset["parse_error_message"] == "parse failed"
+
+
+def test_medical_card_extracted_creates_record_and_snapshot(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="patient-report.pdf",
+        content_type="application/pdf",
+        size_bytes=11,
+        sha256="report-sha",
+        storage_path=str(tmp_path / "assets" / "patient-report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    result = commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=upload.asset_id,
+        patient_snapshot={"clinical_stage": "cT3N1M0", "tumor_location": "rectum"},
+        record_payload={"document_type": "patient_report", "data": {"staging_block": {"clinical_stage": "cT3N1M0"}}},
+        summary_text="cT3N1M0 rectal cancer",
+        document_type="patient_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+
+    assert result.patient_version == 3
+    assert result.record_id is not None
+    detail = registry.get_patient_detail(patient.patient_id)
+    assert detail["clinical_stage"] == "cT3N1M0"
+    assert detail["tumor_location"] == "rectum"
+    with registry._connect() as connection:
+        record = connection.execute(
+            "SELECT source_event_id, patient_version FROM patient_records WHERE record_id = ?",
+            (result.record_id,),
+        ).fetchone()
+        asset = connection.execute(
+            "SELECT parse_status, record_ids_json FROM patient_assets WHERE asset_id = ?",
+            (upload.asset_id,),
+        ).fetchone()
+    assert record["source_event_id"] in result.event_ids
+    assert record["patient_version"] == 3
+    assert asset["parse_status"] == "parsed"
+    assert str(result.record_id) in asset["record_ids_json"]
