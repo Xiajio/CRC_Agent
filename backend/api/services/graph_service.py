@@ -105,40 +105,26 @@ class GraphService:
     def _doctor_patient_version_used(self, meta: SessionMeta) -> int | None:
         context_state = meta.context_state if isinstance(meta.context_state, Mapping) else {}
         if meta.scene == "doctor" and meta.patient_id is not None:
-            return self._int_patient_version(context_state.get("last_injected_patient_version"))
+            last_injected_version = self._int_patient_version(
+                context_state.get("last_injected_patient_version")
+            )
+            if last_injected_version is not None:
+                return last_injected_version
+            return self._int_patient_version(context_state.get("bound_patient_version"))
 
         return None
 
     def _safe_session_patient_version(self, meta: SessionMeta) -> int | None:
-        doctor_version = self._doctor_patient_version_used(meta)
-        if doctor_version is not None:
-            return doctor_version
-
-        context_state = meta.context_state if isinstance(meta.context_state, Mapping) else {}
-        cache = context_state.get("patient_context_cache")
-        if (
-            isinstance(cache, Mapping)
-            and cache.get("projection_version") is not None
-            and isinstance(cache.get("medical_card_snapshot"), Mapping)
-        ):
-            patient_version = self._int_patient_version(cache.get("patient_version"))
-            if patient_version is not None:
-                return patient_version
-
-        return None
+        return self._doctor_patient_version_used(meta)
 
     def _patient_version_used(self, meta: SessionMeta, prepared_payload: Mapping[str, Any]) -> int | None:
-        doctor_version = self._doctor_patient_version_used(meta)
-        if doctor_version is not None:
-            return doctor_version
-
         patient_context = prepared_payload.get("patient_context")
         if isinstance(patient_context, Mapping):
             patient_version = self._int_patient_version(patient_context.get("patient_version"))
             if patient_version is not None:
                 return patient_version
 
-        return None
+        return self._doctor_patient_version_used(meta)
 
     def _stale_patient_context_stream(
         self,
