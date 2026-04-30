@@ -205,7 +205,7 @@ async def test_done_event_ignores_malformed_patient_context_cache_version() -> N
 
 
 @pytest.mark.asyncio
-async def test_doctor_done_event_prefers_injected_version_over_stale_cache() -> None:
+async def test_doctor_done_event_prefers_payload_context_over_injected_version() -> None:
     session_store = InMemorySessionStore()
     meta = session_store.create_session(scene="doctor", patient_id=33)
     session_store.merge_context_state(
@@ -235,7 +235,7 @@ async def test_doctor_done_event_prefers_injected_version_over_stale_cache() -> 
     done = find_event(parse_sse_payloads(chunks), "done")
 
     assert graph.last_payload["patient_context"]["patient_version"] == 1
-    assert done["patient_version_used"] == 3
+    assert done["patient_version_used"] == 1
     assert done["patient_context_stale"] is False
 
 
@@ -412,6 +412,17 @@ async def test_stream_turn_state_graph_node_receives_patient_context() -> None:
 async def test_stream_turn_surfaces_patient_context_resolver_failures() -> None:
     store = InMemorySessionStore()
     session = store.create_session(scene="patient", patient_id=1)
+    store.merge_context_state(
+        session.session_id,
+        {
+            "patient_context_cache": {
+                "patient_id": 1,
+                "patient_version": 5,
+                "projection_version": 5,
+                "medical_card_snapshot": {"cached": True},
+            },
+        },
+    )
     graph = CaptureGraph()
     service = GraphService(
         graph,
