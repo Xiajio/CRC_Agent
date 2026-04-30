@@ -25,6 +25,7 @@ htmlcov/
 output/
 runtime/
 tmp/
+.tmp/
 # Root scratch dirs/files left by Python, pip, or pytest temp roots.
 /_tmp/
 /tmp*
