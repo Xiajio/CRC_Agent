@@ -148,6 +148,43 @@ def test_identity_set_maps_unique_index_race_to_patient_number_conflict(tmp_path
             patient_number="p-001",
             source_session_id="sess_patient_1",
         )
+    with registry._connect() as connection:
+        identity_event = connection.execute(
+            """
+            SELECT 1 FROM patient_events
+            WHERE patient_id = ? AND event_type = 'patient.identity_set'
+            """,
+            (created.patient_id,),
+        ).fetchone()
+    assert identity_event is None
+
+
+def test_created_by_session_id_is_unique_for_direct_patient_inserts(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+
+    with registry._connect() as connection:
+        connection.execute(
+            """
+            INSERT INTO patients (
+                status, created_by_session_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?)
+            """,
+            ("draft", "sess_patient_1", "2026-04-30T00:00:00+00:00", "2026-04-30T00:00:00+00:00"),
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """
+                INSERT INTO patients (
+                    status, created_by_session_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?)
+                """,
+                (
+                    "draft",
+                    "sess_patient_1",
+                    "2026-04-30T00:00:01+00:00",
+                    "2026-04-30T00:00:01+00:00",
+                ),
+            )
 
 
 def test_create_patient_reuses_existing_event_sourced_patient_for_session(tmp_path: Path) -> None:
@@ -155,6 +192,35 @@ def test_create_patient_reuses_existing_event_sourced_patient_for_session(tmp_pa
     commands = PatientCommandService(registry)
 
     first = commands.create_patient(created_by_session_id="sess_patient_1")
+    second = commands.create_patient(created_by_session_id="sess_patient_1")
+
+    assert second.reused is True
+    assert second.patient_id == first.patient_id
+    assert second.patient_version == first.patient_version
+    assert second.event_ids == first.event_ids
+    with registry._connect() as connection:
+        patient_count = connection.execute("SELECT COUNT(*) AS count FROM patients").fetchone()
+        event_count = connection.execute("SELECT COUNT(*) AS count FROM patient_events").fetchone()
+    assert int(patient_count["count"]) == 1
+    assert int(event_count["count"]) == 1
+
+
+def test_create_patient_unique_index_race_reuses_existing_patient(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    first = commands.create_patient(created_by_session_id="sess_patient_1")
+    original_lookup = commands._get_created_patient_for_session
+    calls = 0
+
+    def race_lookup(connection: sqlite3.Connection, created_by_session_id: str):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return None
+        return original_lookup(connection, created_by_session_id)
+
+    commands._get_created_patient_for_session = race_lookup  # type: ignore[method-assign]
+
     second = commands.create_patient(created_by_session_id="sess_patient_1")
 
     assert second.reused is True

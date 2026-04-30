@@ -293,14 +293,20 @@ class PatientCommandService:
             existing = self._get_created_patient_for_session(connection, created_by_session_id)
             if existing is not None:
                 return existing
-            cursor = connection.execute(
-                """
-                INSERT INTO patients (
-                    status, created_by_session_id, created_at, updated_at
-                ) VALUES (?, ?, ?, ?)
-                """,
-                ("draft", created_by_session_id, now, now),
-            )
+            try:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO patients (
+                        status, created_by_session_id, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    ("draft", created_by_session_id, now, now),
+                )
+            except sqlite3.IntegrityError as exc:
+                existing = self._get_created_patient_for_session(connection, created_by_session_id)
+                if existing is not None:
+                    return existing
+                raise PatientEventConflictError(str(exc)) from exc
             patient_id = int(cursor.lastrowid)
             event_id, version = self._append_event(
                 connection,
