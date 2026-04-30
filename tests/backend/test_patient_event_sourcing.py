@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_registry_service import PatientRegistryService
 
 
@@ -56,3 +57,56 @@ def test_patient_event_schema_is_initialized(tmp_path: Path) -> None:
         "projection_version",
         "updated_at",
     }.issubset(state_columns)
+
+
+def test_create_patient_appends_created_event_and_snapshot(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+
+    result = commands.create_patient(created_by_session_id="sess_patient_1")
+
+    assert result.patient_id > 0
+    assert result.patient_version == 1
+    assert result.event_ids
+    with registry._connect() as connection:
+        event = connection.execute(
+            "SELECT event_type, patient_version FROM patient_events WHERE patient_id = ?",
+            (result.patient_id,),
+        ).fetchone()
+        snapshot = connection.execute(
+            "SELECT patient_version, projection_version FROM patient_snapshots WHERE patient_id = ?",
+            (result.patient_id,),
+        ).fetchone()
+    assert event["event_type"] == "patient.created"
+    assert event["patient_version"] == 1
+    assert snapshot["patient_version"] == 1
+    assert snapshot["projection_version"] == 1
+
+
+def test_identity_set_appends_second_patient_version(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    created = commands.create_patient(created_by_session_id="sess_patient_1")
+
+    result = commands.set_identity(
+        patient_id=created.patient_id,
+        patient_name="Alice",
+        patient_number="p-001",
+        source_session_id="sess_patient_1",
+    )
+
+    assert result.patient_version == 2
+    assert registry.get_patient_identity(created.patient_id) == {
+        "patient_name": "Alice",
+        "patient_number": "p-001",
+        "identity_locked": True,
+    }
+    with registry._connect() as connection:
+        versions = [
+            int(row["patient_version"])
+            for row in connection.execute(
+                "SELECT patient_version FROM patient_events WHERE patient_id = ? ORDER BY patient_version",
+                (created.patient_id,),
+            )
+        ]
+    assert versions == [1, 2]
