@@ -485,28 +485,35 @@ class PatientRegistryService:
 
     def get_patient_detail(self, patient_id: int) -> dict[str, Any]:
         with self._connect() as connection:
-            row = connection.execute(
-                """
-                SELECT
-                    id AS patient_id,
-                    status,
-                    created_by_session_id,
-                    created_at,
-                    updated_at,
-                    chief_complaint,
-                    age,
-                    gender,
-                    tumor_location,
-                    mmr_status,
-                    clinical_stage,
-                    t_stage,
-                    n_stage,
-                    m_stage
-                FROM patients
-                WHERE id = ?
-                """,
-                (patient_id,),
-            ).fetchone()
+            return self.get_patient_detail_in_transaction(connection, patient_id)
+
+    def get_patient_detail_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        patient_id: int,
+    ) -> dict[str, Any]:
+        row = connection.execute(
+            """
+            SELECT
+                id AS patient_id,
+                status,
+                created_by_session_id,
+                created_at,
+                updated_at,
+                chief_complaint,
+                age,
+                gender,
+                tumor_location,
+                mmr_status,
+                clinical_stage,
+                t_stage,
+                n_stage,
+                m_stage
+            FROM patients
+            WHERE id = ?
+            """,
+            (patient_id,),
+        ).fetchone()
         if row is None:
             raise KeyError(f"Patient not found: {patient_id}")
         payload = dict(row)
@@ -624,6 +631,34 @@ class PatientRegistryService:
         summary_text: str,
         record_type: str,
     ) -> dict[str, Any]:
+        with self._connect() as connection:
+            return self.write_medical_card_record_in_transaction(
+                connection,
+                patient_id=patient_id,
+                asset_id=None,
+                source_event_id=None,
+                patient_version=0,
+                asset_row=asset_row,
+                patient_snapshot=patient_snapshot,
+                record_payload=record_payload,
+                summary_text=summary_text,
+                record_type=record_type,
+            )
+
+    def write_medical_card_record_in_transaction(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        patient_id: int,
+        asset_id: int | None,
+        source_event_id: str | None,
+        patient_version: int,
+        asset_row: dict[str, Any],
+        patient_snapshot: dict[str, Any],
+        record_payload: dict[str, Any],
+        summary_text: str,
+        record_type: str,
+    ) -> dict[str, Any]:
         now = _utc_now()
         document_type = _extract_document_type(record_payload, asset_row, record_type)
         source_priority = _source_priority(document_type)
@@ -633,14 +668,14 @@ class PatientRegistryService:
             if field in patient_snapshot
         }
 
-        with self._connect() as connection:
-            patient_row = connection.execute(
-                "SELECT * FROM patients WHERE id = ?",
-                (patient_id,),
-            ).fetchone()
-            if patient_row is None:
-                raise KeyError(f"Patient not found: {patient_id}")
+        patient_row = connection.execute(
+            "SELECT * FROM patients WHERE id = ?",
+            (patient_id,),
+        ).fetchone()
+        if patient_row is None:
+            raise KeyError(f"Patient not found: {patient_id}")
 
+        if asset_id is None:
             existing_asset = connection.execute(
                 """
                 SELECT asset_id
@@ -661,8 +696,11 @@ class PatientRegistryService:
                         sha256,
                         storage_path,
                         source,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        created_at,
+                        storage_status,
+                        parse_status,
+                        patient_version
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         patient_id,
@@ -672,185 +710,194 @@ class PatientRegistryService:
                         asset_row["storage_path"],
                         asset_row["source"],
                         now,
+                        "available",
+                        "parsed",
+                        patient_version,
                     ),
                 )
                 asset_id = int(asset_cursor.lastrowid)
             else:
                 asset_id = int(existing_asset["asset_id"])
+        else:
+            reused = False
 
-            existing_snapshot = {
-                field: patient_row[field]
-                for field in SNAPSHOT_COLUMNS
-                if field in patient_row.keys()
-            }
-            existing_provenance = _load_json_mapping(patient_row["snapshot_provenance_json"])
-            merged_snapshot = dict(existing_snapshot)
-            merged_provenance = dict(existing_provenance)
-            record_snapshot_meta: dict[str, dict[str, Any]] = {}
-            snapshot_contributed = False
-            conflict_detected = False
+        existing_snapshot = {
+            field: patient_row[field]
+            for field in SNAPSHOT_COLUMNS
+            if field in patient_row.keys()
+        }
+        existing_provenance = _load_json_mapping(patient_row["snapshot_provenance_json"])
+        merged_snapshot = dict(existing_snapshot)
+        merged_provenance = dict(existing_provenance)
+        record_snapshot_meta: dict[str, dict[str, Any]] = {}
+        snapshot_contributed = False
+        conflict_detected = False
 
-            for field in SNAPSHOT_COLUMNS:
-                if field not in patient_snapshot:
-                    continue
+        for field in SNAPSHOT_COLUMNS:
+            if field not in patient_snapshot:
+                continue
 
-                incoming_value = normalized_snapshot.get(field)
-                if not _is_valid_snapshot_value(incoming_value):
-                    record_snapshot_meta[field] = {
-                        "accepted": False,
-                        "conflict_detected": False,
-                        "document_type": document_type,
-                        "priority": source_priority,
-                        "previous_value": existing_snapshot.get(field),
-                        "incoming_value": incoming_value,
-                        "rejected_reason": "placeholder",
-                    }
-                    continue
-
-                current_value = existing_snapshot.get(field)
-                current_meta = _load_json_mapping(merged_provenance.get(field, {}))
-                current_priority = int(current_meta.get("priority", 0)) if current_meta else 0
-                field_meta = {
+            incoming_value = normalized_snapshot.get(field)
+            if not _is_valid_snapshot_value(incoming_value):
+                record_snapshot_meta[field] = {
                     "accepted": False,
                     "conflict_detected": False,
                     "document_type": document_type,
                     "priority": source_priority,
-                    "previous_value": current_value,
+                    "previous_value": existing_snapshot.get(field),
                     "incoming_value": incoming_value,
-                    "previous_priority": current_priority,
+                    "rejected_reason": "placeholder",
                 }
+                continue
 
-                if current_value in EMPTY_VALUES:
+            current_value = existing_snapshot.get(field)
+            current_meta = _load_json_mapping(merged_provenance.get(field, {}))
+            current_priority = int(current_meta.get("priority", 0)) if current_meta else 0
+            field_meta = {
+                "accepted": False,
+                "conflict_detected": False,
+                "document_type": document_type,
+                "priority": source_priority,
+                "previous_value": current_value,
+                "incoming_value": incoming_value,
+                "previous_priority": current_priority,
+            }
+
+            if current_value in EMPTY_VALUES:
+                merged_snapshot[field] = incoming_value
+                field_meta["accepted"] = True
+                snapshot_contributed = True
+            elif current_value == incoming_value:
+                field_meta["accepted"] = True
+                snapshot_contributed = True
+            else:
+                conflict_detected = True
+                field_meta["conflict_detected"] = True
+                if source_priority >= current_priority:
                     merged_snapshot[field] = incoming_value
                     field_meta["accepted"] = True
                     snapshot_contributed = True
-                elif current_value == incoming_value:
-                    field_meta["accepted"] = True
-                    snapshot_contributed = True
-                else:
-                    conflict_detected = True
-                    field_meta["conflict_detected"] = True
-                    if source_priority >= current_priority:
-                        merged_snapshot[field] = incoming_value
-                        field_meta["accepted"] = True
-                        snapshot_contributed = True
 
-                if field_meta["accepted"]:
-                    merged_provenance[field] = {
-                        "record_id": None,
-                        "document_type": document_type,
-                        "priority": source_priority,
-                        "updated_at": now,
-                        "conflict_detected": field_meta["conflict_detected"],
-                    }
-                record_snapshot_meta[field] = field_meta
-
-            ingest_decision = "record_and_snapshot" if snapshot_contributed else "record_only"
-
-            existing_record = connection.execute(
-                """
-                SELECT record_id
-                FROM patient_records
-                WHERE patient_id = ? AND asset_id = ? AND record_type = ?
-                ORDER BY record_id ASC
-                LIMIT 1
-                """,
-                (patient_id, asset_id, record_type),
-            ).fetchone()
-            if existing_record is None:
-                record_cursor = connection.execute(
-                    """
-                    INSERT INTO patient_records (
-                        patient_id,
-                        asset_id,
-                        record_type,
-                        document_type,
-                        ingest_decision,
-                        snapshot_contributed,
-                        conflict_detected,
-                        normalized_payload_json,
-                        summary_text,
-                        source,
-                        snapshot_meta_json,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        patient_id,
-                        asset_id,
-                        record_type,
-                        document_type,
-                        ingest_decision,
-                        1 if snapshot_contributed else 0,
-                        1 if conflict_detected else 0,
-                        json.dumps(record_payload, ensure_ascii=False),
-                        summary_text,
-                        asset_row["source"],
-                        json.dumps(record_snapshot_meta, ensure_ascii=False),
-                        now,
-                    ),
-                )
-                record_id = int(record_cursor.lastrowid)
-            else:
-                record_id = int(existing_record["record_id"])
-
-            final_record_snapshot_meta = {
-                field: {
-                    **field_meta,
-                    "record_id": record_id,
+            if field_meta["accepted"]:
+                merged_provenance[field] = {
+                    "record_id": None,
+                    "document_type": document_type,
+                    "priority": source_priority,
+                    "updated_at": now,
+                    "conflict_detected": field_meta["conflict_detected"],
                 }
-                for field, field_meta in record_snapshot_meta.items()
-            }
-            final_provenance = {
-                field: {
-                    **field_meta,
-                    "record_id": record_id,
-                }
-                for field, field_meta in merged_provenance.items()
-            }
-            connection.execute(
+            record_snapshot_meta[field] = field_meta
+
+        ingest_decision = "record_and_snapshot" if snapshot_contributed else "record_only"
+
+        existing_record = connection.execute(
+            """
+            SELECT record_id
+            FROM patient_records
+            WHERE patient_id = ? AND asset_id = ? AND record_type = ?
+            ORDER BY record_id ASC
+            LIMIT 1
+            """,
+            (patient_id, asset_id, record_type),
+        ).fetchone()
+        if existing_record is None:
+            record_cursor = connection.execute(
                 """
-                UPDATE patients
-                SET
-                    updated_at = ?,
-                    chief_complaint = ?,
-                    age = ?,
-                    gender = ?,
-                    tumor_location = ?,
-                    mmr_status = ?,
-                    clinical_stage = ?,
-                    t_stage = ?,
-                    n_stage = ?,
-                    m_stage = ?,
-                    snapshot_provenance_json = ?
-                WHERE id = ?
-                """,
-                (
-                    now,
-                    merged_snapshot.get("chief_complaint"),
-                    merged_snapshot.get("age"),
-                    merged_snapshot.get("gender"),
-                    merged_snapshot.get("tumor_location"),
-                    merged_snapshot.get("mmr_status"),
-                    merged_snapshot.get("clinical_stage"),
-                    merged_snapshot.get("t_stage"),
-                    merged_snapshot.get("n_stage"),
-                    merged_snapshot.get("m_stage"),
-                    json.dumps(final_provenance, ensure_ascii=False),
+                INSERT INTO patient_records (
                     patient_id,
-                ),
-            )
-            connection.execute(
-                """
-                UPDATE patient_records
-                SET snapshot_meta_json = ?
-                WHERE record_id = ?
+                    asset_id,
+                    record_type,
+                    document_type,
+                    ingest_decision,
+                    snapshot_contributed,
+                    conflict_detected,
+                    normalized_payload_json,
+                    summary_text,
+                    source,
+                    snapshot_meta_json,
+                    source_event_id,
+                    patient_version,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    json.dumps(final_record_snapshot_meta, ensure_ascii=False),
-                    record_id,
+                    patient_id,
+                    asset_id,
+                    record_type,
+                    document_type,
+                    ingest_decision,
+                    1 if snapshot_contributed else 0,
+                    1 if conflict_detected else 0,
+                    json.dumps(record_payload, ensure_ascii=False),
+                    summary_text,
+                    asset_row["source"],
+                    json.dumps(record_snapshot_meta, ensure_ascii=False),
+                    source_event_id,
+                    patient_version,
+                    now,
                 ),
             )
+            record_id = int(record_cursor.lastrowid)
+        else:
+            record_id = int(existing_record["record_id"])
+
+        final_record_snapshot_meta = {
+            field: {
+                **field_meta,
+                "record_id": record_id,
+            }
+            for field, field_meta in record_snapshot_meta.items()
+        }
+        final_provenance = {
+            field: {
+                **field_meta,
+                "record_id": record_id,
+            }
+            for field, field_meta in merged_provenance.items()
+        }
+        connection.execute(
+            """
+            UPDATE patients
+            SET
+                updated_at = ?,
+                chief_complaint = ?,
+                age = ?,
+                gender = ?,
+                tumor_location = ?,
+                mmr_status = ?,
+                clinical_stage = ?,
+                t_stage = ?,
+                n_stage = ?,
+                m_stage = ?,
+                snapshot_provenance_json = ?
+            WHERE id = ?
+            """,
+            (
+                now,
+                merged_snapshot.get("chief_complaint"),
+                merged_snapshot.get("age"),
+                merged_snapshot.get("gender"),
+                merged_snapshot.get("tumor_location"),
+                merged_snapshot.get("mmr_status"),
+                merged_snapshot.get("clinical_stage"),
+                merged_snapshot.get("t_stage"),
+                merged_snapshot.get("n_stage"),
+                merged_snapshot.get("m_stage"),
+                json.dumps(final_provenance, ensure_ascii=False),
+                patient_id,
+            ),
+        )
+        connection.execute(
+            """
+            UPDATE patient_records
+            SET snapshot_meta_json = ?
+            WHERE record_id = ?
+            """,
+            (
+                json.dumps(final_record_snapshot_meta, ensure_ascii=False),
+                record_id,
+            ),
+        )
 
         return {
             "patient_id": patient_id,

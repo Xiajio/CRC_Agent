@@ -550,6 +550,98 @@ class PatientCommandService:
             snapshot_changed=True,
         )
 
+    def record_medical_card_extracted(
+        self,
+        *,
+        patient_id: int,
+        asset_id: int | None,
+        patient_snapshot: dict[str, Any],
+        record_payload: dict[str, Any],
+        summary_text: str,
+        document_type: str,
+        ingest_decision: str,
+        source_session_id: str | None,
+    ) -> PatientCommandResult:
+        with self._registry.transaction() as connection:
+            asset = connection.execute(
+                """
+                SELECT *
+                FROM patient_assets
+                WHERE patient_id = ? AND asset_id = ?
+                """,
+                (patient_id, asset_id),
+            ).fetchone()
+            if asset is None:
+                raise KeyError(f"Patient asset not found: {patient_id}/{asset_id}")
+
+            event_id, version = self._append_event(
+                connection,
+                patient_id=patient_id,
+                event_type="patient.medical_card_extracted",
+                payload={
+                    "asset_id": asset_id,
+                    "document_type": document_type,
+                    "ingest_decision": ingest_decision,
+                    "summary_text": summary_text,
+                    "record_payload": record_payload,
+                    "patient_snapshot": patient_snapshot,
+                },
+                source_session_id=source_session_id,
+                idempotency_key=f"patient.medical_card_extracted:{patient_id}:{asset_id}",
+                actor_type="system",
+            )
+            record_result = self._registry.write_medical_card_record_in_transaction(
+                connection,
+                patient_id=patient_id,
+                asset_id=asset_id,
+                source_event_id=event_id,
+                patient_version=version,
+                asset_row=dict(asset),
+                patient_snapshot=patient_snapshot,
+                record_payload=record_payload,
+                summary_text=summary_text,
+                record_type="medical_card",
+            )
+            record_id = int(record_result["record_id"])
+            connection.execute(
+                """
+                UPDATE patient_assets
+                SET parse_status = ?,
+                    record_ids_json = ?,
+                    patient_version = ?
+                WHERE patient_id = ? AND asset_id = ?
+                """,
+                (
+                    "parsed",
+                    json.dumps([record_id], ensure_ascii=False),
+                    version,
+                    patient_id,
+                    asset_id,
+                ),
+            )
+            detail = self._registry.get_patient_detail_in_transaction(connection, patient_id)
+            self._upsert_snapshot(
+                connection,
+                patient_id=patient_id,
+                patient_version=version,
+                medical_card_snapshot=(
+                    record_payload if ingest_decision == "record_and_snapshot" else {}
+                ),
+                summary={"summary_text": summary_text, "detail": detail},
+                record_refs=[{"record_id": record_id, "document_type": document_type}],
+                asset_refs=[{"asset_id": asset_id, "parse_status": "parsed"}],
+                source_event_ids=[event_id],
+            )
+        return PatientCommandResult(
+            patient_id=patient_id,
+            patient_version=version,
+            projection_version=version,
+            event_ids=[event_id],
+            asset_id=asset_id,
+            record_id=record_id,
+            snapshot_changed=True,
+        )
+
     def record_upload_parse_failed(
         self,
         *,
