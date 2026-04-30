@@ -10,6 +10,7 @@ import pytest
 
 from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_registry_service import (
+    PatientIdentityNotFoundError,
     PatientNumberConflictError,
     PatientRegistryService,
 )
@@ -89,6 +90,63 @@ def test_create_patient_appends_created_event_and_snapshot(tmp_path: Path) -> No
     assert event["patient_version"] == 1
     assert snapshot["patient_version"] == 1
     assert snapshot["projection_version"] == 1
+
+
+def test_bootstrap_existing_patient_creates_legacy_events_once(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    legacy_patient_id = registry.create_draft_patient(created_by_session_id="legacy_session")
+    registry.write_medical_card_record(
+        patient_id=legacy_patient_id,
+        asset_row={
+            "filename": "legacy.pdf",
+            "content_type": "application/pdf",
+            "sha256": "legacy-sha",
+            "storage_path": str(tmp_path / "assets" / "legacy.pdf"),
+            "source": "patient_generated",
+        },
+        patient_snapshot={"clinical_stage": "cT2N0M0"},
+        record_payload={"document_type": "patient_report"},
+        summary_text="legacy",
+        record_type="medical_card",
+    )
+    commands = PatientCommandService(registry)
+
+    result = commands.bootstrap_legacy_patient(legacy_patient_id)
+    second = commands.bootstrap_legacy_patient(legacy_patient_id)
+
+    assert result.patient_version >= 1
+    assert result.projection_version == result.patient_version
+    assert result.snapshot_changed is True
+    assert second.patient_version == result.patient_version
+    assert second.projection_version == result.projection_version
+    assert second.reused is True
+    assert second.event_ids == []
+    projection = registry.get_patient_context_projection(legacy_patient_id)
+    assert projection["patient_version"] == result.patient_version
+    assert projection["medical_card_snapshot"] == {"document_type": "patient_report"}
+    assert projection["record_refs"][0]["document_type"] == "patient_report"
+    with registry._connect() as connection:
+        events = connection.execute(
+            """
+            SELECT event_type, event_payload_json, source_session_id
+            FROM patient_events
+            WHERE patient_id = ?
+            ORDER BY patient_version ASC
+            """,
+            (legacy_patient_id,),
+        ).fetchall()
+    assert len(events) == result.patient_version
+    assert events[0]["event_type"] == "patient.created"
+    assert events[0]["source_session_id"] == "legacy_session"
+    assert json.loads(events[0]["event_payload_json"])["legacy"] is True
+
+
+def test_bootstrap_missing_patient_raises_identity_not_found(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+
+    with pytest.raises(PatientIdentityNotFoundError):
+        commands.bootstrap_legacy_patient(404)
 
 
 def test_identity_set_appends_second_patient_version(tmp_path: Path) -> None:

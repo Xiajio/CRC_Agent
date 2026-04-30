@@ -126,6 +126,43 @@ class PatientCommandService:
         ).fetchone()
         return int(row["version"]) + 1
 
+    def _current_event_sourced_patient_result(
+        self,
+        connection: sqlite3.Connection,
+        patient_id: int,
+    ) -> PatientCommandResult | None:
+        row = connection.execute(
+            """
+            SELECT
+                COUNT(*) AS event_count,
+                COALESCE(MAX(patient_version), 0) AS patient_version
+            FROM patient_events
+            WHERE patient_id = ?
+            """,
+            (patient_id,),
+        ).fetchone()
+        if row is None or int(row["event_count"]) == 0:
+            return None
+        patient_version = int(row["patient_version"])
+        snapshot = connection.execute(
+            """
+            SELECT projection_version
+            FROM patient_snapshots
+            WHERE patient_id = ?
+            """,
+            (patient_id,),
+        ).fetchone()
+        projection_version = (
+            patient_version if snapshot is None else int(snapshot["projection_version"])
+        )
+        return PatientCommandResult(
+            patient_id=patient_id,
+            patient_version=patient_version,
+            projection_version=projection_version,
+            event_ids=[],
+            reused=True,
+        )
+
     def _append_event(
         self,
         connection: sqlite3.Connection,
@@ -382,6 +419,124 @@ class PatientCommandService:
                 summary={"status": "draft"},
                 source_event_ids=[event_id],
             )
+        return PatientCommandResult(
+            patient_id=patient_id,
+            patient_version=version,
+            projection_version=version,
+            event_ids=[event_id],
+            snapshot_changed=True,
+        )
+
+    def bootstrap_legacy_patient(self, patient_id: int) -> PatientCommandResult:
+        try:
+            with self._registry.transaction() as connection:
+                connection.execute("BEGIN IMMEDIATE")
+                patient = connection.execute(
+                    """
+                    SELECT id, status, created_by_session_id
+                    FROM patients
+                    WHERE id = ?
+                    """,
+                    (patient_id,),
+                ).fetchone()
+                if patient is None:
+                    raise PatientIdentityNotFoundError(f"Patient not found: {patient_id}")
+
+                existing = self._current_event_sourced_patient_result(connection, patient_id)
+                if existing is not None:
+                    return existing
+
+                detail = self._registry.get_patient_detail_in_transaction(connection, patient_id)
+                record_rows = connection.execute(
+                    """
+                    SELECT
+                        record_id,
+                        asset_id,
+                        document_type,
+                        normalized_payload_json,
+                        summary_text,
+                        snapshot_contributed
+                    FROM patient_records
+                    WHERE patient_id = ?
+                    ORDER BY record_id ASC
+                    """,
+                    (patient_id,),
+                ).fetchall()
+                asset_rows = connection.execute(
+                    """
+                    SELECT asset_id, sha256, parse_status
+                    FROM patient_assets
+                    WHERE patient_id = ?
+                    ORDER BY asset_id ASC
+                    """,
+                    (patient_id,),
+                ).fetchall()
+
+                medical_card_snapshot: dict[str, Any] = {}
+                record_refs: list[dict[str, Any]] = []
+                summary_text: str | None = None
+                for record in record_rows:
+                    document_type = str(record["document_type"] or "unknown")
+                    record_refs.append(
+                        {
+                            "record_id": int(record["record_id"]),
+                            "document_type": document_type,
+                        }
+                    )
+                    if record["summary_text"]:
+                        summary_text = str(record["summary_text"])
+                    if bool(record["snapshot_contributed"]):
+                        medical_card_snapshot.update(
+                            self._load_json_mapping(record["normalized_payload_json"])
+                        )
+
+                asset_refs = [
+                    {
+                        "asset_id": int(asset["asset_id"]),
+                        "sha256": str(asset["sha256"]),
+                        "parse_status": str(asset["parse_status"] or "unknown"),
+                    }
+                    for asset in asset_rows
+                ]
+
+                source_session_id = patient["created_by_session_id"]
+                event_id, version = self._append_event(
+                    connection,
+                    patient_id=patient_id,
+                    event_type="patient.created",
+                    payload={
+                        "status": patient["status"],
+                        "legacy": True,
+                        "record_refs": record_refs,
+                        "asset_refs": asset_refs,
+                    },
+                    source_session_id=source_session_id,
+                    idempotency_key=f"patient.created.legacy:{patient_id}",
+                )
+                summary: dict[str, Any] = {
+                    "status": patient["status"],
+                    "legacy": True,
+                    "detail": detail,
+                }
+                if summary_text is not None:
+                    summary["summary_text"] = summary_text
+                self._upsert_snapshot(
+                    connection,
+                    patient_id=patient_id,
+                    patient_version=version,
+                    medical_card_snapshot=medical_card_snapshot,
+                    summary=summary,
+                    record_refs=record_refs,
+                    asset_refs=asset_refs,
+                    source_event_ids=[event_id],
+                )
+        except PatientEventConflictError:
+            with self._registry.transaction() as connection:
+                existing = self._current_event_sourced_patient_result(connection, patient_id)
+                if existing is not None:
+                    return existing
+            raise
+
         return PatientCommandResult(
             patient_id=patient_id,
             patient_version=version,
