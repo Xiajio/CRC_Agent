@@ -68,6 +68,40 @@ class PatientCommandService:
                 merged.append(event_id)
         return merged
 
+    def _merge_asset_ref(
+        self,
+        existing_asset_refs: list[dict[str, Any]] | list[str],
+        incoming_asset_ref: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        merged: list[dict[str, Any]] = []
+        incoming_asset_id = incoming_asset_ref.get("asset_id")
+        replaced = False
+        for asset_ref in existing_asset_refs:
+            if not isinstance(asset_ref, dict):
+                continue
+            if asset_ref.get("asset_id") == incoming_asset_id:
+                merged.append(dict(incoming_asset_ref))
+                replaced = True
+            else:
+                merged.append(dict(asset_ref))
+        if not replaced:
+            merged.append(dict(incoming_asset_ref))
+        return merged
+
+    def _snapshot_asset_refs_with(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        patient_id: int,
+        asset_ref: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        row = connection.execute(
+            "SELECT asset_refs_json FROM patient_snapshots WHERE patient_id = ?",
+            (patient_id,),
+        ).fetchone()
+        existing_asset_refs = [] if row is None else self._load_json_list(row["asset_refs_json"])
+        return self._merge_asset_ref(existing_asset_refs, asset_ref)
+
     def _next_patient_version(self, connection: sqlite3.Connection, patient_id: int) -> int:
         row = connection.execute(
             "SELECT COALESCE(MAX(patient_version), 0) AS version FROM patient_events WHERE patient_id = ?",
@@ -398,5 +432,197 @@ class PatientCommandService:
             patient_version=version,
             projection_version=version,
             event_ids=[event_id],
+            snapshot_changed=True,
+        )
+
+    def record_upload_received(
+        self,
+        *,
+        patient_id: int,
+        filename: str,
+        content_type: str,
+        size_bytes: int,
+        sha256: str,
+        storage_path: str,
+        source_session_id: str | None,
+    ) -> PatientCommandResult:
+        now = _utc_now()
+        with self._registry.transaction() as connection:
+            patient_row = connection.execute(
+                "SELECT id FROM patients WHERE id = ?",
+                (patient_id,),
+            ).fetchone()
+            if patient_row is None:
+                raise KeyError(f"Patient not found: {patient_id}")
+
+            existing_asset = connection.execute(
+                """
+                SELECT asset_id, patient_version
+                FROM patient_assets
+                WHERE patient_id = ? AND sha256 = ?
+                """,
+                (patient_id, sha256),
+            ).fetchone()
+            if existing_asset is not None:
+                patient_version = int(existing_asset["patient_version"])
+                return PatientCommandResult(
+                    patient_id=patient_id,
+                    patient_version=patient_version,
+                    projection_version=patient_version,
+                    event_ids=[],
+                    asset_id=int(existing_asset["asset_id"]),
+                    reused=True,
+                )
+
+            event_id, version = self._append_event(
+                connection,
+                patient_id=patient_id,
+                event_type="patient.upload_received",
+                payload={
+                    "filename": filename,
+                    "content_type": content_type,
+                    "size_bytes": size_bytes,
+                    "sha256": sha256,
+                    "storage_path": storage_path,
+                    "source": "patient_generated",
+                    "storage_status": "available",
+                    "parse_status": "pending",
+                },
+                source_session_id=source_session_id,
+                idempotency_key=f"patient.upload_received:{patient_id}:{sha256}",
+                actor_type="patient",
+            )
+            cursor = connection.execute(
+                """
+                INSERT INTO patient_assets (
+                    patient_id,
+                    filename,
+                    content_type,
+                    sha256,
+                    storage_path,
+                    source,
+                    created_at,
+                    upload_event_id,
+                    storage_status,
+                    parse_status,
+                    record_ids_json,
+                    patient_version
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    patient_id,
+                    filename,
+                    content_type,
+                    sha256,
+                    storage_path,
+                    "patient_generated",
+                    now,
+                    event_id,
+                    "available",
+                    "pending",
+                    "[]",
+                    version,
+                ),
+            )
+            asset_id = int(cursor.lastrowid)
+            asset_ref = {
+                "asset_id": asset_id,
+                "sha256": sha256,
+                "parse_status": "pending",
+            }
+            self._upsert_snapshot(
+                connection,
+                patient_id=patient_id,
+                patient_version=version,
+                asset_refs=self._snapshot_asset_refs_with(
+                    connection,
+                    patient_id=patient_id,
+                    asset_ref=asset_ref,
+                ),
+                source_event_ids=[event_id],
+            )
+        return PatientCommandResult(
+            patient_id=patient_id,
+            patient_version=version,
+            projection_version=version,
+            event_ids=[event_id],
+            asset_id=asset_id,
+            snapshot_changed=True,
+        )
+
+    def record_upload_parse_failed(
+        self,
+        *,
+        patient_id: int,
+        asset_id: int | None,
+        error_code: str,
+        error_message: str,
+        source_session_id: str | None,
+    ) -> PatientCommandResult:
+        with self._registry.transaction() as connection:
+            asset = connection.execute(
+                """
+                SELECT asset_id, sha256
+                FROM patient_assets
+                WHERE patient_id = ? AND asset_id = ?
+                """,
+                (patient_id, asset_id),
+            ).fetchone()
+            if asset is None:
+                raise KeyError(f"Patient asset not found: {patient_id}/{asset_id}")
+
+            event_id, version = self._append_event(
+                connection,
+                patient_id=patient_id,
+                event_type="patient.upload_parse_failed",
+                payload={
+                    "asset_id": asset_id,
+                    "error_code": error_code,
+                    "error_message": error_message,
+                },
+                source_session_id=source_session_id,
+                idempotency_key=f"patient.upload_parse_failed:{patient_id}:{asset_id}:{error_code}",
+                actor_type="system",
+            )
+            connection.execute(
+                """
+                UPDATE patient_assets
+                SET parse_status = ?,
+                    parse_error_code = ?,
+                    parse_error_message = ?,
+                    patient_version = ?
+                WHERE patient_id = ? AND asset_id = ?
+                """,
+                (
+                    "failed",
+                    error_code,
+                    error_message,
+                    version,
+                    patient_id,
+                    asset_id,
+                ),
+            )
+            asset_ref = {
+                "asset_id": int(asset["asset_id"]),
+                "sha256": str(asset["sha256"]),
+                "parse_status": "failed",
+            }
+            self._upsert_snapshot(
+                connection,
+                patient_id=patient_id,
+                patient_version=version,
+                asset_refs=self._snapshot_asset_refs_with(
+                    connection,
+                    patient_id=patient_id,
+                    asset_ref=asset_ref,
+                ),
+                source_event_ids=[event_id],
+            )
+        return PatientCommandResult(
+            patient_id=patient_id,
+            patient_version=version,
+            projection_version=version,
+            event_ids=[event_id],
+            asset_id=asset_id,
             snapshot_changed=True,
         )
