@@ -61,16 +61,20 @@ class FakePatientRegistry:
         self._summary_message = summary_message
         self.patient_version = patient_version
         self.requested_patient_ids: list[int] = []
+        self.requested_alert_patient_ids: list[int] = []
+        self.fail_projection = False
 
     def get_patient_summary_message(self, patient_id: int) -> HumanMessage:
         self.requested_patient_ids.append(patient_id)
         return self._summary_message
 
     def list_patient_alerts(self, patient_id: int) -> list[dict[str, Any]]:
-        del patient_id
+        self.requested_alert_patient_ids.append(patient_id)
         return []
 
     def get_patient_context_projection(self, patient_id: int) -> dict[str, Any]:
+        if self.fail_projection:
+            raise RuntimeError("projection unavailable")
         return {
             "patient_id": patient_id,
             "patient_version": self.patient_version,
@@ -145,6 +149,14 @@ async def test_doctor_graph_service_reinjects_when_patient_version_changes() -> 
     )
 
     await collect_sse_events(service.stream_turn(meta.session_id, make_chat_request("first")))
+    first_payload_messages = graph.last_payload["messages"]
+    assert any(
+        isinstance(message, HumanMessage) and "patient v1" in message.content
+        for message in first_payload_messages
+    )
+    first_context_state = session_store.get_session(meta.session_id).context_state
+    assert first_context_state["last_injected_patient_version"] == 1
+
     registry._summary_message = HumanMessage(content="patient v2")
     registry.patient_version = 2
     registry.requested_patient_ids.clear()
@@ -163,6 +175,42 @@ async def test_doctor_graph_service_reinjects_when_patient_version_changes() -> 
     )
     context_state = session_store.get_session(meta.session_id).context_state
     assert context_state["last_injected_patient_version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_doctor_graph_service_skips_reinjection_when_projection_fails_after_versioned_injection() -> None:
+    session_store = InMemorySessionStore()
+    meta = session_store.create_session(scene="doctor", patient_id=33)
+    graph = FakeStreamingGraph()
+    registry = FakePatientRegistry(
+        summary_message=HumanMessage(content="patient v1"),
+        patient_version=1,
+    )
+    service = DoctorGraphService(
+        compiled_graph=graph,
+        session_store=session_store,
+        patient_registry=registry,
+        heartbeat_interval_seconds=0,
+    )
+
+    await collect_sse_events(service.stream_turn(meta.session_id, make_chat_request("first")))
+    registry.fail_projection = True
+    registry._summary_message = HumanMessage(content="unexpected reinjection")
+    registry.requested_patient_ids.clear()
+    registry.requested_alert_patient_ids.clear()
+
+    await collect_sse_events(service.stream_turn(meta.session_id, make_chat_request("second")))
+
+    assert registry.requested_patient_ids == []
+    assert registry.requested_alert_patient_ids == []
+    payload_messages = graph.last_payload["messages"]
+    assert not any(
+        isinstance(message, HumanMessage) and "unexpected reinjection" in message.content
+        for message in payload_messages
+    )
+    context_state = session_store.get_session(meta.session_id).context_state
+    assert context_state["last_injected_patient_version"] == 1
+    assert context_state["bound_patient_version"] == 1
 
 
 @pytest.mark.asyncio

@@ -766,6 +766,7 @@ class DoctorGraphService(GraphService):
 
         context_state = meta.context_state if isinstance(meta.context_state, Mapping) else {}
         current_patient_version = None
+        patient_version_known = False
         get_patient_context_projection = getattr(self._patient_registry, "get_patient_context_projection", None)
         if callable(get_patient_context_projection):
             try:
@@ -776,12 +777,14 @@ class DoctorGraphService(GraphService):
                 version = projection.get("patient_version")
                 if isinstance(version, int):
                     current_patient_version = version
+                    patient_version_known = True
 
-        if (
-            context_state.get("bound_patient_id") == patient_id
-            and context_state.get("last_injected_patient_version") == current_patient_version
-        ):
-            return meta
+        bound_patient_id = context_state.get("bound_patient_id")
+        if bound_patient_id == patient_id:
+            if not patient_version_known:
+                return meta
+            if context_state.get("last_injected_patient_version") == current_patient_version:
+                return meta
 
         get_summary_message = getattr(self._patient_registry, "get_patient_summary_message", None)
         list_patient_alerts = getattr(self._patient_registry, "list_patient_alerts", None)
@@ -816,16 +819,19 @@ class DoctorGraphService(GraphService):
             if isinstance(detail, Mapping):
                 bound_snapshot_version = detail.get("updated_at")
 
-        self._session_store.merge_context_state(
-            session_id,
-            {
-                "bound_patient_id": patient_id,
-                "bound_patient_version": current_patient_version,
-                "last_injected_patient_version": current_patient_version,
-                "bound_patient_snapshot_version": bound_snapshot_version,
-                "bound_patient_alert_count": len(alerts),
-            },
-        )
+        context_updates: dict[str, Any] = {
+            "bound_patient_id": patient_id,
+            "bound_patient_snapshot_version": bound_snapshot_version,
+            "bound_patient_alert_count": len(alerts),
+        }
+        if patient_version_known:
+            context_updates["bound_patient_version"] = current_patient_version
+            context_updates["last_injected_patient_version"] = current_patient_version
+        elif bound_patient_id != patient_id:
+            context_updates["bound_patient_version"] = None
+            context_updates["last_injected_patient_version"] = None
+
+        self._session_store.merge_context_state(session_id, context_updates)
         refreshed_meta = self._session_store.get_session(session_id)
         return refreshed_meta or meta
 
