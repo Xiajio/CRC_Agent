@@ -191,3 +191,55 @@ def test_payload_builder_uses_patient_context_cache_not_legacy_medical_card() ->
     assert prepared.payload["patient_context"] is not store.get_session(
         session.session_id
     ).context_state["patient_context_cache"]
+
+
+def test_payload_builder_ignores_partial_patient_context_cache_without_snapshot() -> None:
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=1)
+    store.merge_context_state(
+        session.session_id,
+        {
+            "medical_card": {"legacy": True},
+            "patient_context_cache": {
+                "patient_id": 1,
+                "patient_version": 2,
+                "projection_version": 2,
+            },
+        },
+    )
+
+    prepared = build_graph_payload(
+        chat_request={"message": HumanMessage(content="hello")},
+        session_meta=store.get_session(session.session_id),
+        state_snapshot={},
+    )
+
+    assert prepared.payload["medical_card"] == {"legacy": True}
+    assert prepared.payload["patient_context"] is None
+
+
+def test_payload_builder_copies_medical_card_snapshot_separately_from_patient_context() -> None:
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=1)
+    store.merge_context_state(
+        session.session_id,
+        {
+            "patient_context_cache": {
+                "patient_id": 1,
+                "patient_version": 2,
+                "projection_version": 2,
+                "medical_card_snapshot": {"nested": {"current": True}},
+            },
+        },
+    )
+
+    prepared = build_graph_payload(
+        chat_request={"message": HumanMessage(content="hello")},
+        session_meta=store.get_session(session.session_id),
+        state_snapshot={},
+    )
+    prepared.payload["medical_card"]["nested"]["current"] = False
+
+    assert prepared.payload["patient_context"]["medical_card_snapshot"] == {
+        "nested": {"current": True}
+    }
