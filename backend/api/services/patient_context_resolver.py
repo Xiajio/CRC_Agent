@@ -42,10 +42,10 @@ class PatientContextResolver:
             patient_id=session.patient_id,
             projection=projection,
         ):
+            self._session_store.clear_legacy_medical_card(session_id)
             return deepcopy(dict(cache))
 
         self._session_store.set_patient_context_cache(session_id, projection)
-        self._session_store.clear_legacy_medical_card(session_id)
         return deepcopy(projection)
 
     def _cache_matches_projection(

@@ -135,7 +135,10 @@ class InMemorySessionStore:
             meta.context_maintenance = deepcopy(payload) if isinstance(payload, dict) else None
 
     def set_patient_context_cache(self, session_id: str, cache: dict[str, Any]) -> None:
-        self.merge_context_state(session_id, {"patient_context_cache": cache})
+        self.merge_context_state(
+            session_id,
+            {"patient_context_cache": cache, "medical_card": None},
+        )
 
     def clear_legacy_medical_card(self, session_id: str) -> None:
         self.merge_context_state(session_id, {"medical_card": None})
