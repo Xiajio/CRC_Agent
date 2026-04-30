@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -133,6 +133,81 @@ def _normalize_snapshot_value(field: str, value: Any) -> Any:
     if field == "age":
         return _normalize_optional_int(value)
     return _normalize_optional_text(value)
+
+
+def _projection_value_matches(field: str, value: Any, accepted_value: Any) -> bool:
+    return _normalize_snapshot_value(field, value) == accepted_value
+
+
+def _filter_projection_mapping(
+    payload: Mapping[str, Any],
+    accepted_snapshot: Mapping[str, Any],
+) -> tuple[dict[str, Any], set[str]]:
+    filtered: dict[str, Any] = {}
+    matched_fields: set[str] = set()
+    for key, value in payload.items():
+        if not isinstance(key, str) or key == "document_type":
+            continue
+        if key in accepted_snapshot and _projection_value_matches(
+            key,
+            value,
+            accepted_snapshot[key],
+        ):
+            filtered[key] = accepted_snapshot[key]
+            matched_fields.add(key)
+            continue
+        if isinstance(value, Mapping):
+            nested, nested_fields = _filter_projection_mapping(value, accepted_snapshot)
+            if nested:
+                filtered[key] = nested
+                matched_fields.update(nested_fields)
+        elif isinstance(value, list):
+            nested_items: list[dict[str, Any]] = []
+            list_fields: set[str] = set()
+            for item in value:
+                if not isinstance(item, Mapping):
+                    continue
+                nested, nested_fields = _filter_projection_mapping(
+                    item,
+                    accepted_snapshot,
+                )
+                if nested:
+                    nested_items.append(nested)
+                    list_fields.update(nested_fields)
+            if nested_items:
+                filtered[key] = nested_items
+                matched_fields.update(list_fields)
+    return filtered, matched_fields
+
+
+def _projection_medical_card_snapshot(
+    record_payload: Mapping[str, Any],
+    record_snapshot_meta: Mapping[str, dict[str, Any]],
+) -> dict[str, Any]:
+    accepted_snapshot = {
+        field: field_meta.get("incoming_value")
+        for field, field_meta in record_snapshot_meta.items()
+        if field in SNAPSHOT_COLUMNS
+        and isinstance(field_meta, dict)
+        and field_meta.get("accepted")
+        and _is_valid_snapshot_value(field_meta.get("incoming_value"))
+    }
+    if not accepted_snapshot:
+        return {}
+
+    filtered, matched_fields = _filter_projection_mapping(
+        record_payload,
+        accepted_snapshot,
+    )
+    projection: dict[str, Any] = {}
+    document_type = record_payload.get("document_type")
+    if isinstance(document_type, str) and document_type.strip():
+        projection["document_type"] = document_type.strip()
+    projection.update(filtered)
+    for field, value in accepted_snapshot.items():
+        if field not in matched_fields:
+            projection[field] = value
+    return projection
 
 
 def _row_to_alert(
@@ -959,6 +1034,10 @@ class PatientRegistryService:
                 record_id,
             ),
         )
+        projection_medical_card_snapshot = _projection_medical_card_snapshot(
+            record_payload,
+            final_record_snapshot_meta,
+        )
 
         return {
             "patient_id": patient_id,
@@ -969,6 +1048,7 @@ class PatientRegistryService:
             "ingest_decision": ingest_decision,
             "snapshot_contributed": snapshot_contributed,
             "conflict_detected": conflict_detected,
+            "projection_medical_card_snapshot": projection_medical_card_snapshot,
         }
 
     def list_patient_records(self, patient_id: int) -> list[dict[str, Any]]:

@@ -492,6 +492,97 @@ def test_upload_parse_failed_reuses_existing_failure_for_same_error_code(tmp_pat
     assert asset["parse_error_message"] == "parse failed"
 
 
+def test_upload_parse_failed_reuses_parsed_asset_without_downgrading_projection(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="parsed-report.pdf",
+        content_type="application/pdf",
+        size_bytes=11,
+        sha256="parsed-report-sha",
+        storage_path=str(tmp_path / "assets" / "parsed-report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+    parsed = commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=upload.asset_id,
+        patient_snapshot={"clinical_stage": "cT3N1M0"},
+        record_payload={
+            "document_type": "patient_report",
+            "data": {"staging_block": {"clinical_stage": "cT3N1M0"}},
+        },
+        summary_text="cT3N1M0 rectal cancer",
+        document_type="patient_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+    duplicate = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="parsed-report-copy.pdf",
+        content_type="application/pdf",
+        size_bytes=11,
+        sha256="parsed-report-sha",
+        storage_path=str(tmp_path / "assets" / "parsed-report-copy.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    failed = commands.record_upload_parse_failed(
+        patient_id=patient.patient_id,
+        asset_id=duplicate.asset_id,
+        error_code="OCR_TIMEOUT",
+        error_message="duplicate conversion failed",
+        source_session_id="sess_patient_1",
+    )
+
+    assert duplicate.reused is True
+    assert failed.reused is True
+    assert failed.asset_id == upload.asset_id
+    assert failed.patient_version == parsed.patient_version
+    assert failed.projection_version == parsed.projection_version
+    assert failed.event_ids == []
+    assert failed.snapshot_changed is False
+    with registry._connect() as connection:
+        event_count = connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM patient_events
+            WHERE patient_id = ? AND event_type = 'patient.upload_parse_failed'
+            """,
+            (patient.patient_id,),
+        ).fetchone()
+        asset = connection.execute(
+            """
+            SELECT
+                parse_status,
+                parse_error_code,
+                parse_error_message,
+                record_ids_json,
+                patient_version
+            FROM patient_assets
+            WHERE asset_id = ?
+            """,
+            (upload.asset_id,),
+        ).fetchone()
+        snapshot = connection.execute(
+            """
+            SELECT patient_version, projection_version
+            FROM patient_snapshots
+            WHERE patient_id = ?
+            """,
+            (patient.patient_id,),
+        ).fetchone()
+    assert int(event_count["count"]) == 0
+    assert asset["parse_status"] == "parsed"
+    assert asset["parse_error_code"] is None
+    assert asset["parse_error_message"] is None
+    assert json.loads(asset["record_ids_json"]) == [parsed.record_id]
+    assert asset["patient_version"] == parsed.patient_version
+    assert snapshot["patient_version"] == parsed.patient_version
+    assert snapshot["projection_version"] == parsed.projection_version
+
+
 def test_medical_card_extracted_creates_record_and_snapshot(tmp_path: Path) -> None:
     registry = PatientRegistryService(tmp_path / "patient_registry.db")
     commands = PatientCommandService(registry)
@@ -786,3 +877,143 @@ def test_medical_card_extracted_placeholder_snapshot_does_not_update_medical_car
             (patient.patient_id,),
         ).fetchone()
     assert snapshot["medical_card_snapshot_json"] == "{}"
+
+
+def test_medical_card_extracted_projection_excludes_rejected_and_placeholder_fields(
+    tmp_path: Path,
+) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    pathology_upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="pathology.pdf",
+        content_type="application/pdf",
+        size_bytes=11,
+        sha256="mixed-pathology-sha",
+        storage_path=str(tmp_path / "assets" / "pathology.pdf"),
+        source_session_id="sess_patient_1",
+    )
+    commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=pathology_upload.asset_id,
+        patient_snapshot={"clinical_stage": "pT3N1"},
+        record_payload={
+            "document_type": "pathology_report",
+            "data": {"staging_block": {"clinical_stage": "pT3N1"}},
+        },
+        summary_text="Pathology stage",
+        document_type="pathology_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+    patient_upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="patient-report.pdf",
+        content_type="application/pdf",
+        size_bytes=12,
+        sha256="mixed-patient-report-sha",
+        storage_path=str(tmp_path / "assets" / "patient-report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=patient_upload.asset_id,
+        patient_snapshot={
+            "tumor_location": "rectum",
+            "clinical_stage": "cT1N0M0",
+            "mmr_status": "Unknown",
+        },
+        record_payload={
+            "document_type": "patient_report",
+            "data": {
+                "anatomy": {"tumor_location": "rectum"},
+                "staging_block": {"clinical_stage": "cT1N0M0"},
+                "biomarkers": {"mmr_status": "Unknown"},
+            },
+        },
+        summary_text="Patient supplied report",
+        document_type="patient_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+
+    with registry._connect() as connection:
+        snapshot = connection.execute(
+            "SELECT medical_card_snapshot_json FROM patient_snapshots WHERE patient_id = ?",
+            (patient.patient_id,),
+        ).fetchone()
+    medical_card_snapshot = json.loads(snapshot["medical_card_snapshot_json"])
+    assert medical_card_snapshot == {
+        "document_type": "patient_report",
+        "data": {
+            "staging_block": {"clinical_stage": "pT3N1"},
+            "anatomy": {"tumor_location": "rectum"},
+        },
+    }
+
+
+def test_medical_card_extracted_deep_merges_nested_data_blocks(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    first_upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="first-nested.pdf",
+        content_type="application/pdf",
+        size_bytes=11,
+        sha256="first-nested-sha",
+        storage_path=str(tmp_path / "assets" / "first-nested.pdf"),
+        source_session_id="sess_patient_1",
+    )
+    second_upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="second-nested.pdf",
+        content_type="application/pdf",
+        size_bytes=12,
+        sha256="second-nested-sha",
+        storage_path=str(tmp_path / "assets" / "second-nested.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=first_upload.asset_id,
+        patient_snapshot={"clinical_stage": "cT3N1M0"},
+        record_payload={
+            "document_type": "patient_report",
+            "data": {"staging_block": {"clinical_stage": "cT3N1M0"}},
+        },
+        summary_text="First nested report",
+        document_type="patient_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+    commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=second_upload.asset_id,
+        patient_snapshot={"tumor_location": "rectum"},
+        record_payload={
+            "document_type": "imaging_report",
+            "data": {"anatomy": {"tumor_location": "rectum"}},
+        },
+        summary_text="Second nested report",
+        document_type="imaging_report",
+        ingest_decision="record_and_snapshot",
+        source_session_id="sess_patient_1",
+    )
+
+    with registry._connect() as connection:
+        snapshot = connection.execute(
+            "SELECT medical_card_snapshot_json FROM patient_snapshots WHERE patient_id = ?",
+            (patient.patient_id,),
+        ).fetchone()
+    medical_card_snapshot = json.loads(snapshot["medical_card_snapshot_json"])
+    assert medical_card_snapshot == {
+        "document_type": "imaging_report",
+        "data": {
+            "staging_block": {"clinical_stage": "cT3N1M0"},
+            "anatomy": {"tumor_location": "rectum"},
+        },
+    }
