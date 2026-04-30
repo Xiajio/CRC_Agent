@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api.routes import uploads as upload_routes
+from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_registry_service import PatientRegistryService
 from backend.api.services.session_store import InMemorySessionStore
 
@@ -20,10 +21,12 @@ def _build_root() -> Path:
 
 def _build_route_client(root: Path) -> TestClient:
     app = FastAPI()
+    patient_registry = PatientRegistryService(root / "patient_registry.db")
     app.state.runtime = SimpleNamespace(
         session_store=InMemorySessionStore(),
         assets_root=root / "assets",
-        patient_registry_service=PatientRegistryService(root / "patient_registry.db"),
+        patient_registry_service=patient_registry,
+        patient_command_service=PatientCommandService(patient_registry),
     )
     app.include_router(upload_routes.router)
     return TestClient(app)
@@ -53,10 +56,10 @@ def _patient_report_card() -> dict[str, object]:
 def test_upload_route_accepts_file_within_limit(monkeypatch) -> None:
     root = _build_root()
     client = _build_route_client(root)
-    service = client.app.state.runtime.patient_registry_service
-    patient_id = service.create_draft_patient(created_by_session_id="sess_patient_1")
+    commands = client.app.state.runtime.patient_command_service
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
     session_store = client.app.state.runtime.session_store
-    meta = session_store.create_session(scene="patient", patient_id=patient_id)
+    meta = session_store.create_session(scene="patient", patient_id=patient.patient_id)
 
     monkeypatch.setattr(
         "backend.api.services.upload_service.convert_uploaded_file",
@@ -79,10 +82,10 @@ def test_upload_route_accepts_file_within_limit(monkeypatch) -> None:
 def test_upload_route_returns_413_when_file_exceeds_configured_max(monkeypatch) -> None:
     root = _build_root()
     client = _build_route_client(root)
-    service = client.app.state.runtime.patient_registry_service
-    patient_id = service.create_draft_patient(created_by_session_id="sess_patient_1")
+    commands = client.app.state.runtime.patient_command_service
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
     session_store = client.app.state.runtime.session_store
-    meta = session_store.create_session(scene="patient", patient_id=patient_id)
+    meta = session_store.create_session(scene="patient", patient_id=patient.patient_id)
 
     monkeypatch.setattr(upload_routes, "MAX_UPLOAD_BYTES", 3)
     monkeypatch.setattr(upload_routes, "UPLOAD_CHUNK_SIZE", 2)
