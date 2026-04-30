@@ -310,6 +310,13 @@ class PatientRegistryService:
                 WHERE patient_number_normalized IS NOT NULL
                 """
             )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_patients_created_by_session_id_unique
+                ON patients(created_by_session_id)
+                WHERE created_by_session_id IS NOT NULL
+                """
+            )
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
