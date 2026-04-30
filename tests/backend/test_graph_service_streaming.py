@@ -6,7 +6,9 @@ import time
 from datetime import datetime
 from collections.abc import AsyncIterator, Mapping
 from copy import deepcopy
+from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -18,7 +20,12 @@ from backend.api.services.graph_service import (
     PatientGraphService,
     SceneGraphRouter,
 )
-from backend.api.services.patient_context_resolver import PatientContextStaleError
+from backend.api.services.patient_commands import PatientCommandService
+from backend.api.services.patient_context_resolver import (
+    PatientContextResolver,
+    PatientContextStaleError,
+)
+from backend.api.services.patient_registry_service import PatientRegistryService
 from backend.api.services.session_store import InMemorySessionStore, SessionMeta
 from src.nodes.assessment_nodes import node_doctor_assessment, node_patient_assessment
 from src.nodes.node_utils import _invoke_with_streaming
@@ -599,6 +606,54 @@ async def test_stream_turn_resolves_patient_context_before_payload_build() -> No
     assert done_event["snapshot_version"] == 1
     assert done_event["patient_version_used"] == 3
     assert done_event["patient_context_stale"] is False
+
+
+@pytest.mark.asyncio
+async def test_patient_graph_turn_caches_resolved_context_without_legacy_medical_card(
+) -> None:
+    root = Path("output") / "test-graph-service-streaming" / uuid4().hex
+    root.mkdir(parents=True, exist_ok=True)
+    registry = PatientRegistryService(root / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient.patient_id)
+    legacy_card = {
+        "document_type": "legacy_card",
+        "chief_complaint": "rectal bleeding",
+    }
+    store.merge_context_state(session.session_id, {"medical_card": legacy_card})
+    graph = CaptureGraph()
+    service = GraphService(
+        graph,
+        store,
+        patient_context_resolver=PatientContextResolver(
+            registry,
+            store,
+            patient_commands=commands,
+        ),
+        heartbeat_interval_seconds=0,
+    )
+
+    chunks = await collect_sse_events(
+        service.stream_turn(
+            session.session_id,
+            {"message": HumanMessage(content="hello")},
+        )
+    )
+
+    refreshed = store.get_session(session.session_id)
+    assert refreshed is not None
+    context_state = refreshed.context_state
+    assert "medical_card" not in context_state
+    cache = context_state["patient_context_cache"]
+    assert cache["patient_id"] == patient.patient_id
+    assert cache["medical_card_snapshot"] == legacy_card
+    assert graph.payloads[0]["patient_context"]["patient_version"] == cache["patient_version"]
+    assert graph.payloads[0]["medical_card"] == legacy_card
+    done = find_event(parse_sse_payloads(chunks), "done")
+    assert done["patient_version_used"] == cache["patient_version"]
+    assert done["patient_context_stale"] is False
 
 
 @pytest.mark.asyncio
