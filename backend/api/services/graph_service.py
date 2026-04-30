@@ -97,17 +97,45 @@ class GraphService:
             raise SessionNotFoundError(f"Session not found: {session_id}")
         return meta
 
-    def _patient_version_used(self, meta: SessionMeta) -> int | None:
+    def _int_patient_version(self, value: Any) -> int | None:
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+        return None
+
+    def _doctor_patient_version_used(self, meta: SessionMeta) -> int | None:
+        context_state = meta.context_state if isinstance(meta.context_state, Mapping) else {}
+        if meta.scene == "doctor" and meta.patient_id is not None:
+            return self._int_patient_version(context_state.get("last_injected_patient_version"))
+
+        return None
+
+    def _safe_session_patient_version(self, meta: SessionMeta) -> int | None:
+        doctor_version = self._doctor_patient_version_used(meta)
+        if doctor_version is not None:
+            return doctor_version
+
         context_state = meta.context_state if isinstance(meta.context_state, Mapping) else {}
         cache = context_state.get("patient_context_cache")
-        if isinstance(cache, Mapping):
-            patient_version = cache.get("patient_version")
-            if isinstance(patient_version, int) and not isinstance(patient_version, bool):
+        if (
+            isinstance(cache, Mapping)
+            and cache.get("projection_version") is not None
+            and isinstance(cache.get("medical_card_snapshot"), Mapping)
+        ):
+            patient_version = self._int_patient_version(cache.get("patient_version"))
+            if patient_version is not None:
                 return patient_version
 
-        if meta.scene == "doctor" and meta.patient_id is not None:
-            patient_version = context_state.get("last_injected_patient_version")
-            if isinstance(patient_version, int) and not isinstance(patient_version, bool):
+        return None
+
+    def _patient_version_used(self, meta: SessionMeta, prepared_payload: Mapping[str, Any]) -> int | None:
+        doctor_version = self._doctor_patient_version_used(meta)
+        if doctor_version is not None:
+            return doctor_version
+
+        patient_context = prepared_payload.get("patient_context")
+        if isinstance(patient_context, Mapping):
+            patient_version = self._int_patient_version(patient_context.get("patient_version"))
+            if patient_version is not None:
                 return patient_version
 
         return None
@@ -548,15 +576,14 @@ class GraphService:
     def stream_turn(self, session_id: str, chat_request: Any) -> AsyncIterator[str]:
         meta = self._get_session_meta(session_id)
         meta = self._prepare_session_meta(session_id, chat_request, meta)
-        patient_version_used = self._patient_version_used(meta)
+        patient_version_used: int | None = None
         if self._patient_context_resolver is not None:
             try:
                 self._patient_context_resolver.resolve(session_id)
                 meta = self._session_store.get_session(session_id) or meta
-                patient_version_used = self._patient_version_used(meta)
             except PatientContextStaleError as exc:
                 meta = self._session_store.get_session(session_id) or meta
-                patient_version_used = self._patient_version_used(meta)
+                patient_version_used = self._safe_session_patient_version(meta)
                 return self._stale_patient_context_stream(
                     thread_id=meta.thread_id,
                     run_id=f"run_{uuid4().hex}",
@@ -581,6 +608,7 @@ class GraphService:
                 session_meta=meta,
                 state_snapshot=self.load_agent_state(session_id) or {},
             )
+            patient_version_used = self._patient_version_used(meta, prepared.payload)
             if isinstance(chat_request, Mapping):
                 trace_id = chat_request.get("trace_id")
                 if isinstance(trace_id, str) and trace_id.strip():

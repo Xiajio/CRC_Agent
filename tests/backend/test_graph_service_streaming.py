@@ -173,6 +173,91 @@ async def test_done_event_includes_patient_version_used_for_bound_patient() -> N
 
 
 @pytest.mark.asyncio
+async def test_done_event_ignores_malformed_patient_context_cache_version() -> None:
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=1)
+    store.merge_context_state(
+        session.session_id,
+        {
+            "patient_context_cache": {
+                "patient_id": 1,
+                "patient_version": 7,
+                "projection_version": 7,
+                "medical_card_snapshot": None,
+            },
+        },
+    )
+    graph = CaptureGraph()
+    service = GraphService(
+        graph,
+        store,
+        heartbeat_interval_seconds=0,
+    )
+
+    chunks = await collect_sse_events(
+        service.stream_turn(session.session_id, make_chat_request("hello"))
+    )
+    done = find_event(parse_sse_payloads(chunks), "done")
+
+    assert graph.payloads[0]["patient_context"] is None
+    assert done["patient_version_used"] is None
+    assert done["patient_context_stale"] is False
+
+
+@pytest.mark.asyncio
+async def test_doctor_done_event_prefers_injected_version_over_stale_cache() -> None:
+    session_store = InMemorySessionStore()
+    meta = session_store.create_session(scene="doctor", patient_id=33)
+    session_store.merge_context_state(
+        meta.session_id,
+        {
+            "patient_context_cache": {
+                "patient_id": 33,
+                "patient_version": 1,
+                "projection_version": 1,
+                "medical_card_snapshot": {"stale": True},
+            },
+        },
+    )
+    graph = FakeStreamingGraph()
+    registry = FakePatientRegistry(
+        summary_message=HumanMessage(content="patient v3"),
+        patient_version=3,
+    )
+    service = DoctorGraphService(
+        compiled_graph=graph,
+        session_store=session_store,
+        patient_registry=registry,
+        heartbeat_interval_seconds=0,
+    )
+
+    chunks = await collect_sse_events(service.stream_turn(meta.session_id, make_chat_request("next")))
+    done = find_event(parse_sse_payloads(chunks), "done")
+
+    assert graph.last_payload["patient_context"]["patient_version"] == 1
+    assert done["patient_version_used"] == 3
+    assert done["patient_context_stale"] is False
+
+
+@pytest.mark.asyncio
+async def test_done_event_has_no_patient_version_for_unbound_session() -> None:
+    session_store = InMemorySessionStore()
+    meta = session_store.create_session(scene="doctor")
+    graph = FakeStreamingGraph()
+    service = GraphService(
+        graph,
+        session_store,
+        heartbeat_interval_seconds=0,
+    )
+
+    chunks = await collect_sse_events(service.stream_turn(meta.session_id, make_chat_request("next")))
+    done = find_event(parse_sse_payloads(chunks), "done")
+
+    assert done["patient_version_used"] is None
+    assert done["patient_context_stale"] is False
+
+
+@pytest.mark.asyncio
 async def test_doctor_graph_service_reinjects_when_patient_version_changes() -> None:
     session_store = InMemorySessionStore()
     meta = session_store.create_session(scene="doctor", patient_id=33)
