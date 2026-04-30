@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -66,23 +67,31 @@ class _StubPatientCommands:
         )
 
 
-def _build_client() -> tuple[TestClient, InMemorySessionStore, _StubPatientRegistry, _StubPatientCommands]:
+def _build_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[TestClient, InMemorySessionStore, _StubPatientRegistry, _StubPatientCommands]:
     store = InMemorySessionStore()
     registry = _StubPatientRegistry()
     commands = _StubPatientCommands()
-    session_routes.session_store = store
-    session_routes.patient_registry_service = registry
-    session_routes.patient_command_service = commands
-    session_routes.load_agent_state = lambda _session_id: None
-    session_routes.get_runtime_metadata = lambda: {"runner_mode": "real", "fixture_case": None}
+    monkeypatch.setattr(session_routes, "session_store", store)
+    monkeypatch.setattr(session_routes, "patient_registry_service", registry)
+    monkeypatch.setattr(session_routes, "patient_command_service", commands)
+    monkeypatch.setattr(session_routes, "load_agent_state", lambda _session_id: None)
+    monkeypatch.setattr(
+        session_routes,
+        "get_runtime_metadata",
+        lambda: {"runner_mode": "real", "fixture_case": None},
+    )
 
     app = FastAPI()
     app.include_router(session_routes.router)
     return TestClient(app), store, registry, commands
 
 
-def test_create_patient_scene_returns_sqlite_backed_patient_id() -> None:
-    client, _store, registry, commands = _build_client()
+def test_create_patient_scene_returns_command_backed_patient_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _store, registry, commands = _build_client(monkeypatch)
 
     response = client.post("/api/sessions", json={"scene": "patient"})
 
@@ -93,8 +102,8 @@ def test_create_patient_scene_returns_sqlite_backed_patient_id() -> None:
     assert registry.calls == []
 
 
-def test_create_doctor_scene_returns_null_patient_id() -> None:
-    client, _store, registry, commands = _build_client()
+def test_create_doctor_scene_returns_null_patient_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    client, _store, registry, commands = _build_client(monkeypatch)
 
     response = client.post("/api/sessions", json={"scene": "doctor"})
 
@@ -106,8 +115,10 @@ def test_create_doctor_scene_returns_null_patient_id() -> None:
     assert registry.calls == []
 
 
-def test_bind_patient_rejects_rebinding_to_different_patient() -> None:
-    client, _store, _registry, _commands = _build_client()
+def test_bind_patient_rejects_rebinding_to_different_patient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _store, _registry, _commands = _build_client(monkeypatch)
     create_response = client.post("/api/sessions", json={"scene": "doctor"})
     session_id = create_response.json()["session_id"]
 
@@ -119,8 +130,8 @@ def test_bind_patient_rejects_rebinding_to_different_patient() -> None:
     assert second_bind.json()["detail"] == "Session already bound to a different patient"
 
 
-def test_set_patient_identity_routes_through_commands() -> None:
-    client, _store, _registry, commands = _build_client()
+def test_set_patient_identity_routes_through_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    client, _store, _registry, commands = _build_client(monkeypatch)
     create_response = client.post("/api/sessions", json={"scene": "patient"})
     payload = create_response.json()
 
