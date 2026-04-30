@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -218,6 +220,52 @@ class PatientRegistryService:
                 );
                 """
             )
+            connection.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS patient_events (
+                    event_id TEXT PRIMARY KEY,
+                    patient_id INTEGER NOT NULL,
+                    patient_version INTEGER NOT NULL,
+                    event_type TEXT NOT NULL,
+                    event_payload_json TEXT NOT NULL,
+                    actor_type TEXT,
+                    actor_id TEXT,
+                    source_session_id TEXT,
+                    idempotency_key TEXT,
+                    causation_id TEXT,
+                    correlation_id TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(patient_id, patient_version)
+                );
+
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_patient_events_idempotency
+                ON patient_events(patient_id, idempotency_key)
+                WHERE idempotency_key IS NOT NULL;
+
+                CREATE TABLE IF NOT EXISTS patient_snapshots (
+                    patient_id INTEGER PRIMARY KEY,
+                    patient_version INTEGER NOT NULL,
+                    projection_version INTEGER NOT NULL,
+                    medical_card_snapshot_json TEXT NOT NULL DEFAULT '{}',
+                    summary_json TEXT NOT NULL DEFAULT '{}',
+                    active_alerts_json TEXT NOT NULL DEFAULT '[]',
+                    record_refs_json TEXT NOT NULL DEFAULT '[]',
+                    asset_refs_json TEXT NOT NULL DEFAULT '[]',
+                    source_event_ids_json TEXT NOT NULL DEFAULT '[]',
+                    updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS patient_projection_state (
+                    patient_id INTEGER NOT NULL,
+                    projector_name TEXT NOT NULL,
+                    projector_schema_version INTEGER NOT NULL,
+                    last_projected_patient_version INTEGER NOT NULL,
+                    projection_version INTEGER NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (patient_id, projector_name)
+                );
+                """
+            )
             self._ensure_columns(
                 connection,
                 "patients",
@@ -231,6 +279,19 @@ class PatientRegistryService:
             )
             self._ensure_columns(
                 connection,
+                "patient_assets",
+                {
+                    "upload_event_id": "TEXT",
+                    "storage_status": "TEXT NOT NULL DEFAULT 'available'",
+                    "parse_status": "TEXT NOT NULL DEFAULT 'unknown'",
+                    "parse_error_code": "TEXT",
+                    "parse_error_message": "TEXT",
+                    "record_ids_json": "TEXT NOT NULL DEFAULT '[]'",
+                    "patient_version": "INTEGER NOT NULL DEFAULT 0",
+                },
+            )
+            self._ensure_columns(
+                connection,
                 "patient_records",
                 {
                     "document_type": "TEXT NOT NULL DEFAULT 'unknown'",
@@ -238,6 +299,8 @@ class PatientRegistryService:
                     "snapshot_contributed": "INTEGER NOT NULL DEFAULT 0",
                     "conflict_detected": "INTEGER NOT NULL DEFAULT 0",
                     "snapshot_meta_json": "TEXT NOT NULL DEFAULT '{}'",
+                    "source_event_id": "TEXT",
+                    "patient_version": "INTEGER NOT NULL DEFAULT 0",
                 },
             )
             connection.execute(
@@ -247,6 +310,11 @@ class PatientRegistryService:
                 WHERE patient_number_normalized IS NOT NULL
                 """
             )
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        with self._connect() as connection:
+            yield connection
 
     def _ensure_columns(
         self,
