@@ -264,3 +264,70 @@ def test_identity_set_preserves_snapshot_summary_and_source_events(tmp_path: Pat
         created.event_ids[0],
         identity.event_ids[0],
     ]
+
+
+def test_upload_received_creates_available_asset_projection(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+
+    result = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="report.pdf",
+        content_type="application/pdf",
+        size_bytes=12,
+        sha256="abc123",
+        storage_path=str(tmp_path / "assets" / "report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    assert result.patient_version == 2
+    assert result.asset_id is not None
+    with registry._connect() as connection:
+        asset = connection.execute(
+            "SELECT sha256, storage_status, parse_status, patient_version FROM patient_assets WHERE asset_id = ?",
+            (result.asset_id,),
+        ).fetchone()
+    assert asset["sha256"] == "abc123"
+    assert asset["storage_status"] == "available"
+    assert asset["parse_status"] == "pending"
+    assert asset["patient_version"] == 2
+
+
+def test_upload_parse_failed_updates_asset_without_snapshot(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="broken.pdf",
+        content_type="application/pdf",
+        size_bytes=10,
+        sha256="broken-sha",
+        storage_path=str(tmp_path / "assets" / "broken.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    failed = commands.record_upload_parse_failed(
+        patient_id=patient.patient_id,
+        asset_id=upload.asset_id,
+        error_code="CONVERTER_ERROR",
+        error_message="parse failed",
+        source_session_id="sess_patient_1",
+    )
+
+    assert failed.patient_version == 3
+    with registry._connect() as connection:
+        asset = connection.execute(
+            "SELECT parse_status, parse_error_code, parse_error_message FROM patient_assets WHERE asset_id = ?",
+            (upload.asset_id,),
+        ).fetchone()
+        snapshot = connection.execute(
+            "SELECT patient_version, medical_card_snapshot_json FROM patient_snapshots WHERE patient_id = ?",
+            (patient.patient_id,),
+        ).fetchone()
+    assert asset["parse_status"] == "failed"
+    assert asset["parse_error_code"] == "CONVERTER_ERROR"
+    assert "parse failed" in asset["parse_error_message"]
+    assert snapshot["patient_version"] == 3
+    assert snapshot["medical_card_snapshot_json"] == "{}"
