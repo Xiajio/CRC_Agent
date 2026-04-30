@@ -294,6 +294,48 @@ def test_upload_received_creates_available_asset_projection(tmp_path: Path) -> N
     assert asset["patient_version"] == 2
 
 
+def test_upload_received_reuses_existing_asset_by_sha256(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    first = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="report.pdf",
+        content_type="application/pdf",
+        size_bytes=12,
+        sha256="abc123",
+        storage_path=str(tmp_path / "assets" / "report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    second = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="report-copy.pdf",
+        content_type="application/pdf",
+        size_bytes=12,
+        sha256="abc123",
+        storage_path=str(tmp_path / "assets" / "report-copy.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    assert second.reused is True
+    assert second.asset_id == first.asset_id
+    assert second.patient_version == first.patient_version
+    assert second.projection_version == first.projection_version
+    assert second.event_ids == []
+    assert second.snapshot_changed is False
+    with registry._connect() as connection:
+        event_count = connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM patient_events
+            WHERE patient_id = ? AND event_type = 'patient.upload_received'
+            """,
+            (patient.patient_id,),
+        ).fetchone()
+    assert int(event_count["count"]) == 1
+
+
 def test_upload_parse_failed_updates_asset_without_snapshot(tmp_path: Path) -> None:
     registry = PatientRegistryService(tmp_path / "patient_registry.db")
     commands = PatientCommandService(registry)
@@ -307,6 +349,7 @@ def test_upload_parse_failed_updates_asset_without_snapshot(tmp_path: Path) -> N
         storage_path=str(tmp_path / "assets" / "broken.pdf"),
         source_session_id="sess_patient_1",
     )
+    assert upload.asset_id is not None
 
     failed = commands.record_upload_parse_failed(
         patient_id=patient.patient_id,
@@ -331,3 +374,61 @@ def test_upload_parse_failed_updates_asset_without_snapshot(tmp_path: Path) -> N
     assert "parse failed" in asset["parse_error_message"]
     assert snapshot["patient_version"] == 3
     assert snapshot["medical_card_snapshot_json"] == "{}"
+
+
+def test_upload_parse_failed_reuses_existing_failure_for_same_error_code(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="broken.pdf",
+        content_type="application/pdf",
+        size_bytes=10,
+        sha256="broken-sha",
+        storage_path=str(tmp_path / "assets" / "broken.pdf"),
+        source_session_id="sess_patient_1",
+    )
+    assert upload.asset_id is not None
+    first = commands.record_upload_parse_failed(
+        patient_id=patient.patient_id,
+        asset_id=upload.asset_id,
+        error_code="CONVERTER_ERROR",
+        error_message="parse failed",
+        source_session_id="sess_patient_1",
+    )
+
+    second = commands.record_upload_parse_failed(
+        patient_id=patient.patient_id,
+        asset_id=upload.asset_id,
+        error_code="CONVERTER_ERROR",
+        error_message="parse failed again",
+        source_session_id="sess_patient_1",
+    )
+
+    assert second.reused is True
+    assert second.asset_id == upload.asset_id
+    assert second.patient_version == first.patient_version
+    assert second.projection_version == first.projection_version
+    assert second.event_ids == []
+    assert second.snapshot_changed is False
+    with registry._connect() as connection:
+        event_count = connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM patient_events
+            WHERE patient_id = ? AND event_type = 'patient.upload_parse_failed'
+            """,
+            (patient.patient_id,),
+        ).fetchone()
+        asset = connection.execute(
+            """
+            SELECT patient_version, parse_error_message
+            FROM patient_assets
+            WHERE asset_id = ?
+            """,
+            (upload.asset_id,),
+        ).fetchone()
+    assert int(event_count["count"]) == 1
+    assert asset["patient_version"] == first.patient_version
+    assert asset["parse_error_message"] == "parse failed"
