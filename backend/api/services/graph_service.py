@@ -561,34 +561,36 @@ class GraphService:
 
     def stream_turn(self, session_id: str, chat_request: Any) -> AsyncIterator[str]:
         meta = self._get_session_meta(session_id)
-        meta = self._prepare_session_meta(session_id, chat_request, meta)
-        patient_version_used: int | None = None
-        if self._patient_context_resolver is not None:
-            try:
-                self._patient_context_resolver.resolve(session_id)
-                meta = self._session_store.get_session(session_id) or meta
-            except PatientContextStaleError as exc:
-                meta = self._session_store.get_session(session_id) or meta
-                patient_version_used = self._safe_session_patient_version(meta)
-                return self._stale_patient_context_stream(
-                    thread_id=meta.thread_id,
-                    run_id=f"run_{uuid4().hex}",
-                    snapshot_version=meta.snapshot_version,
-                    patient_version_used=patient_version_used,
-                    exc=exc,
-                )
-        self._cancel_context_maintenance(session_id)
-        thread_id = meta.thread_id
-        starting_snapshot_version = meta.snapshot_version
         run_id = f"run_{uuid4().hex}"
-        phase0_trace = self._phase0_trace_from_request(session_id, run_id, chat_request)
-        phase1_trace = self._phase1_trace_from_request(session_id, run_id, chat_request, scene=meta.scene)
 
         if not self._session_store.try_acquire_run_lock(session_id, run_id):
             raise SessionBusyError(f"Session is busy: {session_id}")
 
-        prepared = None
+        patient_version_used: int | None = None
+
         try:
+            meta = self._prepare_session_meta(session_id, chat_request, meta)
+            if self._patient_context_resolver is not None:
+                try:
+                    self._patient_context_resolver.resolve(session_id)
+                    meta = self._session_store.get_session(session_id) or meta
+                except PatientContextStaleError as exc:
+                    meta = self._session_store.get_session(session_id) or meta
+                    patient_version_used = self._safe_session_patient_version(meta)
+                    self._session_store.release_run_lock(session_id, run_id)
+                    return self._stale_patient_context_stream(
+                        thread_id=meta.thread_id,
+                        run_id=run_id,
+                        snapshot_version=meta.snapshot_version,
+                        patient_version_used=patient_version_used,
+                        exc=exc,
+                    )
+            self._cancel_context_maintenance(session_id)
+            thread_id = meta.thread_id
+            starting_snapshot_version = meta.snapshot_version
+            phase0_trace = self._phase0_trace_from_request(session_id, run_id, chat_request)
+            phase1_trace = self._phase1_trace_from_request(session_id, run_id, chat_request, scene=meta.scene)
+
             prepared = build_graph_payload(
                 chat_request=chat_request,
                 session_meta=meta,
