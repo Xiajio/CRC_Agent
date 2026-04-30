@@ -89,6 +89,19 @@ def _load_json_mapping(value: Any) -> dict[str, Any]:
     return {}
 
 
+def _load_json_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(parsed, list):
+            return list(parsed)
+    return []
+
+
 def _source_priority(document_type: str | None) -> int:
     if document_type is None:
         return SOURCE_PRIORITY["unknown"]
@@ -486,6 +499,41 @@ class PatientRegistryService:
     def get_patient_detail(self, patient_id: int) -> dict[str, Any]:
         with self._connect() as connection:
             return self.get_patient_detail_in_transaction(connection, patient_id)
+
+    def get_patient_context_projection(self, patient_id: int) -> dict[str, Any]:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    patient_id,
+                    patient_version,
+                    projection_version,
+                    medical_card_snapshot_json,
+                    summary_json,
+                    active_alerts_json,
+                    record_refs_json,
+                    asset_refs_json,
+                    source_event_ids_json,
+                    updated_at
+                FROM patient_snapshots
+                WHERE patient_id = ?
+                """,
+                (patient_id,),
+            ).fetchone()
+        if row is None:
+            raise KeyError(f"Patient projection not found: {patient_id}")
+        return {
+            "patient_id": int(row["patient_id"]),
+            "patient_version": int(row["patient_version"]),
+            "projection_version": int(row["projection_version"]),
+            "medical_card_snapshot": _load_json_mapping(row["medical_card_snapshot_json"]),
+            "summary": _load_json_mapping(row["summary_json"]),
+            "alerts": _load_json_list(row["active_alerts_json"]),
+            "record_refs": _load_json_list(row["record_refs_json"]),
+            "asset_refs": _load_json_list(row["asset_refs_json"]),
+            "source_event_ids": _load_json_list(row["source_event_ids_json"]),
+            "cached_at": row["updated_at"],
+        }
 
     def get_patient_detail_in_transaction(
         self,
