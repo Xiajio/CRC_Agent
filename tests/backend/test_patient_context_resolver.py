@@ -163,6 +163,34 @@ def test_resolver_returns_copy_when_cache_is_fresh(tmp_path: Path) -> None:
     assert context_state["unrelated"] == {"keep": True}
 
 
+def test_resolver_refreshes_version_matching_cache_with_malformed_snapshot(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=patient.patient_id)
+    store.merge_context_state(
+        session.session_id,
+        {
+            "medical_card": {"legacy": True},
+            "patient_context_cache": {
+                "patient_id": patient.patient_id,
+                "patient_version": 1,
+                "projection_version": 1,
+                "medical_card_snapshot": None,
+            },
+        },
+    )
+    resolver = PatientContextResolver(registry, store)
+
+    context = resolver.resolve(session.session_id)
+
+    context_state = store.get_session(session.session_id).context_state
+    assert context["medical_card_snapshot"] == {}
+    assert context_state["patient_context_cache"]["medical_card_snapshot"] == {}
+    assert "medical_card" not in context_state
+
+
 def test_payload_builder_uses_patient_context_cache_not_legacy_medical_card() -> None:
     store = InMemorySessionStore()
     session = store.create_session(scene="patient", patient_id=1)
@@ -204,6 +232,32 @@ def test_payload_builder_ignores_partial_patient_context_cache_without_snapshot(
                 "patient_id": 1,
                 "patient_version": 2,
                 "projection_version": 2,
+            },
+        },
+    )
+
+    prepared = build_graph_payload(
+        chat_request={"message": HumanMessage(content="hello")},
+        session_meta=store.get_session(session.session_id),
+        state_snapshot={},
+    )
+
+    assert prepared.payload["medical_card"] == {"legacy": True}
+    assert prepared.payload["patient_context"] is None
+
+
+def test_payload_builder_ignores_patient_context_cache_with_non_mapping_snapshot() -> None:
+    store = InMemorySessionStore()
+    session = store.create_session(scene="patient", patient_id=1)
+    store.merge_context_state(
+        session.session_id,
+        {
+            "medical_card": {"legacy": True},
+            "patient_context_cache": {
+                "patient_id": 1,
+                "patient_version": 2,
+                "projection_version": 2,
+                "medical_card_snapshot": None,
             },
         },
     )

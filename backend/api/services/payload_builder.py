@@ -71,6 +71,8 @@ def _patient_context_cache(session_meta: SessionMeta) -> dict[str, Any] | None:
         return None
     if cache.get("patient_version") is None or cache.get("projection_version") is None:
         return None
+    if not isinstance(cache.get("medical_card_snapshot"), Mapping):
+        return None
     return deepcopy(dict(cache))
 
 
