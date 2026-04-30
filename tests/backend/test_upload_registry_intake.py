@@ -199,6 +199,54 @@ def test_extraction_command_failure_marks_asset_failed_and_removes_derived_card(
     assert "medical_card" not in session_store.get_session(session_id).context_state
 
 
+def test_reconciliation_failure_preserves_original_error_and_runs_local_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _build_root()
+    registry, commands, session_store, session_id, patient_id = _create_patient_session(root)
+    file_bytes = b"%PDF-report-reconcile-fails"
+    sha256 = compute_file_sha256(file_bytes)
+    processed_key = f"{patient_id}:{sha256}"
+    monkeypatch.setattr(
+        "backend.api.services.upload_service.convert_uploaded_file",
+        lambda **_: _patient_report_card(),
+    )
+    monkeypatch.setattr(
+        commands,
+        "record_medical_card_extracted",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("extract command failed")),
+    )
+
+    def fail_reconciliation(**kwargs: object) -> None:
+        meta = session_store.get_session(session_id)
+        assert meta is not None
+        asset_id = str(kwargs["asset_id"])
+        meta.uploaded_assets[asset_id] = {"asset_id": asset_id}
+        meta.processed_files[processed_key] = {"asset_id": asset_id}
+        raise RuntimeError("reconciliation failed")
+
+    monkeypatch.setattr(commands, "record_upload_command_failed", fail_reconciliation)
+
+    with pytest.raises(UploadProcessingError, match="extract command failed") as exc_info:
+        _store_upload(
+            session_store=session_store,
+            commands=commands,
+            assets_root=root / "assets",
+            session_id=session_id,
+            filename="patient-report.pdf",
+            file_bytes=file_bytes,
+        )
+
+    assert isinstance(exc_info.value.__cause__, RuntimeError)
+    assert str(exc_info.value.__cause__) == "extract command failed"
+    refreshed = session_store.get_session(session_id)
+    assert refreshed is not None
+    assert refreshed.uploaded_assets == {}
+    assert processed_key not in refreshed.processed_files
+    assert not (root / "assets" / str(patient_id) / sha256 / "derived" / "medical_card.json").exists()
+    assert "medical_card" not in refreshed.context_state
+
+
 def test_parse_failed_command_failure_marks_asset_failed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

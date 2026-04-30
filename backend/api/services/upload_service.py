@@ -510,13 +510,16 @@ def store_session_upload(
         except Exception as exc:
             if "upload_result" in locals() and upload_result.asset_id is not None:
                 (stable_derived_root / "medical_card.json").unlink(missing_ok=True)
-                _record_upload_command_failure(
-                    patient_commands=patient_commands,
-                    patient_id=patient_id,
-                    asset_id=int(upload_result.asset_id),
-                    error_message=str(exc),
-                    source_session_id=session_id,
-                )
+                try:
+                    _record_upload_command_failure(
+                        patient_commands=patient_commands,
+                        patient_id=patient_id,
+                        asset_id=int(upload_result.asset_id),
+                        error_message=str(exc),
+                        source_session_id=session_id,
+                    )
+                except Exception:
+                    pass
             if "asset_id" in locals():
                 meta.uploaded_assets.pop(asset_id, None)
             processed_value = meta.processed_files.get(processed_key)
