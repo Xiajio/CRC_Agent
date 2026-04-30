@@ -590,6 +590,9 @@ class PatientCommandService:
                 idempotency_key=f"patient.medical_card_extracted:{patient_id}:{asset_id}",
                 actor_type="system",
             )
+            merge_snapshot = (
+                patient_snapshot if ingest_decision == "record_and_snapshot" else {}
+            )
             record_result = self._registry.write_medical_card_record_in_transaction(
                 connection,
                 patient_id=patient_id,
@@ -597,7 +600,7 @@ class PatientCommandService:
                 source_event_id=event_id,
                 patient_version=version,
                 asset_row=dict(asset),
-                patient_snapshot=patient_snapshot,
+                patient_snapshot=merge_snapshot,
                 record_payload=record_payload,
                 summary_text=summary_text,
                 record_type="medical_card",

@@ -477,3 +477,47 @@ def test_medical_card_extracted_creates_record_and_snapshot(tmp_path: Path) -> N
     assert record["patient_version"] == 3
     assert asset["parse_status"] == "parsed"
     assert str(result.record_id) in asset["record_ids_json"]
+
+
+def test_medical_card_extracted_record_only_does_not_update_patient_facts(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    upload = commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="patient-report.pdf",
+        content_type="application/pdf",
+        size_bytes=11,
+        sha256="record-only-report-sha",
+        storage_path=str(tmp_path / "assets" / "patient-report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    result = commands.record_medical_card_extracted(
+        patient_id=patient.patient_id,
+        asset_id=upload.asset_id,
+        patient_snapshot={"clinical_stage": "cT3N1M0", "tumor_location": "rectum"},
+        record_payload={"document_type": "unknown", "data": {"staging_block": {"clinical_stage": "cT3N1M0"}}},
+        summary_text="cT3N1M0 rectal cancer",
+        document_type="unknown",
+        ingest_decision="record_only",
+        source_session_id="sess_patient_1",
+    )
+
+    assert result.patient_version == 3
+    assert result.record_id is not None
+    detail = registry.get_patient_detail(patient.patient_id)
+    assert detail["clinical_stage"] is None
+    assert detail["tumor_location"] is None
+    with registry._connect() as connection:
+        asset = connection.execute(
+            "SELECT parse_status, record_ids_json FROM patient_assets WHERE asset_id = ?",
+            (upload.asset_id,),
+        ).fetchone()
+        snapshot = connection.execute(
+            "SELECT medical_card_snapshot_json FROM patient_snapshots WHERE patient_id = ?",
+            (patient.patient_id,),
+        ).fetchone()
+    assert asset["parse_status"] == "parsed"
+    assert str(result.record_id) in asset["record_ids_json"]
+    assert snapshot["medical_card_snapshot_json"] == "{}"
