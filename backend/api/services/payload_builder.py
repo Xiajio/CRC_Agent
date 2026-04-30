@@ -14,6 +14,11 @@ CONTEXT_PAYLOAD_ALLOWLIST = {
     "fixture_tick_delay_ms",
     "current_patient_id",
 }
+PATIENT_CONTEXT_REQUIRED_KEYS = {
+    "patient_version",
+    "projection_version",
+    "medical_card_snapshot",
+}
 
 
 @dataclass(slots=True)
@@ -62,6 +67,10 @@ def _patient_context_cache(session_meta: SessionMeta) -> dict[str, Any] | None:
     cache = context_state.get("patient_context_cache")
     if not isinstance(cache, Mapping):
         return None
+    if not PATIENT_CONTEXT_REQUIRED_KEYS.issubset(cache):
+        return None
+    if cache.get("patient_version") is None or cache.get("projection_version") is None:
+        return None
     return deepcopy(dict(cache))
 
 
@@ -81,7 +90,7 @@ def build_graph_payload(
     payload_messages = payload_context_messages + [current_turn_message]
     patient_context = _patient_context_cache(session_meta)
     medical_card = (
-        patient_context.get("medical_card_snapshot")
+        deepcopy(patient_context.get("medical_card_snapshot"))
         if patient_context is not None
         else _context_value(session_meta, state_snapshot, "medical_card")
     )
