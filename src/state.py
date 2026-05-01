@@ -267,6 +267,8 @@ class RetrievedReference(BaseModel):
     snippet: str = Field(description="内容片段")
     retrieved_at: datetime = Field(default_factory=datetime.utcnow, description="检索时间")
     relevance: float = Field(default=1.0, description="相关性评分")
+    evidence_id: Optional[str] = None
+    section: Optional[str] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -341,6 +343,10 @@ class RetrievedReference(BaseModel):
             "snippet": snippet,
             "relevance": relevance,
         }
+        if d.get("evidence_id") is not None:
+            normalized["evidence_id"] = str(d.get("evidence_id"))
+        if d.get("section") is not None:
+            normalized["section"] = str(d.get("section"))
         if d.get("retrieved_at") is not None:
             normalized["retrieved_at"] = d.get("retrieved_at")
         return normalized
@@ -391,6 +397,21 @@ def append_list(left: List[Dict[str, Any]] | None, right: List[Dict[str, Any]] |
     if right:
         return left + right
     return left
+
+
+def merge_evidence_by_id(
+    left: List[Dict[str, Any]] | None,
+    right: List[Dict[str, Any]] | None,
+) -> List[Dict[str, Any]]:
+    merged: dict[str, Dict[str, Any]] = {}
+    for item in (left or []) + (right or []):
+        if not isinstance(item, dict):
+            continue
+        evidence_id = str(item.get("evidence_id") or "").strip()
+        if not evidence_id:
+            evidence_id = f"anon:{len(merged) + 1}"
+        merged[evidence_id] = item
+    return list(merged.values())
 
 
 def update_profile(left: Optional[PatientProfile], right: Optional[PatientProfile]) -> Optional[PatientProfile]:
@@ -467,7 +488,9 @@ class CRCAgentState(BaseModel):
     medical_card: Optional[Dict[str, Any]] = None
     final_output: Optional[str] = None
     
+    retrieved_evidence: Annotated[List[Dict[str, Any]], merge_evidence_by_id] = Field(default_factory=list)
     retrieved_references: List[RetrievedReference] = Field(default_factory=list)
+    rag_trace: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
     subagent_reports: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
     node_timings: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
     stage_timings: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)

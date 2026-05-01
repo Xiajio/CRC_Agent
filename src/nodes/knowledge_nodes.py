@@ -27,7 +27,7 @@ from .node_utils import (
     _user_text,
     _invoke_with_streaming,
     _ensure_message,
-    _extract_and_update_references,
+    _extract_rag_payload,
     _unwrap_nested_json,  # Important: Use the unwrapper!
     _create_rag_digest,
     _truncate_message_history,
@@ -398,7 +398,11 @@ def node_knowledge_retrieval(
                 print(f"  ✅ 步骤完成")
 
                 # 提取引用
-                final_content, refs = _extract_and_update_references(result_content)
+                rag_payload = _extract_rag_payload(result_content)
+                final_content = rag_payload["content"]
+                refs = rag_payload["retrieved_references"]
+                evidence = rag_payload["retrieved_evidence"]
+                rag_trace = rag_payload["rag_trace"]
                 if not use_patient_context:
                     final_content = _filter_context_for_general_knowledge(user_query, final_content)
 
@@ -454,6 +458,10 @@ def node_knowledge_retrieval(
 
                 if refs:
                     updates["retrieved_references"] = refs
+                if evidence:
+                    updates["retrieved_evidence"] = evidence
+                if rag_trace:
+                    updates["rag_trace"] = rag_trace
 
                 return updates
                 
@@ -480,12 +488,18 @@ def node_knowledge_retrieval(
         # 1. Local RAG (Layer 0 - Baseline)
         local_context = ""
         retrieved_refs = []
+        retrieved_evidence = []
+        rag_trace = []
         local_refs = []
         if local_rag_tool and use_patient_context:
             try:
                 # Simple query for RAG
                 raw_res = local_rag_tool.invoke({"query": user_query, "top_k": 4})
-                local_context, refs = _extract_and_update_references(str(raw_res))
+                rag_payload = _extract_rag_payload(str(raw_res))
+                local_context = rag_payload["content"]
+                refs = rag_payload["retrieved_references"]
+                retrieved_evidence.extend(rag_payload["retrieved_evidence"])
+                rag_trace.extend(rag_payload["rag_trace"])
                 local_refs = refs
                 retrieved_refs.extend(refs)
                 if show_thinking:
@@ -584,6 +598,10 @@ def node_knowledge_retrieval(
                         # 合并引用
                         if sub_result.references:
                             retrieved_refs.extend(sub_result.references)
+                        if getattr(sub_result, "evidence", None):
+                            retrieved_evidence.extend(sub_result.evidence)
+                        if getattr(sub_result, "rag_trace", None):
+                            rag_trace.extend(sub_result.rag_trace)
                         
                         if show_thinking:
                             print(f"✅ [SubAgent] 搜索完成，报告长度: {len(web_context)} 字符")
@@ -705,6 +723,10 @@ def node_knowledge_retrieval(
             }
             if retrieved_refs:
                 updates["retrieved_references"] = retrieved_refs
+            if retrieved_evidence:
+                updates["retrieved_evidence"] = retrieved_evidence
+            if rag_trace:
+                updates["rag_trace"] = rag_trace
             
             return updates
 

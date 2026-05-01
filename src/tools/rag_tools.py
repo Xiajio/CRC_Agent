@@ -27,6 +27,11 @@ from src.rag.retriever import (
     hybrid_search,
     format_retrieved_docs,
 )
+from src.rag.evidence import (
+    TOOL_RETRIEVAL_PROFILES,
+    build_evidence_from_document,
+    serialize_retrieved_evidence,
+)
 
 
 # === Constants ===
@@ -135,7 +140,14 @@ class GuidelineReaderInput(BaseModel):
 
 
 # === Formatting ===
-def _format_docs(docs: List[Document], include_metadata: bool = True) -> str:
+def _format_docs(
+    docs: List[Document],
+    include_metadata: bool = True,
+    *,
+    tool_name: Optional[str] = None,
+    query: Optional[str] = None,
+    retrieval_profile: Optional[str] = None,
+) -> str:
     """
     格式化检索结果，支持结构化引用锚点。
     
@@ -150,16 +162,23 @@ def _format_docs(docs: List[Document], include_metadata: bool = True) -> str:
     1. 文本通道：LLM 看到 [[Source:File|Page:N]]，学会引用这个 ID
     2. 数据通道：代码通过正则提取 <retrieved_metadata> JSON，State 获得精确的页码和文件路径
     """
+    profile = retrieval_profile or TOOL_RETRIEVAL_PROFILES.get(str(tool_name or ""), "general")
+
     if not docs:
-        return (
+        message = (
             "No relevant guideline chunks found. "
             "(提示：请确认已运行 `python -m src.rag.ingest` 将 `data/guidelines/*.pdf` 入库到 `chroma_db/`)"
+        )
+        return (
+            f"{message}\n\n<retrieved_metadata>[]</retrieved_metadata>\n\n"
+            f"{serialize_retrieved_evidence([])}"
         )
 
     import json
     
     parts: List[str] = []
     metadata_list: List[dict] = []
+    evidence_list: List[dict] = []
 
     for i, d in enumerate(docs, start=1):
         meta = getattr(d, "metadata", {}) or {}
@@ -226,13 +245,23 @@ def _format_docs(docs: List[Document], include_metadata: bool = True) -> str:
             "content_type": meta.get("content_type"),
             "evidence_level": meta.get("evidence_level"),
         })
+        evidence_list.append(
+            build_evidence_from_document(
+                d,
+                index=i,
+                query=query,
+                tool_name=tool_name,
+                retrieval_profile=profile,
+            )
+        )
 
     # [关键优化]: 将 JSON 数据附加在末尾，供 Node 解析，但对 LLM 来说只是附加信息
     text_output = "\n\n".join(parts)
     json_output = json.dumps(metadata_list, ensure_ascii=False)
     
     # 使用 XML 标签包裹 JSON，方便 regex 提取
-    return f"{text_output}\n\n<retrieved_metadata>{json_output}</retrieved_metadata>"
+    evidence_output = serialize_retrieved_evidence(evidence_list)
+    return f"{text_output}\n\n<retrieved_metadata>{json_output}</retrieved_metadata>\n\n{evidence_output}"
 
 
 # === Tools ===
@@ -270,7 +299,12 @@ class ClinicalGuidelineSearchTool(BaseTool):
         from src.rag.retriever import hybrid_search
         docs = hybrid_search(query=q, k=top_k, use_rerank=True, metadata_filter=filters if filters else None)
         
-        return _format_docs(docs or [])
+        return _format_docs(
+            docs or [],
+            tool_name=self.name,
+            query=q,
+            retrieval_profile=TOOL_RETRIEVAL_PROFILES[self.name],
+        )
 
     async def _arun(self, query: str, top_k: int = 6, disease_focus: Optional[str] = None) -> str:
         return self._run(query=query, top_k=top_k, disease_focus=disease_focus)
@@ -312,7 +346,12 @@ class TreatmentSearchTool(BaseTool):
             filters["primary_disease"] = {"$in": disease_aliases.get(normalized, [disease])}
         
         docs = hybrid_search(query=q, k=top_k, use_rerank=True, metadata_filter=filters if filters else None)
-        return _format_docs(docs or [])
+        return _format_docs(
+            docs or [],
+            tool_name=self.name,
+            query=q,
+            retrieval_profile=TOOL_RETRIEVAL_PROFILES[self.name],
+        )
 
     async def _arun(self, query: str, disease: Optional[str] = None, top_k: int = 6) -> str:
         return self._run(query=query, disease=disease, top_k=top_k)
@@ -336,7 +375,12 @@ class StagingSearchTool(BaseTool):
             return "请提供查询内容"
 
         docs = search_staging_criteria(query=q, k=top_k)
-        return _format_docs(docs or [])
+        return _format_docs(
+            docs or [],
+            tool_name=self.name,
+            query=q,
+            retrieval_profile=TOOL_RETRIEVAL_PROFILES[self.name],
+        )
 
     async def _arun(self, query: str, top_k: int = 6) -> str:
         return self._run(query=query, top_k=top_k)
@@ -360,7 +404,12 @@ class DrugInfoSearchTool(BaseTool):
             return "请提供查询内容"
 
         docs = search_drug_information(query=q, drug_name=drug_name, k=top_k)
-        return _format_docs(docs or [])
+        return _format_docs(
+            docs or [],
+            tool_name=self.name,
+            query=q,
+            retrieval_profile=TOOL_RETRIEVAL_PROFILES[self.name],
+        )
 
     async def _arun(self, query: str, drug_name: Optional[str] = None, top_k: int = 6) -> str:
         return self._run(query=query, drug_name=drug_name, top_k=top_k)
@@ -389,7 +438,12 @@ class GuidelineSourceSearchTool(BaseTool):
             return f"无效的指南来源: {source}，请使用 NCCN/CSCO/ESMO"
 
         docs = search_by_guideline_source(query=q, source=s, k=top_k)
-        return _format_docs(docs or [])
+        return _format_docs(
+            docs or [],
+            tool_name=self.name,
+            query=q,
+            retrieval_profile=TOOL_RETRIEVAL_PROFILES[self.name],
+        )
 
     async def _arun(self, query: str, source: str, top_k: int = 6) -> str:
         return self._run(query=query, source=source, top_k=top_k)
@@ -439,7 +493,12 @@ class HybridSearchTool(BaseTool):
             filters["guideline_source"] = guideline_source.upper()
 
         docs = hybrid_search(query=q, k=top_k, metadata_filter=filters if filters else None)
-        return _format_docs(docs or [])
+        return _format_docs(
+            docs or [],
+            tool_name=self.name,
+            query=q,
+            retrieval_profile=TOOL_RETRIEVAL_PROFILES[self.name],
+        )
 
     async def _arun(
         self, 

@@ -20,6 +20,14 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Base
 from langchain_core.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate
 
+from src.rag.evidence import (
+    build_rag_traces_from_evidence,
+    evidence_to_references,
+    metadata_to_evidence,
+    parse_retrieved_evidence,
+    parse_retrieved_metadata,
+)
+
 
 # ==============================================================================
 # 1. 子智能体上下文（沙箱）
@@ -31,6 +39,8 @@ class SubAgentResult:
     success: bool
     report: str  # 提取的 <report> 内容或最终摘要
     references: List[Dict[str, Any]] = field(default_factory=list)  # 结构化引用
+    evidence: List[Dict[str, Any]] = field(default_factory=list)
+    rag_trace: List[Dict[str, Any]] = field(default_factory=list)
     raw_token_count: int = 0  # 子智能体消耗的 token 数（用于监控）
     iterations: int = 0  # 执行了多少轮
     error: Optional[str] = None
@@ -90,6 +100,8 @@ class SubAgentContext:
         
         # 收集的引用
         self._collected_references: List[Dict[str, Any]] = []
+        self._collected_evidence: List[Dict[str, Any]] = []
+        self._collected_rag_trace: List[Dict[str, Any]] = []
         
         # Token 计数（用于监控）
         self._token_count = 0
@@ -132,6 +144,8 @@ class SubAgentContext:
                 success=True,
                 report=report,
                 references=self._collected_references,
+                evidence=self._collected_evidence,
+                rag_trace=self._collected_rag_trace,
                 raw_token_count=self._token_count,
                 iterations=self._iteration_count
             )
@@ -165,6 +179,8 @@ class SubAgentContext:
         # 初始化沙箱
         self._sandbox_messages = [system_msg, task_msg]
         self._collected_references = []
+        self._collected_evidence = []
+        self._collected_rag_trace = []
         self._token_count = 0
         self._iteration_count = 0
         
@@ -293,15 +309,19 @@ class SubAgentContext:
     
     def _extract_references(self, tool_result: str):
         """从工具结果中提取引用"""
-        pattern = r"<retrieved_metadata>(.*?)</retrieved_metadata>"
-        match = re.search(pattern, tool_result, re.DOTALL)
-        if match:
-            try:
-                refs = json.loads(match.group(1))
-                if isinstance(refs, list):
-                    self._collected_references.extend(refs)
-            except json.JSONDecodeError:
-                pass
+        evidence = parse_retrieved_evidence(tool_result)
+        if evidence:
+            self._collected_evidence.extend(evidence)
+            self._collected_references.extend(evidence_to_references(evidence))
+            self._collected_rag_trace.extend(build_rag_traces_from_evidence(evidence))
+            return
+
+        metadata = parse_retrieved_metadata(tool_result)
+        if metadata:
+            fallback_evidence = metadata_to_evidence(metadata)
+            self._collected_evidence.extend(fallback_evidence)
+            self._collected_references.extend(evidence_to_references(fallback_evidence))
+            self._collected_rag_trace.extend(build_rag_traces_from_evidence(fallback_evidence))
     
     def _estimate_tokens(self, text: str) -> int:
         """估算 token 数量"""

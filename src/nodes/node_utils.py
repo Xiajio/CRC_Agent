@@ -14,6 +14,15 @@ from langchain_core.prompts import BasePromptTemplate
 from langchain_core.runnables import Runnable
 from langchain_core.tools import BaseTool
 
+from src.rag.evidence import (
+    build_rag_traces_from_evidence,
+    evidence_to_references,
+    metadata_to_evidence,
+    parse_retrieved_evidence,
+    parse_retrieved_metadata,
+    strip_retrieval_payload_blocks,
+)
+
 
 _STREAM_CALLBACK: ContextVar[Callable[[dict[str, Any]], None] | None] = ContextVar(
     "node_stream_callback",
@@ -369,7 +378,7 @@ def _invoke_with_streaming(
     )
 
 
-def _extract_and_update_references(content: str) -> tuple[str, list[dict[str, Any]]]:
+def _extract_legacy_source_references(content: str) -> tuple[str, list[dict[str, Any]]]:
     text = content or ""
     pattern = re.compile(r"\[(\d+)\]\s*source=([^\n]+)\n([\s\S]*?)(?=\n\[\d+\]\s*source=|\Z)")
     references: list[dict[str, Any]] = []
@@ -383,6 +392,43 @@ def _extract_and_update_references(content: str) -> tuple[str, list[dict[str, An
         )
     cleaned = pattern.sub("", text).strip()
     return cleaned, references
+
+
+def _extract_rag_payload(content: str) -> dict[str, Any]:
+    text = content or ""
+    cleaned = strip_retrieval_payload_blocks(text)
+
+    evidence = parse_retrieved_evidence(text)
+    if evidence:
+        return {
+            "content": cleaned,
+            "retrieved_evidence": evidence,
+            "retrieved_references": evidence_to_references(evidence),
+            "rag_trace": build_rag_traces_from_evidence(evidence),
+        }
+
+    metadata = parse_retrieved_metadata(text)
+    if metadata:
+        fallback_evidence = metadata_to_evidence(metadata)
+        return {
+            "content": cleaned,
+            "retrieved_evidence": fallback_evidence,
+            "retrieved_references": evidence_to_references(fallback_evidence),
+            "rag_trace": build_rag_traces_from_evidence(fallback_evidence),
+        }
+
+    legacy_cleaned, legacy_refs = _extract_legacy_source_references(cleaned)
+    return {
+        "content": legacy_cleaned,
+        "retrieved_evidence": [],
+        "retrieved_references": legacy_refs,
+        "rag_trace": [],
+    }
+
+
+def _extract_and_update_references(content: str) -> tuple[str, list[dict[str, Any]]]:
+    payload = _extract_rag_payload(content)
+    return payload["content"], payload["retrieved_references"]
 
 
 def _calculate_text_similarity(left: str, right: str) -> float:
@@ -825,6 +871,7 @@ __all__ = [
     "_clean_and_validate_json",
     "_unwrap_nested_json",
     "_extract_and_update_references",
+    "_extract_rag_payload",
     "_calculate_text_similarity",
     "_parse_thinking_tags",
     "_split_inline_thinking",
@@ -861,5 +908,3 @@ __all__ = [
     "_extract_mri_text",
     "_extract_pathology_text",
 ]
-
-

@@ -33,7 +33,7 @@ from .node_utils import (
     _select_tools,
     _generate_fallback_plan,
     _needs_full_decision,
-    _extract_and_update_references,
+    _extract_rag_payload,
     _invoke_structured_with_recovery,
     _is_repeated_rejection,
     auto_update_roadmap_from_state,
@@ -1846,6 +1846,8 @@ def node_decision(
         # Planner 不再为 treatment_decision 生成知识检索步骤，所有检索在此统一完成
         rag_context = ""
         retrieved_refs = []
+        retrieved_evidence = []
+        rag_trace = []
         reuse_cached_rag = _should_reuse_cached_rag(state)
         sub_agent_succeeded = False
         if reuse_cached_rag:
@@ -1901,6 +1903,8 @@ def node_decision(
                         # 蒸馏后的报告（子智能体的完整历史已被销毁）
                         rag_context = sub_result.report
                         retrieved_refs = sub_result.references
+                        retrieved_evidence = list(getattr(sub_result, "evidence", []) or [])
+                        rag_trace = list(getattr(sub_result, "rag_trace", []) or [])
                         sub_agent_succeeded = True
                         
                         if show_thinking:
@@ -1949,7 +1953,13 @@ def node_decision(
                                 "tool_name": tool_name,
                                 "invoke_ms": invoke_ms,
                             })
-                        ctx, refs = _extract_and_update_references(str(res))
+                        rag_payload = _extract_rag_payload(str(res))
+                        ctx = rag_payload["content"]
+                        refs = rag_payload["retrieved_references"]
+                        if rag_payload["retrieved_evidence"]:
+                            retrieved_evidence.extend(rag_payload["retrieved_evidence"])
+                        if rag_payload["rag_trace"]:
+                            rag_trace.extend(rag_payload["rag_trace"])
                         if ctx:
                             merged_context_parts.append(f"[Query] {q}\n{ctx}")
                         if refs:
@@ -2015,6 +2025,10 @@ def node_decision(
                     "error": None,
                     "findings": {"decision_strategy": "template_fast"},
                 }
+                if retrieved_evidence:
+                    updates["retrieved_evidence"] = retrieved_evidence
+                if rag_trace:
+                    updates["rag_trace"] = rag_trace
                 temp_state = state.model_copy(update=updates)
                 updates["roadmap"] = auto_update_roadmap_from_state(temp_state)
                 return updates
@@ -2111,6 +2125,10 @@ def node_decision(
             }
             
             # [新增] 自动更新路线图
+            if retrieved_evidence:
+                updates["retrieved_evidence"] = retrieved_evidence
+            if rag_trace:
+                updates["rag_trace"] = rag_trace
             temp_state = state.model_copy(update=updates)
             updates["roadmap"] = auto_update_roadmap_from_state(temp_state)
             
