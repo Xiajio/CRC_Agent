@@ -25,10 +25,12 @@ htmlcov/
 output/
 runtime/
 tmp/
+.tmp/
 # Root scratch dirs/files left by Python, pip, or pytest temp roots.
 /_tmp/
 /tmp*
 /pytest-cache-files*
+.worktrees/
 *.log
 /_fix_*.txt
 /_ftfy_fixed.py

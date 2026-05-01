@@ -465,6 +465,7 @@ class CRCAgentState(BaseModel):
     assessment_draft: Optional[str] = None
     decision_json: Optional[Dict[str, Any]] = None
     medical_card: Optional[Dict[str, Any]] = None
+    patient_context: Optional[Dict[str, Any]] = None
     final_output: Optional[str] = None
     
     retrieved_references: List[RetrievedReference] = Field(default_factory=list)
