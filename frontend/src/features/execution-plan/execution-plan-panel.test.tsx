@@ -12,6 +12,24 @@ describe("ExecutionPlanPanel", () => {
     expect(screen.queryByText("NCCN 指南片段")).not.toBeInTheDocument();
   });
 
+  it("shows a human review warning and direct-reference warning for rejected critic output", () => {
+    render(
+      <ExecutionPlanPanel
+        plan={[]}
+        references={[]}
+        critic={{
+          verdict: "REJECTED",
+          feedback: "missing references",
+          requires_human_review: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText(/HUMAN_REVIEW_REQUIRED/)).toBeInTheDocument();
+    expect(screen.getByText(/missing references/)).toBeInTheDocument();
+    expect(screen.getByText(/No direct references are attached/)).toBeInTheDocument();
+  });
+
   it("renders provided plan steps and references", () => {
     render(
       <ExecutionPlanPanel

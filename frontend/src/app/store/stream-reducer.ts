@@ -1,5 +1,6 @@
 import type {
   CardUpsertEvent,
+  ClinicalEventLogEntry,
   FrontendMessage,
   InlineCard,
   JsonObject,
@@ -31,8 +32,37 @@ const INLINE_CARD_PRIORITY: Record<string, number> = {
   triage_question_card: 5,
   decision_card: 6,
 };
+const EVENT_LOG_LIMIT = 25;
 
 type FrontendInlineCard = NonNullable<FrontendMessage["inlineCards"]>[number];
+
+function eventLogEntryId(state: SessionState, kind: ClinicalEventLogEntry["kind"], title: string): string {
+  const cursor = (state.eventLog ?? []).length + 1;
+  return `${kind}-${cursor}-${title.replace(/\s+/g, "-").toLowerCase()}`;
+}
+
+function appendEventLog(
+  state: SessionState,
+  entry: Omit<ClinicalEventLogEntry, "id">,
+): SessionState {
+  const currentLog = state.eventLog ?? [];
+  const nextEntry: ClinicalEventLogEntry = {
+    ...entry,
+    id: eventLogEntryId(state, entry.kind, entry.title),
+  };
+  return {
+    ...state,
+    eventLog: [...currentLog, nextEntry].slice(-EVENT_LOG_LIMIT),
+  };
+}
+
+function criticRequiresHumanReview(verdict: string, explicit?: boolean): boolean {
+  if (typeof explicit === "boolean") {
+    return explicit;
+  }
+  const normalized = verdict.trim().toUpperCase();
+  return Boolean(normalized && normalized !== "APPROVED");
+}
 
 function normalizeWorkflowNode(value: unknown): string | null {
   if (typeof value !== "string" || !value.trim()) {
@@ -282,6 +312,7 @@ export function createInitialSessionState(): SessionState {
     pendingInlineCards: [],
     latestAssistantMessageCursor: null,
     streamingMessageCursors: {},
+    eventLog: [],
   };
 }
 
@@ -317,6 +348,7 @@ export function hydrateSessionState(state: SessionState, response: SessionRespon
     pendingInlineCards: [],
     latestAssistantMessageCursor: null,
     streamingMessageCursors: {},
+    eventLog: state.eventLog ?? [],
   };
 }
 
@@ -354,12 +386,18 @@ export function mergeMessageHistory(
 
 export function reduceStreamEvent(state: SessionState, event: StreamEvent): SessionState {
   switch (event.type) {
-    case "status.node":
-      return {
+    case "status.node": {
+      const nextState = {
         ...state,
         statusNode: event.node,
         roadmap: advanceRoadmapFromNode(state.roadmap, event.node),
       };
+      return appendEventLog(nextState, {
+        kind: "node",
+        title: event.node,
+        tone: "neutral",
+      });
+    }
     case "message.delta":
       {
         const existingCursor =
@@ -505,11 +543,18 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
               : state.pendingInlineCards,
         };
       }
-    case "roadmap.update":
-      return {
+    case "roadmap.update": {
+      const nextState = {
         ...state,
         roadmap: event.roadmap,
       };
+      return appendEventLog(nextState, {
+        kind: "roadmap",
+        title: "Roadmap updated",
+        detail: `${event.roadmap.length} step(s)`,
+        tone: "neutral",
+      });
+    }
     case "findings.patch":
       return {
         ...state,
@@ -523,11 +568,17 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
         ...state,
         patientProfile: event.profile,
       };
-    case "stage.update":
-      return {
+    case "stage.update": {
+      const nextState = {
         ...state,
         stage: event.stage,
       };
+      return appendEventLog(nextState, {
+        kind: "stage",
+        title: event.stage,
+        tone: "neutral",
+      });
+    }
     case "references.append": {
       const next = [...state.references];
       const seen = new Set(
@@ -540,10 +591,16 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
           next.push(item);
         }
       }
-      return {
+      const nextState = {
         ...state,
         references: next,
       };
+      return appendEventLog(nextState, {
+        kind: "references",
+        title: "References appended",
+        detail: `${event.items.length} reference(s)`,
+        tone: "success",
+      });
     }
     case "safety.alert":
       return {
@@ -553,22 +610,39 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
           blocking: true,
         },
       };
-    case "critic.verdict":
-      return {
+    case "critic.verdict": {
+      const requiresHumanReview = criticRequiresHumanReview(event.verdict, event.requires_human_review);
+      const nextState = {
         ...state,
         critic: {
           verdict: event.verdict,
           feedback: event.feedback ?? null,
           iteration_count: event.iteration_count ?? null,
+          requires_human_review: requiresHumanReview,
         },
       };
-    case "plan.update":
-      return {
+      return appendEventLog(nextState, {
+        kind: "critic",
+        title: `Critic ${event.verdict}`,
+        detail: event.feedback ?? null,
+        tone: requiresHumanReview ? "warning" : "success",
+        requiresHumanReview,
+      });
+    }
+    case "plan.update": {
+      const nextState = {
         ...state,
         plan: event.plan,
       };
-    case "error":
-      return {
+      return appendEventLog(nextState, {
+        kind: "plan",
+        title: "Plan updated",
+        detail: `${event.plan.length} step(s)`,
+        tone: "neutral",
+      });
+    }
+    case "error": {
+      const nextState = {
         ...state,
         plan: markActivePlanStepBlocked(state.plan, event.message),
         lastError: {
@@ -577,6 +651,13 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
           recoverable: event.recoverable,
         },
       };
+      return appendEventLog(nextState, {
+        kind: "error",
+        title: event.code,
+        detail: event.message,
+        tone: "error",
+      });
+    }
     case "context.maintenance":
       return {
         ...state,
@@ -585,8 +666,8 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
           message: event.message,
         },
       };
-    case "done":
-      return {
+    case "done": {
+      const nextState = {
         ...state,
         threadId: event.thread_id,
         activeRunId: null,
@@ -594,6 +675,12 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
         statusNode: null,
         pendingInlineCards: [],
       };
+      return appendEventLog(nextState, {
+        kind: "done",
+        title: "Stream completed",
+        tone: "success",
+      });
+    }
     default:
       return state;
   }

@@ -87,6 +87,13 @@ def _coerce_mapping_list(value: Any) -> list[dict[str, Any]]:
     return items
 
 
+def _requires_human_review(verdict: Any, explicit: Any = None) -> bool:
+    if isinstance(explicit, bool):
+        return explicit
+    normalized = str(verdict or "").strip().upper()
+    return bool(normalized and normalized != "APPROVED")
+
+
 def _coerce_messages(messages: Sequence[Any] | None) -> list[BaseMessage]:
     if messages is None:
         return []
@@ -280,6 +287,10 @@ def normalize_tick(
                 verdict=str(critic_verdict or ""),
                 feedback=str(critic_feedback) if critic_feedback is not None else None,
                 iteration_count=int(iteration_count) if iteration_count is not None else None,
+                requires_human_review=_requires_human_review(
+                    critic_verdict,
+                    node_output.get("requires_human_review"),
+                ),
             )
         )
 

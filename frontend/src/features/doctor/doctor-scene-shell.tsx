@@ -1,6 +1,11 @@
 import type { ReactNode } from "react";
 
-import { type FrontendMessage, type JsonObject, type PatientRegistryDetail } from "../../app/api/types";
+import {
+  type ClinicalEventLogEntry,
+  type FrontendMessage,
+  type JsonObject,
+  type PatientRegistryDetail,
+} from "../../app/api/types";
 import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
 import { ClinicalCardsPanel } from "../cards/clinical-cards-panel";
 import type { CardPromptHandler } from "../cards/card-renderers-extended";
@@ -37,6 +42,8 @@ type DoctorSceneShellProps = {
   plan: JsonObject[];
   cards: Record<string, JsonObject>;
   references: JsonObject[];
+  critic?: JsonObject | null;
+  eventLog?: ClinicalEventLogEntry[];
   onLoadHistory: () => void;
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
@@ -346,11 +353,53 @@ function ClinicalUploads({
   );
 }
 
-function ClinicalEventStream() {
+function criticRequiresHumanReview(critic: JsonObject | null | undefined): boolean {
+  if (!critic) {
+    return false;
+  }
+  if (typeof critic.requires_human_review === "boolean") {
+    return critic.requires_human_review;
+  }
+  const verdict = typeof critic.verdict === "string" ? critic.verdict.trim().toUpperCase() : "";
+  return Boolean(verdict && verdict !== "APPROVED");
+}
+
+function ClinicalEventStream({
+  events,
+  critic,
+}: {
+  events: ClinicalEventLogEntry[];
+  critic?: JsonObject | null;
+}) {
+  const requiresHumanReview = criticRequiresHumanReview(critic);
   return (
     <section className="clinical-card clinical-event-stream">
       <ClinicalPanelHeader icon={<SmallIcon name="event" />} title="事件流" />
-      <p className="clinical-empty-note">暂无事件。</p>
+      {requiresHumanReview ? (
+        <div className="clinical-review-warning" role="status">
+          <strong>HUMAN_REVIEW_REQUIRED</strong>
+          <p>{typeof critic?.feedback === "string" ? critic.feedback : "Critic did not approve this recommendation."}</p>
+        </div>
+      ) : null}
+      {events.length > 0 ? (
+        <div className="clinical-event-row">
+          {events.map((event) => (
+            <article
+              key={event.id}
+              className={`clinical-event-chip clinical-event-chip-${event.tone}`}
+            >
+              <div>
+                <strong>{event.title}</strong>
+                <span>{event.kind}</span>
+              </div>
+              {event.detail ? <p>{event.detail}</p> : null}
+              {event.requiresHumanReview ? <p>HUMAN_REVIEW_REQUIRED</p> : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="clinical-empty-note">暂无事件。</p>
+      )}
     </section>
   );
 }
@@ -375,6 +424,8 @@ export function DoctorSceneShell({
   plan,
   cards,
   references,
+  critic = null,
+  eventLog = [],
   onLoadHistory,
   onDraftChange,
   onSubmit,
@@ -490,10 +541,10 @@ export function DoctorSceneShell({
         </section>
         <aside className="clinical-right-column">
           <RoadmapPanel roadmap={roadmap} stage={stage} />
-          <ExecutionPlanPanel plan={plan} references={references} />
+          <ExecutionPlanPanel plan={plan} references={references} critic={critic} />
         </aside>
         <div className="clinical-event-column">
-          <ClinicalEventStream />
+          <ClinicalEventStream events={eventLog} critic={critic} />
         </div>
       </div>
     </main>

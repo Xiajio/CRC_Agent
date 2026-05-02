@@ -28,4 +28,29 @@ describe("ClinicalCardsPanel", () => {
     expect(screen.getByText("Recommendation")).toBeInTheDocument();
     expect(container.querySelector(".clinical-medical-card-selected")).toHaveAttribute("aria-current", "true");
   });
+
+  it("renders decision card plan items that use step and rationale fields", () => {
+    render(
+      <ClinicalCardsPanel
+        cards={{
+          decision_card: {
+            summary: "Stage III low rectal adenocarcinoma, pMMR, cT3N1M0.",
+            treatment_plan: [
+              {
+                step: "Discuss total neoadjuvant therapy in multidisciplinary tumor board.",
+                rationale: "cT3N1 low rectal cancer generally requires neoadjuvant treatment before surgery.",
+              },
+            ],
+          },
+        }}
+        selectedCardType="decision_card"
+      />,
+    );
+
+    expect(screen.getByText("Discuss total neoadjuvant therapy in multidisciplinary tumor board.")).toBeInTheDocument();
+    expect(
+      screen.getByText("cT3N1 low rectal cancer generally requires neoadjuvant treatment before surgery."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("暂无说明。")).not.toBeInTheDocument();
+  });
 });

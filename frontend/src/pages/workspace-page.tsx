@@ -1009,6 +1009,8 @@ export function WorkspacePage() {
         plan={doctor.state.plan}
         cards={doctorVisibleCards}
         references={doctor.state.references}
+        critic={doctor.state.critic}
+        eventLog={doctor.state.eventLog}
         onLoadHistory={() => void loadMessageHistory()}
         onDraftChange={(value) => updateDraft("doctor", value)}
         onSubmit={() => void submitPrompt()}
@@ -1089,7 +1091,6 @@ export function WorkspacePage() {
   );
 
 }
-
 
 
 

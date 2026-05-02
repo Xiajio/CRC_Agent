@@ -4,6 +4,85 @@ import type { CardUpsertEvent, MessageDeltaEvent, MessageDoneEvent } from "../ap
 import { createInitialSessionState, reduceStreamEvent } from "./stream-reducer";
 
 describe("reduceStreamEvent", () => {
+  it("records a bounded visible event log for clinical stream events", () => {
+    let state = createInitialSessionState();
+
+    state = reduceStreamEvent(state, { type: "status.node", node: "decision" });
+    state = reduceStreamEvent(state, { type: "stage.update", stage: "Decision" });
+    state = reduceStreamEvent(state, {
+      type: "critic.verdict",
+      verdict: "REJECTED",
+      feedback: "missing references",
+      iteration_count: 1,
+      requires_human_review: true,
+    } as any);
+    state = reduceStreamEvent(state, {
+      type: "plan.update",
+      plan: [{ id: "plan-1", title: "Treatment sequence", status: "completed" }],
+    });
+    state = reduceStreamEvent(state, {
+      type: "references.append",
+      items: [{ id: "ref-1", title: "NCCN" }],
+    });
+    state = reduceStreamEvent(state, {
+      type: "done",
+      thread_id: "thread-1",
+      run_id: "run-1",
+      snapshot_version: 2,
+    });
+
+    expect((state as any).eventLog.map((entry: any) => entry.kind)).toEqual([
+      "node",
+      "stage",
+      "critic",
+      "plan",
+      "references",
+      "done",
+    ]);
+    expect((state as any).eventLog[2]).toMatchObject({
+      kind: "critic",
+      tone: "warning",
+      title: "Critic REJECTED",
+      detail: "missing references",
+      requiresHumanReview: true,
+    });
+  });
+
+  it("keeps only the latest clinical event log entries", () => {
+    let state = createInitialSessionState();
+
+    for (let index = 0; index < 35; index += 1) {
+      state = reduceStreamEvent(state, { type: "status.node", node: `node-${index}` });
+    }
+
+    expect((state as any).eventLog).toHaveLength(25);
+    expect((state as any).eventLog[0]).toMatchObject({ title: "node-10" });
+    expect((state as any).eventLog[24]).toMatchObject({ title: "node-34" });
+  });
+
+  it("records roadmap updates in the visible event log", () => {
+    const state = reduceStreamEvent(createInitialSessionState(), {
+      type: "roadmap.update",
+      roadmap: [
+        { id: "assessment", title: "assessment", status: "completed" },
+        { id: "citation", title: "citation", status: "blocked" },
+      ],
+    });
+
+    expect(state.roadmap).toEqual([
+      { id: "assessment", title: "assessment", status: "completed" },
+      { id: "citation", title: "citation", status: "blocked" },
+    ]);
+    expect((state as any).eventLog).toEqual([
+      expect.objectContaining({
+        kind: "roadmap",
+        title: "Roadmap updated",
+        detail: "2 step(s)",
+        tone: "neutral",
+      }),
+    ]);
+  });
+
   it("advances a scaffolded roadmap from status.node events", () => {
     const initialState = {
       ...createInitialSessionState(),

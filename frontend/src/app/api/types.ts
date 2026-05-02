@@ -78,6 +78,7 @@ export interface CriticVerdictEvent {
   verdict: string;
   feedback?: string | null;
   iteration_count?: number | null;
+  requires_human_review?: boolean;
 }
 
 export interface RoadmapUpdateEvent {
@@ -510,6 +511,27 @@ export interface SafetyAlertState {
   blocking: true;
 }
 
+export type ClinicalEventLogKind =
+  | "node"
+  | "stage"
+  | "roadmap"
+  | "critic"
+  | "plan"
+  | "references"
+  | "error"
+  | "done";
+
+export type ClinicalEventLogTone = "neutral" | "success" | "warning" | "error";
+
+export interface ClinicalEventLogEntry {
+  id: string;
+  kind: ClinicalEventLogKind;
+  title: string;
+  detail?: string | null;
+  tone: ClinicalEventLogTone;
+  requiresHumanReview?: boolean;
+}
+
 export interface SessionState {
   sessionId: string | null;
   threadId: string | null;
@@ -542,5 +564,6 @@ export interface SessionState {
   }>;
   latestAssistantMessageCursor: string | null;
   streamingMessageCursors: Record<string, string>;
+  eventLog: ClinicalEventLogEntry[];
 }
 

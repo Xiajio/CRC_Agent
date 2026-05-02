@@ -643,9 +643,11 @@ function renderDecisionCard(payload: JsonObject) {
           <ul className="workspace-list">
             {plans.map((plan, index) => (
               <li key={`plan-${index}`} className="workspace-list-item">
-                <strong>{asString(plan.phase) ?? asString(plan.title) ?? asString(plan.name) ?? `阶段 ${index + 1}`}</strong>
+                <strong>
+                  {asString(plan.phase) ?? asString(plan.title) ?? asString(plan.step) ?? asString(plan.name) ?? `阶段 ${index + 1}`}
+                </strong>
                 <p className="workspace-copy workspace-copy-tight">
-                  {asString(plan.regimen) ?? asString(plan.content) ?? asString(plan.details) ?? "暂无说明。"}
+                  {asString(plan.regimen) ?? asString(plan.content) ?? asString(plan.rationale) ?? asString(plan.reasoning) ?? asString(plan.details) ?? "暂无说明。"}
                 </p>
               </li>
             ))}

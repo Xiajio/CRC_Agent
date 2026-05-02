@@ -76,6 +76,13 @@ def _coerce_mapping_list(value: Any) -> list[dict[str, Any]]:
     return items
 
 
+def _requires_human_review(verdict: Any, explicit: Any = None) -> bool:
+    if isinstance(explicit, bool):
+        return explicit
+    normalized = str(verdict or "").strip().upper()
+    return bool(normalized and normalized != "APPROVED")
+
+
 def _coerce_messages(messages: Sequence[Any] | None) -> list[Any]:
     if messages is None:
         return []
@@ -359,11 +366,16 @@ def build_recovery_snapshot(
     critic_verdict = _get_value(state, "critic_verdict")
     critic_feedback = _get_value(state, "critic_feedback")
     iteration_count = _get_value(state, "iteration_count")
+    requires_human_review = _requires_human_review(
+        critic_verdict,
+        _get_value(state, "requires_human_review"),
+    )
     critic: dict[str, Any] | None = None
     if critic_verdict is not None or critic_feedback is not None:
         critic = {
             "verdict": critic_verdict,
             "feedback": critic_feedback,
+            "requires_human_review": requires_human_review,
         }
         if iteration_count is not None:
             critic["iteration_count"] = iteration_count

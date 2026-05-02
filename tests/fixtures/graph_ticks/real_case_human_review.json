@@ -1,0 +1,282 @@
+{
+  "ticks": [
+    {
+      "node_name": "assessment",
+      "node_output": {
+        "clinical_stage": "cT3N1M0 stage III rectal adenocarcinoma",
+        "patient_profile": {
+          "tumor_type": "Rectum",
+          "pathology_confirmed": true,
+          "tnm_staging": {
+            "clinical": {
+              "cT": "cT3",
+              "cN": "cN1",
+              "cM": "cM0"
+            },
+            "stage_group": "III"
+          },
+          "mmr_status": "pMMR",
+          "ecog_score": 1
+        },
+        "findings": {
+          "risk_level": "High",
+          "assessment_draft": "Biopsy-confirmed low rectal adenocarcinoma, pMMR, MRI cT3N1M0, ECOG 1.",
+          "pathology_confirmed": true,
+          "tumor_location": "rectum",
+          "mmr_status": "pMMR",
+          "tnm_staging": {
+            "clinical": {
+              "cT": "cT3",
+              "cN": "cN1",
+              "cM": "cM0"
+            },
+            "stage_group": "III"
+          }
+        },
+        "assessment_draft": "Biopsy-confirmed low rectal adenocarcinoma, pMMR, MRI cT3N1M0, ECOG 1."
+      }
+    },
+    {
+      "node_name": "decision",
+      "node_output": {
+        "decision_json": {
+          "summary": "Stage III low rectal adenocarcinoma, pMMR, cT3N1M0.",
+          "treatment_plan": [
+            {
+              "step": "Discuss total neoadjuvant therapy in multidisciplinary tumor board.",
+              "rationale": "cT3N1 low rectal cancer generally requires neoadjuvant treatment before surgery."
+            },
+            {
+              "step": "Plan long-course chemoradiation or short-course radiation followed by systemic chemotherapy.",
+              "rationale": "Treatment sequence should be individualized by MRI risk features and patient preference."
+            },
+            {
+              "step": "Restage and consider TME surgery after neoadjuvant therapy.",
+              "rationale": "Surgical timing depends on response and resectability."
+            }
+          ]
+        },
+        "current_plan": [
+          {
+            "id": "stage-review",
+            "description": "Confirm staging, MMR status, and ECOG performance status.",
+            "tool_needed": "search_treatment_recommendations",
+            "status": "completed",
+            "reasoning": "The treatment recommendation depends on stage III rectal cancer risk profile."
+          },
+          {
+            "id": "citation-check",
+            "description": "Check whether the final recommendation is bound to direct guideline references.",
+            "tool_needed": "search_treatment_recommendations",
+            "status": "blocked",
+            "reasoning": "No direct citation was attached by the fixture run."
+          },
+          {
+            "id": "human-review",
+            "description": "Route the recommendation to manual oncology review.",
+            "tool_needed": "ask_user",
+            "status": "pending",
+            "reasoning": "Critic did not approve the citation support."
+          }
+        ],
+        "roadmap": [
+          {
+            "id": "assessment",
+            "title": "assessment",
+            "status": "completed"
+          },
+          {
+            "id": "decision",
+            "title": "decision",
+            "status": "completed"
+          },
+          {
+            "id": "citation",
+            "title": "citation",
+            "status": "blocked"
+          },
+          {
+            "id": "finalize",
+            "title": "finalize",
+            "status": "completed"
+          }
+        ]
+      }
+    },
+    {
+      "node_name": "citation",
+      "node_output": {
+        "citation_report": {
+          "status": "needs_review",
+          "needs_more_sources": true,
+          "missing_claims": [
+            "no_direct_references"
+          ],
+          "warnings": [
+            "No direct guideline reference is bound to the recommendation."
+          ]
+        },
+        "current_plan": [
+          {
+            "id": "stage-review",
+            "description": "Confirm staging, MMR status, and ECOG performance status.",
+            "tool_needed": "search_treatment_recommendations",
+            "status": "completed",
+            "reasoning": "The treatment recommendation depends on stage III rectal cancer risk profile."
+          },
+          {
+            "id": "citation-check",
+            "description": "Check whether the final recommendation is bound to direct guideline references.",
+            "tool_needed": "search_treatment_recommendations",
+            "status": "blocked",
+            "reasoning": "No direct citation was attached by the fixture run."
+          },
+          {
+            "id": "human-review",
+            "description": "Route the recommendation to manual oncology review.",
+            "tool_needed": "ask_user",
+            "status": "pending",
+            "reasoning": "Critic did not approve the citation support."
+          }
+        ],
+        "roadmap": [
+          {
+            "id": "assessment",
+            "title": "assessment",
+            "status": "completed"
+          },
+          {
+            "id": "decision",
+            "title": "decision",
+            "status": "completed"
+          },
+          {
+            "id": "citation",
+            "title": "citation",
+            "status": "blocked"
+          },
+          {
+            "id": "finalize",
+            "title": "finalize",
+            "status": "completed"
+          }
+        ]
+      }
+    },
+    {
+      "node_name": "critic",
+      "node_output": {
+        "critic_verdict": "REJECTED",
+        "critic_feedback": "No direct guideline citations are bound; this recommendation requires manual oncology review.",
+        "requires_human_review": true,
+        "iteration_count": 1,
+        "current_plan": [
+          {
+            "id": "stage-review",
+            "description": "Confirm staging, MMR status, and ECOG performance status.",
+            "tool_needed": "search_treatment_recommendations",
+            "status": "completed",
+            "reasoning": "The treatment recommendation depends on stage III rectal cancer risk profile."
+          },
+          {
+            "id": "citation-check",
+            "description": "Check whether the final recommendation is bound to direct guideline references.",
+            "tool_needed": "search_treatment_recommendations",
+            "status": "blocked",
+            "reasoning": "No direct citation was attached by the fixture run."
+          },
+          {
+            "id": "human-review",
+            "description": "Route the recommendation to manual oncology review.",
+            "tool_needed": "ask_user",
+            "status": "pending",
+            "reasoning": "Critic did not approve the citation support."
+          }
+        ],
+        "roadmap": [
+          {
+            "id": "assessment",
+            "title": "assessment",
+            "status": "completed"
+          },
+          {
+            "id": "decision",
+            "title": "decision",
+            "status": "completed"
+          },
+          {
+            "id": "citation",
+            "title": "citation",
+            "status": "blocked"
+          },
+          {
+            "id": "finalize",
+            "title": "finalize",
+            "status": "completed"
+          }
+        ]
+      }
+    },
+    {
+      "node_name": "finalize",
+      "node_output": {
+        "critic_verdict": "REJECTED",
+        "critic_feedback": "No direct guideline citations are bound; this recommendation requires manual oncology review.",
+        "requires_human_review": true,
+        "final_response": "> [!WARNING]\n> HUMAN_REVIEW_REQUIRED: Critic verdict REJECTED. No direct guideline citations are bound; this recommendation requires manual oncology review.\n\nRecommendation retained for review: For biopsy-confirmed pMMR cT3N1M0 low rectal adenocarcinoma, discuss total neoadjuvant therapy in an MDT setting, then restage before TME surgery. The sequence can include chemoradiation/radiation plus systemic chemotherapy, individualized by MRI risk features and patient preference.",
+        "messages": [
+          {
+            "type": "ai",
+            "id": "final-real-case-human-review",
+            "content": "> [!WARNING]\n> HUMAN_REVIEW_REQUIRED: Critic verdict REJECTED. No direct guideline citations are bound; this recommendation requires manual oncology review.\n\nRecommendation retained for review: For biopsy-confirmed pMMR cT3N1M0 low rectal adenocarcinoma, discuss total neoadjuvant therapy in an MDT setting, then restage before TME surgery. The sequence can include chemoradiation/radiation plus systemic chemotherapy, individualized by MRI risk features and patient preference."
+          }
+        ],
+        "current_plan": [
+          {
+            "id": "stage-review",
+            "description": "Confirm staging, MMR status, and ECOG performance status.",
+            "tool_needed": "search_treatment_recommendations",
+            "status": "completed",
+            "reasoning": "The treatment recommendation depends on stage III rectal cancer risk profile."
+          },
+          {
+            "id": "citation-check",
+            "description": "Check whether the final recommendation is bound to direct guideline references.",
+            "tool_needed": "search_treatment_recommendations",
+            "status": "blocked",
+            "reasoning": "No direct citation was attached by the fixture run."
+          },
+          {
+            "id": "human-review",
+            "description": "Route the recommendation to manual oncology review.",
+            "tool_needed": "ask_user",
+            "status": "pending",
+            "reasoning": "Critic did not approve the citation support."
+          }
+        ],
+        "roadmap": [
+          {
+            "id": "assessment",
+            "title": "assessment",
+            "status": "completed"
+          },
+          {
+            "id": "decision",
+            "title": "decision",
+            "status": "completed"
+          },
+          {
+            "id": "citation",
+            "title": "citation",
+            "status": "blocked"
+          },
+          {
+            "id": "finalize",
+            "title": "finalize",
+            "status": "completed"
+          }
+        ]
+      }
+    }
+  ]
+}

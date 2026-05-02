@@ -738,6 +738,7 @@ def _invoke_structured_with_recovery(
     schema: Any,
     payload: Mapping[str, Any],
     log_prefix: str = "",
+    raw_text_parser: Callable[[str], Any] | None = None,
     fallback_factory: Callable[[Mapping[str, Any], Exception], Any] | None = None,
 ) -> Any:
     del log_prefix
@@ -750,9 +751,19 @@ def _invoke_structured_with_recovery(
         try:
             raw_chain = (prompt | model) if prompt is not None else model
             raw_response = raw_chain.invoke(dict(payload))
-            parsed = _clean_and_validate_json(_extract_text_content(raw_response))
+            raw_text = _extract_text_content(raw_response)
+            if raw_text_parser is not None:
+                parsed_from_text = raw_text_parser(raw_text)
+                if parsed_from_text is not None:
+                    if isinstance(parsed_from_text, schema):
+                        return parsed_from_text
+                    if hasattr(schema, "model_validate"):
+                        return schema.model_validate(parsed_from_text)
+                    return schema(**parsed_from_text)
+
+            parsed = _clean_and_validate_json(raw_text)
             if parsed is None:
-                parsed = _extract_first_json_object(_extract_text_content(raw_response))
+                parsed = _extract_first_json_object(raw_text)
             if parsed is not None:
                 normalized = _unwrap_nested_json(parsed, getattr(schema, "model_fields", {}).keys())
                 if hasattr(schema, "model_validate"):

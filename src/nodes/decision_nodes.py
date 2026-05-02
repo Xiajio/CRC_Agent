@@ -21,7 +21,7 @@ from ..policies.review_policy import (
 )
 from ..policies.turn_facts import build_turn_facts
 from ..policies.types import DegradedSignal, ReviewDecision
-from ..state import CRCAgentState
+from ..state import CRCAgentState, PlanStep
 from ..rag.retriever import consume_retrieval_metrics, reset_retrieval_metrics
 from ..tools.rag_tools import get_guideline_tool, TreatmentSearchTool
 from ..prompts import (
@@ -70,6 +70,11 @@ def _decision_value_to_text(value: Any) -> str:
                 parts.append(f"{label}: {text}" if label else text)
         return "；".join(parts)
     return str(value).strip()
+
+
+def _requires_human_review_from_verdict(verdict: Any) -> bool:
+    normalized = str(verdict or "").strip().upper()
+    return bool(normalized and normalized != "APPROVED")
 
 
 def _coerce_follow_up_items(value: Any) -> List[str]:
@@ -1421,6 +1426,8 @@ def _build_fast_queries_v2(state: CRCAgentState) -> List[str]:
 def _should_use_template_decision_v2(state: CRCAgentState) -> bool:
     if os.getenv("DECISION_FAST_TEMPLATE", "true").strip().lower() in {"0", "false", "no"}:
         return False
+    if _requires_human_review_from_verdict(getattr(state, "critic_verdict", None)):
+        return False
     findings = state.findings or {}
     if not bool(findings.get("pathology_confirmed")):
         return False
@@ -2360,6 +2367,7 @@ def node_critic(model, streaming: bool = False, show_thinking: bool = True) -> R
                 "critic_verdict": "REJECTED",
                 "critic_feedback": signal.feedback,
                 "critic_review_signal": signal.model_dump(),
+                "requires_human_review": True,
                 "rejection_count": getattr(state, "rejection_count", 0) + 1,
             }
 
@@ -2447,6 +2455,7 @@ def node_critic(model, streaming: bool = False, show_thinking: bool = True) -> R
                 "critic_verdict": verdict,
                 "critic_feedback": feedback,
                 "critic_review_signal": signal.model_dump(),
+                "requires_human_review": _requires_human_review_from_verdict(verdict),
                 "feedback_history": (hist + [feedback])[-5:],
                 "messages": [AIMessage(content=msg_content)],
             }
@@ -2473,6 +2482,7 @@ def node_critic(model, streaming: bool = False, show_thinking: bool = True) -> R
                 "critic_verdict": "APPROVED",
                 "critic_feedback": signal.feedback,
                 "critic_review_signal": signal.model_dump(),
+                "requires_human_review": False,
             }
 
     return _run
@@ -2489,8 +2499,76 @@ def route_by_critic_v2(state: CRCAgentState) -> str:
     _log_review_shadow("route_by_critic_v2", shadow_payload)
     return policy_decision.route
 
+def _plan_steps_from_decision(decision: dict | None) -> list[PlanStep]:
+    if not isinstance(decision, dict):
+        return []
+
+    steps: list[PlanStep] = []
+    plans = decision.get("treatment_plan") or []
+    if isinstance(plans, list):
+        for index, item in enumerate(plans[:8], start=1):
+            if isinstance(item, dict):
+                raw_title = item.get("title") or item.get("step") or item.get("description")
+                raw_content = (
+                    item.get("content")
+                    or item.get("rationale")
+                    or item.get("reasoning")
+                    or item.get("details")
+                )
+            else:
+                raw_title = (
+                    getattr(item, "title", None)
+                    or getattr(item, "step", None)
+                    or getattr(item, "description", None)
+                )
+                raw_content = (
+                    getattr(item, "content", None)
+                    or getattr(item, "rationale", None)
+                    or getattr(item, "reasoning", None)
+                    or getattr(item, "details", None)
+                )
+            description = (
+                _sanitize_section_content(raw_title)[:140].rstrip()
+                if raw_title
+                else _sanitize_section_title(raw_title, index)
+            )
+            steps.append(
+                PlanStep(
+                    id=f"decision-plan-{index}",
+                    description=description,
+                    tool_needed="search",
+                    status="completed",
+                    reasoning=_sanitize_section_content(raw_content)[:500],
+                )
+            )
+
+    if not steps and decision.get("summary"):
+        steps.append(
+            PlanStep(
+                id="decision-plan-summary",
+                description="Review generated clinical recommendation",
+                tool_needed="search",
+                status="completed",
+                reasoning=_sanitize_section_content(decision.get("summary"))[:500],
+            )
+        )
+
+    return steps
+
+
+def _fallback_finalize_roadmap(requires_human_review: bool) -> list[dict[str, Any]]:
+    return [
+        {"id": "decision", "title": "decision", "status": "completed"},
+        {"id": "critic", "title": "critic", "status": "blocked" if requires_human_review else "completed"},
+        {"id": "citation", "title": "citation", "status": "completed"},
+        {"id": "evaluator", "title": "evaluator", "status": "completed"},
+        {"id": "finalize", "title": "finalize", "status": "completed"},
+    ]
+
+
 def node_finalize(model=None, streaming: bool = False, show_thinking: bool = True) -> Runnable:
     def _run(state: CRCAgentState):
+        requires_human_review = _requires_human_review_from_verdict(state.critic_verdict)
         text = _format_final_response(
             decision=state.decision_json,
             verdict=state.critic_verdict,
@@ -2499,7 +2577,16 @@ def node_finalize(model=None, streaming: bool = False, show_thinking: bool = Tru
             citation_report=getattr(state, "citation_report", None),
             evaluation_report=getattr(state, "evaluation_report", None),
         )
-        return {"messages": [AIMessage(content=text)], "clinical_stage": "Finalize", "final_output": text}
+        current_plan = list(getattr(state, "current_plan", None) or []) or _plan_steps_from_decision(state.decision_json)
+        roadmap = list(getattr(state, "roadmap", None) or []) or _fallback_finalize_roadmap(requires_human_review)
+        return {
+            "messages": [AIMessage(content=text)],
+            "clinical_stage": "Finalize",
+            "final_output": text,
+            "requires_human_review": requires_human_review,
+            "current_plan": current_plan,
+            "roadmap": roadmap,
+        }
     return _run
 
 def _format_final_response(
@@ -2513,9 +2600,18 @@ def _format_final_response(
     if not decision: return "无法生成方案。"
 
     normalized_references = _dedupe_references(references or [])
+    requires_human_review = _requires_human_review_from_verdict(verdict)
 
     # 适配新的 List 结构
     parts = ["# 🏥 临床治疗建议\n"]
+    if requires_human_review:
+        warning = feedback or "Critic did not approve this recommendation."
+        parts = [
+            "> [!WARNING]",
+            f"> HUMAN_REVIEW_REQUIRED: Critic verdict {verdict or 'UNKNOWN'}; {warning}",
+            "",
+            *parts,
+        ]
     plans = decision.get("treatment_plan", [])
     raw_summary = decision.get("summary", "")
     summary = _sanitize_section_content(raw_summary)

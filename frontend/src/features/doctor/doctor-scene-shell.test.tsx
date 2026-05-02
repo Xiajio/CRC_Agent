@@ -109,6 +109,8 @@ describe("DoctorSceneShell", () => {
         plan={[]}
         cards={{}}
         references={[]}
+        eventLog={[]}
+        critic={null}
         onLoadHistory={vi.fn()}
         onDraftChange={vi.fn()}
         onSubmit={vi.fn()}
@@ -333,5 +335,29 @@ describe("DoctorSceneShell", () => {
         latencyStatus: { kind: "streaming" },
       }),
     );
+  });
+
+  it("renders clinical stream events when the session has event log entries", () => {
+    renderDoctorSceneShell({
+      eventLog: [
+        {
+          id: "event-1",
+          kind: "critic",
+          title: "Critic REJECTED",
+          detail: "missing references",
+          tone: "warning",
+          requiresHumanReview: true,
+        },
+      ],
+      critic: {
+        verdict: "REJECTED",
+        feedback: "missing references",
+        requires_human_review: true,
+      },
+    } as any);
+
+    expect(screen.getByText("Critic REJECTED")).toBeInTheDocument();
+    expect(screen.getAllByText("missing references").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("HUMAN_REVIEW_REQUIRED").length).toBeGreaterThan(0);
   });
 });

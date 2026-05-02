@@ -3,6 +3,7 @@ import type { JsonObject } from "../../app/api/types";
 type ExecutionPlanPanelProps = {
   plan: JsonObject[];
   references: JsonObject[];
+  critic?: JsonObject | null;
 };
 
 const PLAN_TITLE_LABELS: Record<string, string> = {
@@ -82,9 +83,27 @@ function referenceTag(reference: JsonObject): string {
         : "参考";
 }
 
-export function ExecutionPlanPanel({ plan, references }: ExecutionPlanPanelProps) {
+function criticRequiresHumanReview(critic: JsonObject | null | undefined): boolean {
+  if (!critic) {
+    return false;
+  }
+  if (typeof critic.requires_human_review === "boolean") {
+    return critic.requires_human_review;
+  }
+  const verdict = typeof critic.verdict === "string" ? critic.verdict.trim().toUpperCase() : "";
+  return Boolean(verdict && verdict !== "APPROVED");
+}
+
+function criticFeedback(critic: JsonObject | null | undefined): string {
+  return typeof critic?.feedback === "string" && critic.feedback.trim()
+    ? critic.feedback
+    : "Critic did not approve this recommendation.";
+}
+
+export function ExecutionPlanPanel({ plan, references, critic = null }: ExecutionPlanPanelProps) {
   const visiblePlan = plan;
   const visibleReferences = references.slice(0, 2);
+  const requiresHumanReview = criticRequiresHumanReview(critic);
 
   return (
     <>
@@ -93,6 +112,12 @@ export function ExecutionPlanPanel({ plan, references }: ExecutionPlanPanelProps
           <span className="clinical-panel-icon clinical-list-icon" aria-hidden="true" />
           <h2>执行计划</h2>
         </div>
+        {requiresHumanReview ? (
+          <div className="clinical-review-warning" role="status">
+            <strong>HUMAN_REVIEW_REQUIRED</strong>
+            <p>{criticFeedback(critic)}</p>
+          </div>
+        ) : null}
         {visiblePlan.length > 0 ? (
           <div className="clinical-plan-table" role="table" aria-label="执行计划">
             <div className="clinical-plan-head" role="row">
@@ -139,7 +164,11 @@ export function ExecutionPlanPanel({ plan, references }: ExecutionPlanPanelProps
             <button type="button" className="clinical-view-all-button">查看全部参考资料（{references.length}）</button>
           </>
         ) : (
-          <p className="clinical-empty-note">暂无参考资料。</p>
+          <p className="clinical-empty-note">
+            {requiresHumanReview
+              ? "No direct references are attached to this recommendation."
+              : "暂无参考资料。"}
+          </p>
         )}
       </section>
     </>

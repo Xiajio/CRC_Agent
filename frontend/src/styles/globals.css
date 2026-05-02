@@ -1989,6 +1989,16 @@ body {
   color: var(--clinical-primary);
 }
 
+.clinical-roadmap-step-blocked .clinical-roadmap-dot {
+  border-color: var(--clinical-warning);
+  background: #fff4ed;
+  box-shadow: 0 0 0 4px rgba(240, 100, 35, 0.12);
+}
+
+.clinical-roadmap-step-blocked .clinical-roadmap-status {
+  color: var(--clinical-warning);
+}
+
 .clinical-plan-table {
   display: grid;
   padding-bottom: 12px;
@@ -2111,6 +2121,29 @@ body {
   cursor: pointer;
 }
 
+.clinical-review-warning {
+  display: grid;
+  gap: 6px;
+  margin: 12px 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(240, 100, 35, 0.28);
+  border-radius: 8px;
+  background: #fff7ed;
+  color: #9a4518;
+}
+
+.clinical-review-warning strong {
+  font-size: 0.78rem;
+  letter-spacing: 0;
+}
+
+.clinical-review-warning p {
+  margin: 0;
+  color: #6f3a17;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
 .clinical-event-stream {
   min-height: 186px;
 }
@@ -2129,6 +2162,21 @@ body {
   border-radius: 8px;
   background: #f7fbff;
   overflow: hidden;
+}
+
+.clinical-event-chip-success {
+  border-color: #c8ead8;
+  background: #f4fbf7;
+}
+
+.clinical-event-chip-warning {
+  border-color: #ffd9ba;
+  background: #fff8f0;
+}
+
+.clinical-event-chip-error {
+  border-color: #f3c0ca;
+  background: #fff5f7;
 }
 
 .clinical-event-chip div {

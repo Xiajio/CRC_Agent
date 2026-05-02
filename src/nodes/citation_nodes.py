@@ -106,6 +106,8 @@ def _fast_citation_report(state: CRCAgentState) -> CitationReport:
     if not plan_items:
         missing_claims.append("treatment_plan")
     template_fast = findings.get("decision_strategy") == "template_fast"
+    if template_fast and not refs:
+        missing_claims.append("no_direct_references")
     if len(refs) < 2 and not template_fast:
         missing_claims.append("insufficient_references")
     if guideline_rag and inline_anchor_count < 2:
@@ -128,7 +130,7 @@ def _fast_citation_report(state: CRCAgentState) -> CitationReport:
         coverage = max(coverage, 85)
     coverage = max(0, min(95, coverage))
 
-    needs_more_sources = (len(refs) < 2 and not template_fast) or not plan_items
+    needs_more_sources = (len(refs) < 2 and not template_fast) or (template_fast and not refs) or not plan_items
     if guideline_rag and len(refs) >= 2 and plan_items:
         needs_more_sources = False
     notes = (

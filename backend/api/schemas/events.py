@@ -113,6 +113,7 @@ class CriticVerdictEvent(BaseModel):
     verdict: str
     feedback: str | None = None
     iteration_count: int | None = None
+    requires_human_review: bool = False
 
     model_config = ConfigDict(extra="forbid")
 
