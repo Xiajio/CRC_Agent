@@ -1,4 +1,5 @@
 import { WorkspaceLayout } from "../../components/layout/workspace-layout";
+import { Button } from "../../components/ui";
 import { DatabaseDetailPanel } from "../database/database-detail-panel";
 import { DatabaseEditForm } from "../database/database-edit-form";
 import { DatabaseWorkbenchPanel } from "../database/database-workbench-panel";
@@ -27,25 +28,24 @@ function DatabaseSourceToolbar({
   onSourceChange: (value: DoctorDatabaseSource) => void;
 }) {
   return (
-    <>
-      <div style={{ width: "1px", height: "24px", background: "rgba(20, 102, 216, 0.2)", margin: "0 4px" }} />
-      <button
-        type="button"
-        className={activeSource === "historical_case_base" ? "workspace-primary-button" : "workspace-secondary-button"}
+    <div className="ui-segmented-control" aria-label="Database source">
+      <Button
+        variant={activeSource === "historical_case_base" ? "primary" : "secondary"}
+        size="sm"
         onClick={() => onSourceChange("historical_case_base")}
         aria-label="historical case base"
       >
         📚 历史病例
-      </button>
-      <button
-        type="button"
-        className={activeSource === "patient_registry" ? "workspace-primary-button" : "workspace-secondary-button"}
+      </Button>
+      <Button
+        variant={activeSource === "patient_registry" ? "primary" : "secondary"}
+        size="sm"
         onClick={() => onSourceChange("patient_registry")}
         aria-label="patient registry"
       >
         🏥 患者库
-      </button>
-    </>
+      </Button>
+    </div>
   );
 }
 

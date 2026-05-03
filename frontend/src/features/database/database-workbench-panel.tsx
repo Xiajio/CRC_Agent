@@ -5,6 +5,7 @@ import type {
   DatabaseStatsResponse,
   DatabaseWorkbenchMode,
 } from "../../app/api/types";
+import { Button, Card } from "../../components/ui";
 import { DatabaseNaturalQueryBar } from "./database-natural-query-bar";
 import { DatabaseResultsTable } from "./database-results-table";
 import { numericSummary, topDistributionEntry } from "./use-database-workbench";
@@ -125,7 +126,7 @@ function renderDistributionCard(
     : "\u5f53\u524d\u6682\u65e0\u53ef\u7528\u7edf\u8ba1\u6837\u672c\u3002";
 
   return (
-    <div className="workspace-card">
+    <Card>
       <div className="database-section-heading">
         <h2>{title}</h2>
         <p className="workspace-copy workspace-copy-tight">{headingCopy}</p>
@@ -152,7 +153,7 @@ function renderDistributionCard(
       ) : (
         <p className="workspace-copy database-distribution-empty">{emptyText}</p>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -185,7 +186,7 @@ export function DatabaseWorkbenchPanel({
 
   return (
     <section className="workspace-panel-stack" data-testid="database-workbench-panel">
-      <div className="workspace-card">
+      <Card>
         <div className="database-section-heading database-section-heading-inline">
           <div>
             <h2>{title}</h2>
@@ -196,18 +197,18 @@ export function DatabaseWorkbenchPanel({
           <div className="database-badge-row">
             <span className="workspace-stage-badge">{MODE_LABELS[mode]}</span>
             {onClose ? (
-              <button
+              <Button
                 type="button"
-                className="workspace-secondary-button"
+                variant="secondary"
                 onClick={onClose}
                 aria-label={"\u6536\u8d77\u6570\u636e\u5e93\u5de5\u4f5c\u53f0"}
               >
                 {"\u6536\u8d77"}
-              </button>
+              </Button>
             ) : null}
           </div>
         </div>
-      </div>
+      </Card>
 
       <DatabaseNaturalQueryBar
         value={naturalQuery}
@@ -219,33 +220,33 @@ export function DatabaseWorkbenchPanel({
       />
 
       {error ? (
-        <div className="workspace-banner workspace-banner-error">
+        <Card tone="danger">
           <strong>{"\u6570\u636e\u5e93\u5de5\u4f5c\u53f0\u51fa\u9519"}</strong>
           <p className="workspace-copy workspace-copy-tight">{error}</p>
-        </div>
+        </Card>
       ) : null}
 
-      {isBootstrapping ? <div className="workspace-banner">{"\u6b63\u5728\u540c\u6b65\u6570\u636e\u5e93\u5de5\u4f5c\u53f0..."}</div> : null}
+      {isBootstrapping ? <Card tone="soft">{"\u6b63\u5728\u540c\u6b65\u6570\u636e\u5e93\u5de5\u4f5c\u53f0..."}</Card> : null}
 
       <div className="database-stat-grid">
-        <div className="workspace-card">
+        <Card>
           <h2>{"\u603b\u75c5\u4f8b\u6570"}</h2>
           <p className="workspace-metric">{stats?.total_cases ?? (isBootstrapping ? "..." : 0)}</p>
-        </div>
-        <div className="workspace-card">
+        </Card>
+        <Card>
           <h2>{"\u5e74\u9f84 (min/max/mean)"}</h2>
           <p className="workspace-metric database-metric-small">{numericSummary(stats?.age_statistics)}</p>
-        </div>
-        <div className="workspace-card">
+        </Card>
+        <Card>
           <h2>{"\u6700\u591a\u90e8\u4f4d"}</h2>
           <p className="workspace-metric database-metric-small">
             {stats ? topDistributionEntry(stats.tumor_location_distribution) : "..."}
           </p>
-        </div>
-        <div className="workspace-card">
+        </Card>
+        <Card>
           <h2>{"CEA (min/max/mean)"}</h2>
           <p className="workspace-metric database-metric-small">{numericSummary(stats?.cea_statistics)}</p>
-        </div>
+        </Card>
       </div>
 
       <div className="database-distribution-grid">

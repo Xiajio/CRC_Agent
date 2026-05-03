@@ -1,3 +1,5 @@
+import { Button, Card, Input } from "../../components/ui";
+
 interface DatabaseNaturalQueryBarProps {
   value: string;
   warnings: string[];
@@ -16,7 +18,7 @@ export function DatabaseNaturalQueryBar({
   onSubmit,
 }: DatabaseNaturalQueryBarProps) {
   return (
-    <div className="workspace-card">
+    <Card>
       <div className="database-section-heading">
         <h2>{"\u81ea\u7136\u8bed\u8a00\u67e5\u8be2"}</h2>
         <p className="workspace-copy workspace-copy-tight">
@@ -25,25 +27,21 @@ export function DatabaseNaturalQueryBar({
           }
         </p>
       </div>
-      <label className="database-field">
-        <span className="database-field-label">{"\u81ea\u7136\u8bed\u8a00\u67e5\u8be2"}</span>
-        <input
-          className="database-input"
-          type="text"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={"\u4f8b\u5982\uff1a\u5e2e\u6211\u627e\u51fa 30-40 \u5c81\u3001\u6709\u809d\u8f6c\u79fb\u7684\u60a3\u8005"}
-        />
-      </label>
+      <Input
+        label={"\u81ea\u7136\u8bed\u8a00\u67e5\u8be2"}
+        type="text"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={"\u4f8b\u5982\uff1a\u5e2e\u6211\u627e\u51fa 30-40 \u5c81\u3001\u6709\u809d\u8f6c\u79fb\u7684\u60a3\u8005"}
+      />
       <div className="database-action-row">
-        <button
+        <Button
           type="button"
-          className="workspace-button"
           onClick={onSubmit}
           disabled={isParsing || !value.trim()}
         >
           {isParsing ? "\u89e3\u6790\u4e2d..." : "\u89e3\u6790\u67e5\u8be2"}
-        </button>
+        </Button>
       </div>
       {warnings.length > 0 ? (
         <div className="database-feedback-list" role="status">
@@ -59,6 +57,6 @@ export function DatabaseNaturalQueryBar({
           {`\u672a\u652f\u6301\u7684\u6761\u4ef6\uff1a${unsupportedTerms.join("\u3001")}`}
         </p>
       ) : null}
-    </div>
+    </Card>
   );
 }

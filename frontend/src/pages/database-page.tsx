@@ -1,9 +1,15 @@
 ﻿import { WorkspaceLayout } from "../components/layout/workspace-layout";
+import { Card, TopNav, type TopNavItem } from "../components/ui";
 import { DatabaseDetailPanel } from "../features/database/database-detail-panel";
 import { DatabaseEditForm } from "../features/database/database-edit-form";
 import { DatabaseFiltersPanel } from "../features/database/database-filters-panel";
 import { DatabaseWorkbenchPanel } from "../features/database/database-workbench-panel";
 import { useDatabaseWorkbench } from "../features/database/use-database-workbench";
+
+const DATABASE_NAV_ITEMS: TopNavItem[] = [
+  { key: "database", label: "数据库" },
+  { key: "workspace", label: "对话工作台" },
+];
 
 function triStateLabel(value: boolean | null | undefined): string {
   if (value === true) {
@@ -44,20 +50,26 @@ export function DatabasePage() {
     handlePageChange,
   } = useDatabaseWorkbench();
 
+  const goToWorkspace = () => {
+    window.location.href = "/";
+  };
+
   const toolbar = (
-    <header className="workspace-global-header">
-      <div className="workspace-header-left">
-        <span className="workspace-brand">{"亿铸科技 -- 虚拟数据库控制台"}</span>
-      </div>
-      <div className="workspace-header-center">
-        <span className="workspace-stage-badge">{"Agentic UI"}</span>
-      </div>
-      <div className="workspace-header-right">
-        <a className="workspace-header-link" href="/">
-          {"对话工作台"}
-        </a>
-      </div>
-    </header>
+    <TopNav
+      activeKey="database"
+      brandLabel="亿铸科技 -- 虚拟数据库控制台"
+      items={DATABASE_NAV_ITEMS}
+      navLabel="数据库导航"
+      onProfileClick={goToWorkspace}
+      onSelect={(key) => {
+        if (key === "workspace") {
+          goToWorkspace();
+        }
+      }}
+      profileAriaLabel="返回对话工作台"
+      profileLabel="对话工作台"
+      statusLabel="Agentic UI"
+    />
   );
 
   const leftRail = (
@@ -79,7 +91,7 @@ export function DatabasePage() {
           resetWorkbench();
         }}
       />
-      <div className="workspace-card">
+      <Card>
         <h2>{"当前筛选"}</h2>
         <dl className="workspace-definition-list workspace-definition-list-compact">
           <div>
@@ -111,7 +123,7 @@ export function DatabasePage() {
             <dd>{`${searchRequest.filters.ecog_min ?? "-"} ~ ${searchRequest.filters.ecog_max ?? "-"}`}</dd>
           </div>
         </dl>
-      </div>
+      </Card>
     </section>
   );
 
@@ -140,7 +152,7 @@ export function DatabasePage() {
 
   const rightInspector = (
     <section className="workspace-panel-stack">
-      {isLoadingDetail ? <div className="workspace-banner">{"正在加载患者详情..."}</div> : null}
+      {isLoadingDetail ? <Card tone="soft">{"正在加载患者详情..."}</Card> : null}
       <DatabaseDetailPanel
         detail={detail}
         onPromptRequest={(prompt) => {

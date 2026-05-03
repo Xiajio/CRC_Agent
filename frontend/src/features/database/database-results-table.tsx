@@ -1,4 +1,5 @@
-﻿import type { DatabaseCaseRow, DatabasePagination, DatabaseSort } from "../../app/api/types";
+import type { DatabaseCaseRow, DatabasePagination, DatabaseSort } from "../../app/api/types";
+import { Button, Card } from "../../components/ui";
 
 interface DatabaseResultsTableProps {
   items: DatabaseCaseRow[];
@@ -35,7 +36,7 @@ export function DatabaseResultsTable({
   const totalPages = Math.max(1, Math.ceil(total / pagination.page_size));
 
   return (
-    <div className="workspace-card">
+    <Card>
       <div className="database-section-heading database-section-heading-inline">
         <h2>{"病例列表"}</h2>
         <span className="workspace-stage-badge">{`${total} 条`}</span>
@@ -81,14 +82,16 @@ export function DatabaseResultsTable({
                     <td>{item.clinical_stage ?? "-"}</td>
                     <td>{item.mmr_status ?? "-"}</td>
                     <td>
-                      <button
+                      <Button
                         type="button"
-                        className="workspace-secondary-button database-table-button"
+                        className="database-table-button"
+                        size="sm"
+                        variant="ghost"
                         onClick={() => onSelectPatient(patientId)}
                         disabled={isSearching || isLoadingDetail}
                       >
                         {`查看 ${patientId}`}
-                      </button>
+                      </Button>
                     </td>
                   </tr>
                 );
@@ -104,24 +107,24 @@ export function DatabaseResultsTable({
         </table>
       </div>
       <div className="database-pagination">
-        <button
+        <Button
           type="button"
-          className="workspace-secondary-button"
+          variant="secondary"
           onClick={() => onPageChange(Math.max(1, pagination.page - 1))}
           disabled={pagination.page <= 1 || isSearching}
         >
           {"上一页"}
-        </button>
+        </Button>
         <span className="workspace-copy workspace-copy-tight">{`${pagination.page} / ${totalPages}`}</span>
-        <button
+        <Button
           type="button"
-          className="workspace-secondary-button"
+          variant="secondary"
           onClick={() => onPageChange(Math.min(totalPages, pagination.page + 1))}
           disabled={pagination.page >= totalPages || isSearching}
         >
           {"下一页"}
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }

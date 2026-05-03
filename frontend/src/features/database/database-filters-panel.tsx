@@ -1,4 +1,5 @@
-﻿import type { DatabaseFilters } from "../../app/api/types";
+import type { DatabaseFilters } from "../../app/api/types";
+import { Button, Card, Input, Select } from "../../components/ui";
 
 interface DatabaseFiltersPanelProps {
   filters: DatabaseFilters;
@@ -64,7 +65,7 @@ export function DatabaseFiltersPanel({
   onReset,
 }: DatabaseFiltersPanelProps) {
   return (
-    <div className="workspace-card">
+    <Card>
       <div className="database-section-heading">
         <h2>{"结构化筛选"}</h2>
         <p className="workspace-copy workspace-copy-tight">
@@ -72,175 +73,148 @@ export function DatabaseFiltersPanel({
         </p>
       </div>
       <div className="database-filter-grid">
-        <label className="database-field">
-          <span className="database-field-label">Patient ID</span>
-          <input
-            className="database-input"
-            type="number"
-            value={numberValue(filters.patient_id)}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                patient_id: event.target.value ? Number(event.target.value) : null,
-              })
-            }
-          />
-        </label>
-        <label className="database-field">
-          <span className="database-field-label">{"年龄下限"}</span>
-          <input
-            className="database-input"
-            type="number"
-            value={numberValue(filters.age_min)}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                age_min: event.target.value ? Number(event.target.value) : null,
-              })
-            }
-          />
-        </label>
-        <label className="database-field">
-          <span className="database-field-label">{"年龄上限"}</span>
-          <input
-            className="database-input"
-            type="number"
-            value={numberValue(filters.age_max)}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                age_max: event.target.value ? Number(event.target.value) : null,
-              })
-            }
-          />
-        </label>
-        <label className="database-field">
-          <span className="database-field-label">{"肿瘤部位"}</span>
-          <select
-            className="database-select"
-            value={filters.tumor_location[0] ?? ""}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                tumor_location: event.target.value ? [event.target.value] : [],
-              })
-            }
-          >
-            {TUMOR_LOCATION_OPTIONS.map((option) => (
-              <option key={option.value || "all"} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="database-field">
-          <span className="database-field-label">MMR</span>
-          <select
-            className="database-select"
-            value={filters.mmr_status[0] ?? ""}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                mmr_status: event.target.value ? [event.target.value] : [],
-              })
-            }
-          >
-            {MMR_OPTIONS.map((option) => (
-              <option key={option.value || "all"} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="database-field">
-          <span className="database-field-label">{"家族史"}</span>
-          <select
-            className="database-select"
-            aria-label={"家族史筛选"}
-            value={triStateValue(filters.family_history)}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                family_history: readTriState(event.target.value),
-              })
-            }
-          >
-            {TRI_STATE_OPTIONS.map((option) => (
-              <option key={option.value || "empty"} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="database-field">
-          <span className="database-field-label">{"活检确认"}</span>
-          <select
-            className="database-select"
-            aria-label={"活检确认筛选"}
-            value={triStateValue(filters.biopsy_confirmed)}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                biopsy_confirmed: readTriState(event.target.value),
-              })
-            }
-          >
-            {TRI_STATE_OPTIONS.map((option) => (
-              <option key={option.value || "empty"} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="database-field">
-          <span className="database-field-label">{"ECOG 下限"}</span>
-          <select
-            className="database-select"
-            aria-label={"ECOG 下限"}
-            value={numberValue(filters.ecog_min)}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                ecog_min: event.target.value ? Number(event.target.value) : null,
-              })
-            }
-          >
-            {ECOG_OPTIONS.map((option) => (
-              <option key={option || "empty"} value={option}>
-                {option === "" ? "未填写" : option}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="database-field">
-          <span className="database-field-label">{"ECOG 上限"}</span>
-          <select
-            className="database-select"
-            aria-label={"ECOG 上限"}
-            value={numberValue(filters.ecog_max)}
-            onChange={(event) =>
-              onFiltersChange({
-                ...filters,
-                ecog_max: event.target.value ? Number(event.target.value) : null,
-              })
-            }
-          >
-            {ECOG_OPTIONS.map((option) => (
-              <option key={option || "empty"} value={option}>
-                {option === "" ? "未填写" : option}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Input
+          label="Patient ID"
+          type="number"
+          value={numberValue(filters.patient_id)}
+          onChange={(event) =>
+            onFiltersChange({
+              ...filters,
+              patient_id: event.target.value ? Number(event.target.value) : null,
+            })
+          }
+        />
+        <Input
+          label={"年龄下限"}
+          type="number"
+          value={numberValue(filters.age_min)}
+          onChange={(event) =>
+            onFiltersChange({
+              ...filters,
+              age_min: event.target.value ? Number(event.target.value) : null,
+            })
+          }
+        />
+        <Input
+          label={"年龄上限"}
+          type="number"
+          value={numberValue(filters.age_max)}
+          onChange={(event) =>
+            onFiltersChange({
+              ...filters,
+              age_max: event.target.value ? Number(event.target.value) : null,
+            })
+          }
+        />
+        <Select
+          label={"肿瘤部位"}
+          value={filters.tumor_location[0] ?? ""}
+          onChange={(event) =>
+            onFiltersChange({
+              ...filters,
+              tumor_location: event.target.value ? [event.target.value] : [],
+            })
+          }
+        >
+          {TUMOR_LOCATION_OPTIONS.map((option) => (
+            <option key={option.value || "all"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select
+          label="MMR"
+          value={filters.mmr_status[0] ?? ""}
+          onChange={(event) =>
+            onFiltersChange({
+              ...filters,
+              mmr_status: event.target.value ? [event.target.value] : [],
+            })
+          }
+        >
+          {MMR_OPTIONS.map((option) => (
+            <option key={option.value || "all"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select
+          label={"家族史"}
+          aria-label={"家族史筛选"}
+          value={triStateValue(filters.family_history)}
+          onChange={(event) =>
+            onFiltersChange({
+              ...filters,
+              family_history: readTriState(event.target.value),
+            })
+          }
+        >
+          {TRI_STATE_OPTIONS.map((option) => (
+            <option key={option.value || "empty"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select
+          label={"活检确认"}
+          aria-label={"活检确认筛选"}
+          value={triStateValue(filters.biopsy_confirmed)}
+          onChange={(event) =>
+            onFiltersChange({
+              ...filters,
+              biopsy_confirmed: readTriState(event.target.value),
+            })
+          }
+        >
+          {TRI_STATE_OPTIONS.map((option) => (
+            <option key={option.value || "empty"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+        <Select
+          label={"ECOG 下限"}
+          aria-label={"ECOG 下限"}
+          value={numberValue(filters.ecog_min)}
+          onChange={(event) =>
+            onFiltersChange({
+              ...filters,
+              ecog_min: event.target.value ? Number(event.target.value) : null,
+            })
+          }
+        >
+          {ECOG_OPTIONS.map((option) => (
+            <option key={option || "empty"} value={option}>
+              {option === "" ? "未填写" : option}
+            </option>
+          ))}
+        </Select>
+        <Select
+          label={"ECOG 上限"}
+          aria-label={"ECOG 上限"}
+          value={numberValue(filters.ecog_max)}
+          onChange={(event) =>
+            onFiltersChange({
+              ...filters,
+              ecog_max: event.target.value ? Number(event.target.value) : null,
+            })
+          }
+        >
+          {ECOG_OPTIONS.map((option) => (
+            <option key={option || "empty"} value={option}>
+              {option === "" ? "未填写" : option}
+            </option>
+          ))}
+        </Select>
       </div>
       <div className="database-action-row">
-        <button type="button" className="workspace-button" onClick={onApply} disabled={isSearching}>
+        <Button type="button" onClick={onApply} disabled={isSearching}>
           {isSearching ? "检索中..." : "应用筛选"}
-        </button>
-        <button type="button" className="workspace-secondary-button" onClick={onReset} disabled={isSearching}>
+        </Button>
+        <Button type="button" variant="secondary" onClick={onReset} disabled={isSearching}>
           {"重置"}
-        </button>
+        </Button>
       </div>
-    </div>
+    </Card>
   );
 }
