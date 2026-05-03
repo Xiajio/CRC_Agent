@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from "../../app/api/types";
+import { Card } from "../../components/ui";
 
 type PatientBackgroundPanelProps = {
   title?: string;
@@ -175,7 +176,7 @@ export function PatientBackgroundPanel({
   const patientCard = asObject(cards[PATIENT_CARD_TYPE]);
   if (!patientCard) {
     return (
-      <section className="clinical-card patient-background-panel" data-testid="patient-background-panel">
+      <Card as="section" padding="none" className="clinical-card patient-background-panel" data-testid="patient-background-panel">
         <div className="clinical-panel-header">
           <span className="clinical-panel-icon clinical-grid-icon" aria-hidden="true" />
           <h2>{title}</h2>
@@ -183,7 +184,7 @@ export function PatientBackgroundPanel({
         <div className="patient-background-body">
           <p className="patient-background-empty">{emptyMessage}</p>
         </div>
-      </section>
+      </Card>
     );
   }
 
@@ -241,7 +242,7 @@ export function PatientBackgroundPanel({
   const summary = knownCount > 0 ? `已整理 ${knownCount} 项背景信息，仍有 ${pendingLabels.length} 项待确认。` : "暂未采集到可用背景信息。";
 
   return (
-    <section className="clinical-card patient-background-panel" data-testid="patient-background-panel">
+    <Card as="section" padding="none" className="clinical-card patient-background-panel" data-testid="patient-background-panel">
       <div className="clinical-panel-header">
         <span className="clinical-panel-icon clinical-grid-icon" aria-hidden="true" />
         <h2>{title}</h2>
@@ -266,6 +267,6 @@ export function PatientBackgroundPanel({
           </div>
         ) : null}
       </div>
-    </section>
+    </Card>
   );
 }

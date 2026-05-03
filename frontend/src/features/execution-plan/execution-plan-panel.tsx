@@ -1,4 +1,5 @@
 import type { JsonObject } from "../../app/api/types";
+import { Card } from "../../components/ui";
 
 type ExecutionPlanPanelProps = {
   plan: JsonObject[];
@@ -107,7 +108,7 @@ export function ExecutionPlanPanel({ plan, references, critic = null }: Executio
 
   return (
     <>
-      <section className="clinical-card clinical-execution-card">
+      <Card as="section" padding="none" className="clinical-card clinical-execution-card">
         <div className="clinical-panel-header">
           <span className="clinical-panel-icon clinical-list-icon" aria-hidden="true" />
           <h2>执行计划</h2>
@@ -140,8 +141,8 @@ export function ExecutionPlanPanel({ plan, references, critic = null }: Executio
         ) : (
           <p className="clinical-empty-note">暂无执行计划。</p>
         )}
-      </section>
-      <section className="clinical-card clinical-reference-card">
+      </Card>
+      <Card as="section" padding="none" className="clinical-card clinical-reference-card">
         <div className="clinical-panel-header">
           <span className="clinical-panel-icon clinical-book-icon" aria-hidden="true" />
           <h2>参考列表（前 2 条）</h2>
@@ -170,7 +171,7 @@ export function ExecutionPlanPanel({ plan, references, critic = null }: Executio
               : "暂无参考资料。"}
           </p>
         )}
-      </section>
+      </Card>
     </>
   );
 }

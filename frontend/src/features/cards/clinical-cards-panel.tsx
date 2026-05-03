@@ -2,6 +2,7 @@ import { useRef } from "react";
 
 import type { JsonObject } from "../../app/api/types";
 import { useHighlightFlash } from "../../components/motion/use-highlight-flash";
+import { Card } from "../../components/ui";
 import { renderCardContent, type CardPromptHandler } from "./card-renderers-extended";
 import { toClinicalCardViewModels } from "./clinical-card-view-model";
 
@@ -21,12 +22,12 @@ export function ClinicalCardsPanel({
   onPromptRequest,
 }: ClinicalCardsPanelProps) {
   const cardViewModels = toClinicalCardViewModels(cards);
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
 
   useHighlightFlash(panelRef, cardViewModels.length);
 
   return (
-    <section ref={panelRef} className="clinical-card clinical-medical-cards-panel" data-testid="clinical-cards-panel">
+    <Card as="section" ref={panelRef} padding="none" className="clinical-card clinical-medical-cards-panel" data-testid="clinical-cards-panel">
       <div className="clinical-panel-header">
         <span className="clinical-panel-icon clinical-grid-icon" aria-hidden="true" />
         <h2>{title}</h2>
@@ -63,6 +64,6 @@ export function ClinicalCardsPanel({
           <p>{emptyMessage}</p>
         </div>
       )}
-    </section>
+    </Card>
   );
 }

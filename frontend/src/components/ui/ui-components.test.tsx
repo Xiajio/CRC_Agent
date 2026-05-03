@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { render, screen } from "@testing-library/react";
+import { createRef } from "react";
 import { describe, expect, it } from "vitest";
 
 import { Button, Card, Input, MessageBubble, Select, Textarea } from ".";
@@ -12,9 +13,11 @@ describe("shared UI primitives", () => {
   });
 
   it("renders card semantic element with state, padding, tone, and custom classes", () => {
+    const cardRef = createRef<HTMLElement>();
     const { rerender } = render(
       <Card
         data-testid="default-card"
+        ref={cardRef}
         header={<h2>Default heading</h2>}
         footer={<button type="button">Footer action</button>}
       >
@@ -23,6 +26,7 @@ describe("shared UI primitives", () => {
     );
 
     const defaultCard = screen.getByTestId("default-card");
+    expect(cardRef.current).toBe(defaultCard);
     expect(defaultCard.tagName).toBe("DIV");
     expect(defaultCard).toHaveClass("ui-card", "ui-card-padding-md");
     expect(defaultCard).not.toHaveClass("ui-card-surface");

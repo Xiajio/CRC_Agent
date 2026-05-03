@@ -7,6 +7,7 @@ import {
   type PatientRegistryDetail,
 } from "../../app/api/types";
 import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
+import { Card } from "../../components/ui";
 import { ClinicalCardsPanel } from "../cards/clinical-cards-panel";
 import type { CardPromptHandler } from "../cards/card-renderers-extended";
 import { useDatabaseWorkbench } from "../database/use-database-workbench";
@@ -293,7 +294,7 @@ function ClinicalPatientSummary({
     : [];
 
   return (
-    <section className="clinical-card clinical-summary-card" aria-label="患者摘要">
+    <Card as="section" padding="none" className="clinical-card clinical-summary-card" aria-label="患者摘要">
       <ClinicalPanelHeader icon={<SmallIcon name="patient" />} title="患者摘要" />
       {rows.length > 0 ? (
         <dl className="clinical-summary-list">
@@ -310,7 +311,7 @@ function ClinicalPatientSummary({
         <p className="clinical-empty-note">暂无患者摘要。</p>
       )}
       {isLoading ? <p className="clinical-loading-copy">正在加载患者摘要...</p> : null}
-    </section>
+    </Card>
   );
 }
 
@@ -331,7 +332,7 @@ function ClinicalUploads({
   const uploads = uploadItemsFromRecords(records);
 
   return (
-    <section className="clinical-card clinical-uploads-card">
+    <Card as="section" padding="none" className="clinical-card clinical-uploads-card">
       <ClinicalPanelHeader icon={<SmallIcon name="paperclip" />} title="上传资料" />
       <div className="clinical-upload-list">
         {uploads.length > 0 ? (
@@ -349,7 +350,7 @@ function ClinicalUploads({
         )}
       </div>
       {isLoading ? <p className="clinical-loading-copy">正在加载上传资料...</p> : null}
-    </section>
+    </Card>
   );
 }
 
@@ -373,7 +374,7 @@ function ClinicalEventStream({
 }) {
   const requiresHumanReview = criticRequiresHumanReview(critic);
   return (
-    <section className="clinical-card clinical-event-stream">
+    <Card as="section" padding="none" className="clinical-card clinical-event-stream">
       <ClinicalPanelHeader icon={<SmallIcon name="event" />} title="事件流" />
       {requiresHumanReview ? (
         <div className="clinical-review-warning" role="status">
@@ -400,7 +401,7 @@ function ClinicalEventStream({
       ) : (
         <p className="clinical-empty-note">暂无事件。</p>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -550,8 +551,6 @@ export function DoctorSceneShell({
     </main>
   );
 }
-
-
 
 
 

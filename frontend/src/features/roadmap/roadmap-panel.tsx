@@ -2,6 +2,7 @@ import { useRef } from "react";
 
 import type { JsonObject } from "../../app/api/types";
 import { useHighlightFlash } from "../../components/motion/use-highlight-flash";
+import { Card } from "../../components/ui";
 
 type RoadmapPanelProps = {
   roadmap: JsonObject[];
@@ -70,13 +71,13 @@ function roadmapStatusLabel(status: string): string {
 }
 
 export function RoadmapPanel({ roadmap, stage }: RoadmapPanelProps) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  const panelRef = useRef<HTMLElement | null>(null);
   const visibleRoadmap = roadmap;
 
   useHighlightFlash(panelRef, stage ?? visibleRoadmap.length);
 
   return (
-    <section ref={panelRef} className="clinical-card clinical-roadmap-card">
+    <Card as="section" ref={panelRef} padding="none" className="clinical-card clinical-roadmap-card">
       <div className="clinical-panel-header">
         <span className="clinical-panel-icon clinical-node-icon" aria-hidden="true" />
         <h2>工作流路线图</h2>
@@ -106,6 +107,6 @@ export function RoadmapPanel({ roadmap, stage }: RoadmapPanelProps) {
       ) : (
         <p className="clinical-empty-note">暂无工作流路线。</p>
       )}
-    </section>
+    </Card>
   );
 }

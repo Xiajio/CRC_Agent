@@ -1,4 +1,5 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import { forwardRef } from "react";
+import type { ForwardedRef, HTMLAttributes, ReactNode } from "react";
 
 import { classNames } from "./class-names";
 
@@ -15,19 +16,33 @@ export interface CardProps extends HTMLAttributes<HTMLElement> {
   tone?: CardTone;
 }
 
-export function Card({
-  as: Element = "div",
-  children,
-  className,
-  footer,
-  header,
-  padding = "md",
-  selected = false,
-  tone = "surface",
-  ...props
-}: CardProps) {
+function assignCardRef(ref: ForwardedRef<HTMLElement>, node: HTMLElement | null) {
+  if (typeof ref === "function") {
+    ref(node);
+    return;
+  }
+  if (ref) {
+    ref.current = node;
+  }
+}
+
+export const Card = forwardRef<HTMLElement, CardProps>(function Card(
+  {
+    as: Element = "div",
+    children,
+    className,
+    footer,
+    header,
+    padding = "md",
+    selected = false,
+    tone = "surface",
+    ...props
+  },
+  ref,
+) {
   return (
     <Element
+      ref={(node) => assignCardRef(ref, node)}
       className={classNames([
         "ui-card",
         `ui-card-padding-${padding}`,
@@ -42,4 +57,4 @@ export function Card({
       {footer ? <div className="ui-card-footer">{footer}</div> : null}
     </Element>
   );
-}
+});

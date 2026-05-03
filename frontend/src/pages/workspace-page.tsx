@@ -9,6 +9,7 @@ import { mergeMessageHistory, reduceStreamEvent } from "../app/store/stream-redu
 import { useApiClient } from "../app/providers";
 import { ConversationPanel, type ConversationLatencyStatus } from "../features/chat/conversation-panel";
 import { ClinicalTopNav } from "../components/layout/clinical-top-nav";
+import { Card } from "../components/ui";
 import { DoctorSceneShell } from "../features/doctor/doctor-scene-shell";
 import { ExecutionPlanPanel } from "../features/execution-plan/execution-plan-panel";
 import { PatientBackgroundPanel } from "../features/cards/patient-background-panel";
@@ -948,16 +949,16 @@ export function WorkspacePage() {
   }
 
   if (bootstrapStatus === "loading") {
-    return <main className="workspace-shell"><div className="workspace-card">正在加载工作区...</div></main>;
+    return <main className="workspace-shell"><Card className="workspace-card">正在加载工作区...</Card></main>;
   }
 
   if (bootstrapStatus === "error") {
     return (
       <main className="workspace-shell">
-        <div className="workspace-card">
+        <Card className="workspace-card">
           <h2>工作区初始化失败</h2>
           <p className="workspace-copy workspace-copy-alert">{bootstrapError ?? "未知初始化错误。"}</p>
-        </div>
+        </Card>
       </main>
     );
   }
@@ -1091,6 +1092,5 @@ export function WorkspacePage() {
   );
 
 }
-
 
 
