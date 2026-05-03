@@ -4,6 +4,7 @@ import type {
   PatientRegistryItem,
   PatientRegistryRecord,
 } from "../../app/api/types";
+import { Button, Card, Input } from "../../components/ui";
 import { PatientRegistryAlertsPanel } from "./patient-registry-alerts";
 import { PatientRecordsPanel } from "./patient-records-panel";
 
@@ -87,7 +88,7 @@ export function RegistryBrowserPane({
 
   return (
     <div className="workspace-panel-stack">
-      <section className="workspace-card" data-testid="registry-browser-pane">
+      <Card as="section" className="workspace-card" data-testid="registry-browser-pane">
         <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ fontSize: "1.2rem" }}>🗂️</span> 患者库检索
         </h2>
@@ -104,8 +105,7 @@ export function RegistryBrowserPane({
         >
           <label className="database-field">
             <span className="database-field-label">患者 ID</span>
-            <input
-              className="database-input"
+            <Input
               aria-label="registry patient id"
               type="text"
               value={searchState.patientId}
@@ -114,8 +114,7 @@ export function RegistryBrowserPane({
           </label>
           <label className="database-field">
             <span className="database-field-label">肿瘤部位</span>
-            <input
-              className="database-input"
+            <Input
               aria-label="registry tumor location"
               type="text"
               value={searchState.tumorLocation}
@@ -124,8 +123,7 @@ export function RegistryBrowserPane({
           </label>
           <label className="database-field">
             <span className="database-field-label">MMR状态</span>
-            <input
-              className="database-input"
+            <Input
               aria-label="registry mmr status"
               type="text"
               value={searchState.mmrStatus}
@@ -134,8 +132,7 @@ export function RegistryBrowserPane({
           </label>
           <label className="database-field">
             <span className="database-field-label">临床分期</span>
-            <input
-              className="database-input"
+            <Input
               aria-label="registry clinical stage"
               type="text"
               value={searchState.clinicalStage}
@@ -144,17 +141,17 @@ export function RegistryBrowserPane({
           </label>
         </div>
         <div className="database-action-row">
-          <button
+          <Button
             type="button"
-            className="workspace-primary-button"
+            variant="primary"
             disabled={isSearching}
             onClick={onSearchSubmit}
           >
             {isSearching ? "正在检索..." : "检索患者库"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="workspace-secondary-button"
+            variant="secondary"
             aria-label="clear registry"
             disabled={!canClearRegistry || isClearingRegistry}
             onClick={() => {
@@ -164,7 +161,7 @@ export function RegistryBrowserPane({
             }}
           >
             {isClearingRegistry ? "正在清空..." : "清空患者库"}
-          </button>
+          </Button>
         </div>
         {!canClearRegistry ? (
           <p className="workspace-copy workspace-copy-tight">
@@ -182,15 +179,15 @@ export function RegistryBrowserPane({
                   <strong>{`患者 #${item.patient_id}`}</strong>
                   <p className="workspace-copy workspace-copy-tight">{patientSummary(item)}</p>
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    <button
+                    <Button
                       type="button"
-                      className={isPreviewed ? "workspace-primary-button" : "workspace-secondary-button"}
+                      variant={isPreviewed ? "primary" : "secondary"}
                       onClick={() => onPreviewPatient(item.patient_id)}
                       disabled={isLoadingPreview}
                       aria-label={isPreviewed ? `previewing ${item.patient_id}` : `preview patient ${item.patient_id}`}
                     >
                       {isPreviewed ? `✅ 正在预览 #${item.patient_id}` : `👀 预览 #${item.patient_id}`}
-                    </button>
+                    </Button>
                     {isCurrent ? <span className="workspace-stage-badge">当前患者</span> : null}
                   </div>
                 </li>
@@ -203,9 +200,9 @@ export function RegistryBrowserPane({
             没有找到匹配当前过滤条件的患者。
           </p>
         ) : null}
-      </section>
+      </Card>
 
-      <section className="workspace-card" data-testid="registry-preview-panel">
+      <Card as="section" className="workspace-card" data-testid="registry-preview-panel">
         <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ fontSize: "1.2rem" }}>🔎</span>
           {previewPatientId !== null ? `患者库预览: 患者 #${previewPatientId}` : "患者库预览"}
@@ -224,9 +221,9 @@ export function RegistryBrowserPane({
           </ul>
         ) : null}
         <div className="database-action-row">
-          <button
+          <Button
             type="button"
-            className={canBind ? "workspace-primary-button" : "workspace-secondary-button"}
+            variant={canBind ? "primary" : "secondary"}
             disabled={!canBind || isBindingCurrentPatient}
             onClick={() => {
               if (previewPatientId !== null) {
@@ -240,10 +237,10 @@ export function RegistryBrowserPane({
               : isBindingCurrentPatient
                 ? "正在绑定..."
                 : "🔗 设为当前患者"}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
-            className="workspace-secondary-button"
+            variant="secondary"
             aria-label={previewPatientId !== null ? `delete patient ${previewPatientId}` : "delete patient"}
             disabled={!canDeletePreview || isDeletingPatient}
             onClick={() => {
@@ -256,14 +253,14 @@ export function RegistryBrowserPane({
             }}
           >
             {isDeletingPatient ? "正在删除..." : "🗑️ 删除患者"}
-          </button>
+          </Button>
         </div>
         {!canDeletePreview && previewPatientId === currentPatientId && previewPatientId !== null ? (
           <p className="workspace-copy workspace-copy-tight">
             删除此患者记录前，请先重置或更改当前患者。
           </p>
         ) : null}
-      </section>
+      </Card>
 
       <PatientRegistryAlertsPanel alerts={previewAlerts} isLoading={isLoadingPreview} />
       <PatientRecordsPanel records={previewRecords} isLoading={isLoadingPreview} />

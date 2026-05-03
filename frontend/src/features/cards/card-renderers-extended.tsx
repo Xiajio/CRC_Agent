@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import type { JsonObject } from "../../app/api/types";
+import { Button, Input } from "../../components/ui";
 import {
   cardTitle as baseCardTitle,
   renderCardContent as baseRenderCardContent,
@@ -315,32 +316,34 @@ function TriageQuestionCardView({
           {options.map((option) => {
             const active = selectedIds.includes(option.id);
             return (
-              <button
+              <Button
                 key={option.id}
                 type="button"
-                className={active ? "workspace-secondary-button workspace-action-button workspace-button-active" : "workspace-secondary-button workspace-action-button"}
+                variant={active ? "primary" : "secondary"}
+                size="sm"
                 disabled={submitted || !isInteractive}
                 onClick={() => toggleSelection(option)}
               >
                 {option.label}
-              </button>
+              </Button>
             );
           })}
           {allowOther ? (
-            <button
+            <Button
               type="button"
-              className={otherSelected ? "workspace-secondary-button workspace-action-button workspace-button-active" : "workspace-secondary-button workspace-action-button"}
+              variant={otherSelected ? "primary" : "secondary"}
+              size="sm"
               disabled={submitted || !isInteractive}
               onClick={toggleOther}
             >
               {otherLabel}
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
       {(otherSelected || selectedOptions.some((option) => option.requiresFreeText)) && !submitted ? (
         <div className="workspace-card-section">
-          <input
+          <Input
             aria-label={otherLabel}
             type="text"
             placeholder={otherPlaceholder}
@@ -349,26 +352,28 @@ function TriageQuestionCardView({
             disabled={submitted || !isInteractive}
           />
           {selectionMode === "single" ? (
-            <button
+            <Button
               type="button"
-              className="workspace-secondary-button workspace-action-button"
+              variant="secondary"
+              size="sm"
               disabled={submitted || !isInteractive || !canSubmit}
               onClick={submitAnswer}
             >
               {submitLabel}
-            </button>
+            </Button>
           ) : null}
         </div>
       ) : null}
       {selectionMode === "multiple" && !submitted ? (
-        <button
+        <Button
           type="button"
-          className="workspace-secondary-button workspace-action-button"
+          variant="secondary"
+          size="sm"
           disabled={submitted || !isInteractive || !canSubmit}
           onClick={submitAnswer}
         >
           {submitLabel}
-        </button>
+        </Button>
       ) : null}
       {statusMessage ? <p className="workspace-copy workspace-copy-tight">{statusMessage}</p> : null}
     </div>

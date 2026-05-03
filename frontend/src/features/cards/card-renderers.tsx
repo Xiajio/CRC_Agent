@@ -1,6 +1,7 @@
 ﻿import { useState, type ReactNode } from "react";
 
 import type { JsonObject, JsonValue } from "../../app/api/types";
+import { Button } from "../../components/ui";
 
 export type CardPromptHandler = (prompt: string, context?: Record<string, unknown>) => void;
 
@@ -200,15 +201,15 @@ function renderPromptButtons(prompts: string[], onPromptRequest?: CardPromptHand
   return (
     <div className="workspace-action-row" style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "16px" }}>
       {prompts.map((prompt, index) => (
-        <button
+        <Button
           key={prompt}
           type="button"
-          className="workspace-secondary-button workspace-action-button"
-          style={{ padding: "6px 12px", fontSize: "0.75rem", borderRadius: "9999px", backgroundColor: "#f3f4f6", color: "#374151", border: "1px solid #e5e7eb", cursor: "pointer" }}
+          variant="secondary"
+          size="sm"
           onClick={() => onPromptRequest(prompt)}
         >
           {labels?.[index] ?? prompt}
-        </button>
+        </Button>
       ))}
     </div>
   );

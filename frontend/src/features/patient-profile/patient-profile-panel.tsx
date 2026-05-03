@@ -1,4 +1,5 @@
 import type { JsonObject } from "../../app/api/types";
+import { Card } from "../../components/ui";
 
 type PatientProfilePanelProps = {
   patientProfile: JsonObject | null;
@@ -43,7 +44,7 @@ function fieldLabel(key: string): string {
 
 export function PatientProfilePanel({ patientProfile }: PatientProfilePanelProps) {
   return (
-    <div className="workspace-card">
+    <Card className="workspace-card">
       <h2>患者画像</h2>
       {patientProfile ? (
         <dl className="workspace-detail-list">
@@ -57,6 +58,6 @@ export function PatientProfilePanel({ patientProfile }: PatientProfilePanelProps
       ) : (
         <p className="workspace-copy">等待患者信息加载</p>
       )}
-    </div>
+    </Card>
   );
 }

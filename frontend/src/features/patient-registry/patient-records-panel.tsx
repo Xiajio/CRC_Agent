@@ -1,4 +1,5 @@
 import type { PatientRegistryRecord } from "../../app/api/types";
+import { Card } from "../../components/ui";
 
 type PatientRecordsPanelProps = {
   records: PatientRegistryRecord[];
@@ -16,7 +17,7 @@ function recordMeta(record: PatientRegistryRecord): string {
 
 export function PatientRecordsPanel({ records, isLoading }: PatientRecordsPanelProps) {
   return (
-    <section className="workspace-card">
+    <Card as="section" className="workspace-card">
       <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <span style={{ fontSize: "1.2rem" }}>📁</span> 患者病历记录
       </h2>
@@ -35,6 +36,6 @@ export function PatientRecordsPanel({ records, isLoading }: PatientRecordsPanelP
           ))}
         </ul>
       ) : null}
-    </section>
+    </Card>
   );
 }

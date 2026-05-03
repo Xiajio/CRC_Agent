@@ -1,4 +1,5 @@
 import type { PatientRegistryAlert } from "../../app/api/types";
+import { Card } from "../../components/ui";
 
 type PatientRegistryAlertsPanelProps = {
   alerts: PatientRegistryAlert[];
@@ -14,7 +15,7 @@ function alertLabel(alert: PatientRegistryAlert): string {
 
 export function PatientRegistryAlertsPanel({ alerts, isLoading }: PatientRegistryAlertsPanelProps) {
   return (
-    <section className="workspace-card">
+    <Card as="section" className="workspace-card">
       <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <span style={{ fontSize: "1.2rem" }}>⚠️</span> 患者库预警
       </h2>
@@ -32,6 +33,6 @@ export function PatientRegistryAlertsPanel({ alerts, isLoading }: PatientRegistr
           ))}
         </ul>
       ) : null}
-    </section>
+    </Card>
   );
 }

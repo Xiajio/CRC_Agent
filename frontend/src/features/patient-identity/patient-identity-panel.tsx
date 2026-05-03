@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ApiClientError } from "../../app/api/client";
 import type { PatientIdentitySnapshot } from "../../app/api/types";
 import { useApiClient } from "../../app/providers";
+import { Button, Card, Input } from "../../components/ui";
 
 type PanelMode = "empty" | "editing" | "saving" | "error" | "saved";
 
@@ -188,20 +189,22 @@ export function PatientIdentityPanel({
   const showError = panelState.mode === "error" ? panelState.errorMessage : null;
 
   return (
-    <section
+    <Card
+      as="section"
       className="workspace-card"
-      style={{ position: "sticky", top: "16px", display: "flex", flexDirection: "column", gap: "16px" }}
+      style={{ position: "sticky", top: "16px" }}
       data-testid="patient-identity-panel"
       aria-label="患者信息"
     >
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       <h2 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600 }}>患者信息</h2>
 
       {panelState.mode === "empty" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "flex-start" }}>
           <p className="workspace-copy" style={{ margin: 0 }}>目前还没有填写患者信息。</p>
-          <button type="button" className="workspace-primary-button" onClick={handleStartEditing}>
+          <Button type="button" variant="primary" onClick={handleStartEditing}>
             填写患者信息
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -223,38 +226,20 @@ export function PatientIdentityPanel({
         >
           <label className="workspace-field" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <span>患者名称</span>
-            <input
+            <Input
               aria-label="患者名称"
               value={panelState.patientName}
               disabled={isSaving}
               onChange={(event) => handleFieldChange("patientName", event.target.value)}
-              style={{
-                padding: "8px 12px",
-                border: "1px solid #d1d5db",
-                borderRadius: "6px",
-                fontSize: "0.875rem",
-                outline: "none",
-                width: "100%",
-                boxSizing: "border-box",
-              }}
             />
           </label>
           <label className="workspace-field" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <span>患者编号</span>
-            <input
+            <Input
               aria-label="患者编号"
               value={panelState.patientNumber}
               disabled={isSaving}
               onChange={(event) => handleFieldChange("patientNumber", event.target.value)}
-              style={{
-                padding: "8px 12px",
-                border: "1px solid #d1d5db",
-                borderRadius: "6px",
-                fontSize: "0.875rem",
-                outline: "none",
-                width: "100%",
-                boxSizing: "border-box",
-              }}
             />
           </label>
           {showError ? (
@@ -263,24 +248,25 @@ export function PatientIdentityPanel({
             </p>
           ) : null}
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-            <button
+            <Button
               type="submit"
-              className="workspace-primary-button"
+              variant="primary"
               disabled={isSaving || !sessionId}
             >
               {isSaving ? "保存中..." : "保存"}
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
-              className="workspace-secondary-button"
+              variant="secondary"
               disabled={isSaving}
               onClick={handleCancel}
             >
               取消
-            </button>
+            </Button>
           </div>
         </form>
       ) : null}
-    </section>
+      </div>
+    </Card>
   );
 }

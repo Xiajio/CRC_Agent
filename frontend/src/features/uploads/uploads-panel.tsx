@@ -1,5 +1,7 @@
 import { useRef } from "react";
 
+import { Button, Card } from "../../components/ui";
+
 type UploadsPanelProps = {
   uploadedAssets: Record<string, unknown>;
   disabled?: boolean;
@@ -17,7 +19,7 @@ export function UploadsPanel({
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   return (
-    <div className="workspace-card" data-testid="uploads-panel">
+    <Card className="workspace-card" data-testid="uploads-panel">
       <h2>资料上传</h2>
       <p className="workspace-copy">已恢复资料：{assetIds.length}</p>
       {assetIds.length > 0 ? (
@@ -50,14 +52,14 @@ export function UploadsPanel({
           }
         }}
       />
-      <button
+      <Button
         type="button"
-        className="workspace-button"
+        variant="secondary"
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
       >
         上传资料
-      </button>
-    </div>
+      </Button>
+    </Card>
   );
 }

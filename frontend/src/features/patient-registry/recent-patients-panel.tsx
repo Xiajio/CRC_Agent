@@ -1,4 +1,5 @@
 import type { PatientRegistryItem } from "../../app/api/types";
+import { Card } from "../../components/ui";
 
 type RecentPatientsPanelProps = {
   title?: string;
@@ -28,7 +29,7 @@ export function RecentPatientsPanel({
   onPreviewPatient,
 }: RecentPatientsPanelProps) {
   return (
-    <section className="workspace-card" data-testid="recent-patients-panel">
+    <Card as="section" className="workspace-card" data-testid="recent-patients-panel">
       <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <span style={{ fontSize: "1.2rem" }}></span> {title}
       </h2>
@@ -79,6 +80,6 @@ export function RecentPatientsPanel({
           </ul>
         </div>
       ) : null}
-    </section>
+    </Card>
   );
 }
