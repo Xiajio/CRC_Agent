@@ -33,7 +33,7 @@ export function RecentPatientsPanel({
         <span style={{ fontSize: "1.2rem" }}></span> {title}
       </h2>
       {error ? <p className="workspace-copy workspace-copy-alert">{error}</p> : null}
-      {isLoading ? <p className="workspace-copy" style={{ color: "#8e4a55" }}>正在加载最近患者...</p> : null}
+      {isLoading ? <p className="workspace-copy" style={{ color: "var(--color-primary)" }}>正在加载最近患者...</p> : null}
       {!isLoading && items.length === 0 ? <p className="workspace-copy">{emptyMessage}</p> : null}
       {items.length > 0 ? (
         <div style={{ maxHeight: "calc(100vh - 200px)", overflowY: "auto", paddingRight: "8px", marginRight: "-8px" }}>
@@ -57,12 +57,12 @@ export function RecentPatientsPanel({
                       padding: "16px",
                       textAlign: "left",
                       transition: "all 0.2s ease",
-                      border: isPreviewed ? "1px solid rgba(142, 74, 85, 0.3)" : "1px solid rgba(165, 73, 83, 0.12)",
-                      boxShadow: isPreviewed ? "0 4px 12px rgba(142, 74, 85, 0.08)" : "none",
+                      border: isPreviewed ? "1px solid rgba(20, 102, 216, 0.3)" : "1px solid rgba(20, 102, 216, 0.12)",
+                      boxShadow: isPreviewed ? "0 4px 12px rgba(20, 102, 216, 0.08)" : "none",
                     }}
                   >
                     <div>
-                      <strong style={{ color: isPreviewed ? "#8e4a55" : "inherit", fontSize: "1.05rem" }}>
+                      <strong style={{ color: isPreviewed ? "var(--color-primary)" : "inherit", fontSize: "1.05rem" }}>
                         {`患者 #${item.patient_id}`}
                       </strong>
                       <p className="workspace-copy workspace-copy-tight" style={{ fontSize: "0.85rem", marginTop: "6px" }}>

@@ -210,7 +210,7 @@ export function RegistryBrowserPane({
           <span style={{ fontSize: "1.2rem" }}>🔎</span>
           {previewPatientId !== null ? `患者库预览: 患者 #${previewPatientId}` : "患者库预览"}
         </h2>
-        {isLoadingPreview ? <p className="workspace-copy" style={{ color: "#8e4a55" }}>正在加载预览...</p> : null}
+        {isLoadingPreview ? <p className="workspace-copy" style={{ color: "var(--color-primary)" }}>正在加载预览...</p> : null}
         {!isLoadingPreview && previewPatientId === null ? (
           <p className="workspace-copy">
             请从最近患者列表或搜索结果中选择一名患者，在绑定前查看其详情。

@@ -20,7 +20,7 @@ export function PatientRecordsPanel({ records, isLoading }: PatientRecordsPanelP
       <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <span style={{ fontSize: "1.2rem" }}>📁</span> 患者病历记录
       </h2>
-      {isLoading ? <p className="workspace-copy" style={{ color: "#8e4a55" }}>正在加载病历记录...</p> : null}
+      {isLoading ? <p className="workspace-copy" style={{ color: "var(--color-primary)" }}>正在加载病历记录...</p> : null}
       {!isLoading && records.length === 0 ? (
         <p className="workspace-copy">暂无病历记录。</p>
       ) : null}
@@ -28,7 +28,7 @@ export function PatientRecordsPanel({ records, isLoading }: PatientRecordsPanelP
         <ul className="workspace-list" style={{ gap: "10px" }}>
           {records.map((record) => (
             <li key={record.record_id} className="workspace-list-item">
-              <strong style={{ color: "#8e4a55" }}>{`记录 #${record.record_id}`}</strong>
+              <strong style={{ color: "var(--color-primary)" }}>{`记录 #${record.record_id}`}</strong>
               <p className="workspace-copy workspace-copy-tight">{record.summary_text}</p>
               <p className="workspace-meta" style={{ marginTop: "8px" }}>{recordMeta(record)}</p>
             </li>

@@ -28,7 +28,7 @@ function DatabaseSourceToolbar({
 }) {
   return (
     <>
-      <div style={{ width: "1px", height: "24px", background: "rgba(165, 73, 83, 0.2)", margin: "0 4px" }} />
+      <div style={{ width: "1px", height: "24px", background: "rgba(20, 102, 216, 0.2)", margin: "0 4px" }} />
       <button
         type="button"
         className={activeSource === "historical_case_base" ? "workspace-primary-button" : "workspace-secondary-button"}
