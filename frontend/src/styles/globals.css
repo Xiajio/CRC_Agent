@@ -33,6 +33,219 @@ body {
   padding: 0;
 }
 
+.ui-top-nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  min-height: 62px;
+  display: grid;
+  grid-template-columns: minmax(250px, 360px) minmax(440px, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 0 var(--space-8);
+  background: linear-gradient(90deg, var(--color-navy) 0%, var(--color-navy-soft) 100%);
+  color: var(--color-surface-soft);
+  box-shadow: 0 8px 18px rgba(4, 22, 43, 0.14);
+}
+
+.ui-top-nav-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  font-size: var(--font-base);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.ui-top-nav-tabs {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  min-width: 0;
+  height: 100%;
+}
+
+.ui-top-nav-tab {
+  min-width: 160px;
+  height: 100%;
+  border: 0;
+  border-bottom: 4px solid transparent;
+  padding: 0 var(--space-6);
+  background: transparent;
+  color: rgba(247, 251, 255, 0.78);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.ui-top-nav-tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-surface);
+}
+
+.ui-top-nav-tab:disabled,
+.ui-top-nav-tab[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.ui-top-nav-tab:disabled:hover,
+.ui-top-nav-tab[aria-disabled="true"]:hover {
+  background: transparent;
+  color: rgba(247, 251, 255, 0.78);
+}
+
+.ui-top-nav-tab-active {
+  background: rgba(255, 255, 255, 0.13);
+  border-bottom-color: var(--color-primary);
+  color: var(--color-surface);
+}
+
+.ui-top-nav-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.ui-top-nav-user {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-4);
+  white-space: nowrap;
+}
+
+.ui-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-success) 48%, transparent);
+  border-radius: var(--radius-md);
+  color: var(--color-success);
+  font-size: var(--font-sm);
+  font-weight: 700;
+}
+
+.ui-status-pill span {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-success) 12%, transparent);
+}
+
+.ui-status-pill-safe {
+  border-color: color-mix(in srgb, var(--color-success) 55%, transparent);
+}
+
+.ui-top-nav-divider {
+  width: 1px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.ui-profile-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 42px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--color-surface);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ui-profile-switch:hover .ui-profile-avatar,
+.ui-profile-switch:focus-visible .ui-profile-avatar {
+  box-shadow: 0 0 0 4px rgba(20, 102, 216, 0.22);
+}
+
+.ui-profile-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-navy);
+}
+
+.ui-profile-avatar svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ui-profile-label {
+  font-weight: 650;
+}
+
+.ui-profile-chevron {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: var(--font-xs);
+}
+
+.ui-panel-grid {
+  display: grid;
+  grid-template-areas: "left center right";
+  grid-template-columns: 280px minmax(0, 1fr) 320px;
+  gap: 18px;
+}
+
+.ui-panel-grid-no-left {
+  grid-template-areas: "center right";
+  grid-template-columns: minmax(0, 1fr) 320px;
+}
+
+.ui-panel-grid-no-right {
+  grid-template-areas: "left center";
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.ui-panel-grid-center-only {
+  grid-template-areas: "center";
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ui-panel {
+  min-width: 0;
+  min-height: 0;
+}
+
+.ui-panel-left {
+  grid-area: left;
+  align-self: start;
+}
+
+.ui-panel-center {
+  display: flex;
+  flex-direction: column;
+  grid-area: center;
+}
+
+.ui-panel-right {
+  grid-area: right;
+  align-self: start;
+}
+
+.ui-panel-collapsed {
+  display: none;
+}
+
 .ui-card {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

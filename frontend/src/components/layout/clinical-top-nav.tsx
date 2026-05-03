@@ -1,10 +1,8 @@
 import type { ReactNode } from "react";
 
-export type ClinicalNavItem = {
-  key: string;
-  label: string;
-  disabled?: boolean;
-};
+import { TopNav, type TopNavItem } from "../ui";
+
+export type ClinicalNavItem = TopNavItem;
 
 export function ClinicalNodeLogo() {
   return (
@@ -64,65 +62,23 @@ export function ClinicalTopNav({
   onProfileClick,
   className,
 }: ClinicalTopNavProps) {
-  const toneClass = statusTone === "safe" ? " clinical-safe-pill" : "";
-
   return (
-    <header className={`clinical-top-nav${className ? ` ${className}` : ""}`} data-testid="workspace-toolbar">
-      <div className="clinical-brand-block">
-        <ClinicalNodeLogo />
-        <span>{brandLabel}</span>
-      </div>
-      <nav className="clinical-nav-tabs" aria-label={navLabel}>
-        {items.map((item) => {
-          const isActive = item.key === activeKey;
-          const isDisabled = Boolean(item.disabled);
-
-          return (
-            <button
-              key={item.key}
-              type="button"
-              className={isActive ? "clinical-nav-tab clinical-nav-tab-active" : "clinical-nav-tab"}
-              aria-current={isActive ? "page" : undefined}
-              aria-disabled={isDisabled ? "true" : undefined}
-              aria-pressed={isActive}
-              disabled={isDisabled}
-              onClick={() => {
-                if (!isDisabled) {
-                  onSelect(item.key);
-                }
-              }}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </nav>
-      {actions ? (
-        <div className="clinical-scene-switcher" aria-label={actionsLabel}>
-          {actions}
-        </div>
-      ) : null}
-      <div className="clinical-user-area">
-        <span className={`clinical-sse-pill${toneClass}`}>
-          <span />
-          {statusLabel}
-        </span>
-        <span className="clinical-top-divider" />
-        <button
-          type="button"
-          className="clinical-profile-switch"
-          aria-label={profileAriaLabel}
-          onClick={onProfileClick}
-        >
-          <span className="clinical-avatar">
-            <ClinicalUserIcon />
-          </span>
-          <span className="clinical-doctor-name">{profileLabel}</span>
-          <span className="clinical-chevron" aria-hidden="true">
-            v
-          </span>
-        </button>
-      </div>
-    </header>
+    <TopNav
+      brandLabel={brandLabel}
+      brandIcon={<ClinicalNodeLogo />}
+      navLabel={navLabel}
+      items={items}
+      activeKey={activeKey}
+      onSelect={onSelect}
+      actions={actions}
+      actionsLabel={actionsLabel}
+      statusLabel={statusLabel}
+      statusTone={statusTone}
+      profileLabel={profileLabel}
+      profileAriaLabel={profileAriaLabel}
+      profileIcon={<ClinicalUserIcon />}
+      onProfileClick={onProfileClick}
+      className={["clinical-top-nav", className].filter(Boolean).join(" ")}
+    />
   );
 }

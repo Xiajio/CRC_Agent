@@ -1,4 +1,6 @@
 export { classNames } from "./class-names";
+export { AppShell } from "./app-shell";
+export type { AppShellProps } from "./app-shell";
 export { Button } from "./button";
 export type { ButtonProps, ButtonSize, ButtonVariant } from "./button";
 export { Card } from "./card";
@@ -7,4 +9,8 @@ export { Input, Select } from "./input";
 export type { InputProps, SelectProps } from "./input";
 export { MessageBubble } from "./message-bubble";
 export type { MessageBubbleProps } from "./message-bubble";
+export { PanelGrid, panelGridLayoutMode } from "./panel-grid";
+export type { PanelGridLayoutMode, PanelGridProps } from "./panel-grid";
 export { Textarea } from "./textarea";
+export { TopNav } from "./top-nav";
+export type { TopNavItem, TopNavProps } from "./top-nav";
