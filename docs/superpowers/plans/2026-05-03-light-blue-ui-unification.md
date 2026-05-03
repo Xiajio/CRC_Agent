@@ -22,6 +22,7 @@ Create:
 - `frontend/src/components/ui/input.tsx` - shared input/select field primitives.
 - `frontend/src/components/ui/textarea.tsx` - shared textarea primitive.
 - `frontend/src/components/ui/message-bubble.tsx` - shared user/AI message shell.
+- `frontend/src/components/ui/class-names.ts` - tiny class string helper shared by UI primitives.
 - `frontend/src/components/ui/index.ts` - UI exports.
 - `frontend/src/components/ui/ui-components.test.tsx` - focused primitive tests.
 - `frontend/src/components/ui/panel-grid.test.tsx` - layout behavior tests.
@@ -35,6 +36,7 @@ Modify:
 - `frontend/src/components/layout/workspace-layout.tsx` - wrap `AppShell` and `PanelGrid` without changing the public API.
 - `frontend/src/pages/database-page.tsx` - use `TopNav` and shared buttons/cards.
 - `frontend/src/features/database/*.tsx` - migrate panels to shared `Card`, `Button`, `Input`, and `Select`.
+- `frontend/src/features/patient-registry/*.tsx` - replace inline rose colors with token-backed styles during token baseline.
 - `frontend/src/features/doctor/doctor-database-view.tsx` - use shared buttons for source switch.
 - `frontend/src/features/chat/conversation-panel.tsx` - use `Card`, `Button`, `Textarea`, and `MessageBubble`.
 - `frontend/src/pages/workspace-page.tsx` - keep business orchestration and preserve shell classes while relying on token-backed CSS.
@@ -55,6 +57,11 @@ Do not modify:
 
 - Modify: `frontend/src/styles/tokens.css`
 - Modify: `frontend/src/styles/globals.css`
+- Modify: `frontend/src/features/patient-registry/patient-registry-alerts.tsx`
+- Modify: `frontend/src/features/patient-registry/patient-records-panel.tsx`
+- Modify: `frontend/src/features/patient-registry/recent-patients-panel.tsx`
+- Modify: `frontend/src/features/patient-registry/registry-browser-pane.tsx`
+- Modify: `frontend/src/features/doctor/doctor-database-view.tsx`
 - Test by command only: CSS token grep and focused frontend tests
 
 - [ ] **Step 1: Record current rose-color usage**
@@ -62,10 +69,10 @@ Do not modify:
 Run:
 
 ```powershell
-rg -n "#8e4a55|#91515a|rgba\(165, 73, 83|rgba\(142, 74, 85" frontend\src\styles
+rg -n "#8e4a55|#91515a|#8a3f49|#a37279|#9f4650|#5a353a|#2a1b1f|#9d5963|#8c4a54|#a14d58|#a35d68|#82515a|#553237|#7d3e46|#fff0ee|#ffe4e1|rgba\(165, 73, 83|rgba\(142, 74, 85|rgba\(133, 70, 78|rgba\(156, 61, 70|rgba\(255, 244, 243|rgba\(255, 245, 244|rgba\(255, 242, 240|rgba\(255, 238, 234|rgba\(255, 249, 248|rgba\(214, 130, 113" frontend\src
 ```
 
-Expected: Finds workspace/database rose visual rules in `globals.css`. Keep this output for comparison.
+Expected: Finds workspace/database rose visual rules in `globals.css` and inline styles in `patient-registry` / `doctor-database-view.tsx`. Keep this output for comparison.
 
 - [ ] **Step 2: Replace `tokens.css` with light-blue semantic tokens**
 
@@ -141,6 +148,10 @@ Insert a new section after the global `* { box-sizing: border-box; }` rule:
 
 .ui-app-body {
   padding: var(--space-3);
+}
+
+.ui-app-body-flush {
+  padding: 0;
 }
 
 .ui-card {
@@ -252,18 +263,65 @@ rgba(165, 73, 83, 0.28) -> rgba(20, 102, 216, 0.28)
 rgba(165, 73, 83, 0.4) -> rgba(20, 102, 216, 0.4)
 rgba(142, 74, 85, 0.25) -> rgba(20, 102, 216, 0.25)
 rgba(142, 74, 85, 0.35) -> rgba(20, 102, 216, 0.35)
+rgba(142, 74, 85, 0.3) -> rgba(20, 102, 216, 0.3)
+rgba(142, 74, 85, 0.08) -> rgba(20, 102, 216, 0.08)
+rgba(133, 70, 78, 0.04) -> rgba(23, 43, 77, 0.04)
+rgba(133, 70, 78, 0.05) -> rgba(23, 43, 77, 0.05)
+rgba(156, 61, 70, 0.18) -> rgba(204, 47, 71, 0.18)
+rgba(255, 244, 243, 0.97) -> rgba(248, 251, 255, 0.97)
+rgba(255, 244, 243, 0.96) -> var(--color-primary-soft)
+rgba(255, 244, 243, 0.72) -> rgba(234, 244, 255, 0.72)
+rgba(255, 245, 244, 0.95) -> var(--color-surface-soft)
+rgba(255, 242, 240, 0.92) -> rgba(248, 251, 255, 0.92)
+rgba(255, 238, 234, 0.96) -> rgba(234, 244, 255, 0.96)
+rgba(255, 249, 248, 0.97) -> rgba(255, 255, 255, 0.97)
+rgba(214, 130, 113, 0.78) -> rgba(59, 130, 246, 0.78)
 linear-gradient(135deg, #8e4a55 0%, #a35d68 100%) -> linear-gradient(135deg, var(--color-primary) 0%, #3b82f6 100%)
 linear-gradient(135deg, #fff0ee 0%, #ffe4e1 100%) -> linear-gradient(135deg, #f8fbff 0%, var(--color-primary-soft) 100%)
+#8a3f49 -> var(--color-primary-hover)
+#a37279 -> var(--color-text-muted)
+#9f4650 -> var(--color-danger)
+#5a353a -> var(--color-text)
+#2a1b1f -> var(--color-text)
+#9d5963 -> var(--color-text-muted)
+#8c4a54 -> var(--color-primary)
+#a14d58 -> var(--color-primary)
+#a35d68 -> #3b82f6
+#553237 -> var(--color-text)
 ```
 
 Do not replace `--color-danger` or warning/status colors.
+
+In TSX inline styles, replace rose values with token-backed CSS variables:
+
+```text
+frontend/src/features/patient-registry/registry-browser-pane.tsx
+  style={{ color: "#8e4a55" }} -> style={{ color: "var(--color-primary)" }}
+
+frontend/src/features/patient-registry/recent-patients-panel.tsx
+  style={{ color: "#8e4a55" }} -> style={{ color: "var(--color-primary)" }}
+  border: "1px solid rgba(142, 74, 85, 0.3)" -> border: "1px solid rgba(20, 102, 216, 0.3)"
+  border: "1px solid rgba(165, 73, 83, 0.12)" -> border: "1px solid rgba(20, 102, 216, 0.12)"
+  boxShadow: "0 4px 12px rgba(142, 74, 85, 0.08)" -> boxShadow: "0 4px 12px rgba(20, 102, 216, 0.08)"
+  color: isPreviewed ? "#8e4a55" : "inherit" -> color: isPreviewed ? "var(--color-primary)" : "inherit"
+
+frontend/src/features/patient-registry/patient-records-panel.tsx
+  style={{ color: "#8e4a55" }} -> style={{ color: "var(--color-primary)" }}
+
+frontend/src/features/patient-registry/patient-registry-alerts.tsx
+  style={{ color: "#8e4a55" }} -> style={{ color: "var(--color-primary)" }}
+  borderLeft: "4px solid #a35d68" -> borderLeft: "4px solid var(--color-primary)"
+
+frontend/src/features/doctor/doctor-database-view.tsx
+  background: "rgba(165, 73, 83, 0.2)" -> background: "rgba(20, 102, 216, 0.2)"
+```
 
 - [ ] **Step 5: Verify rose main visual values are gone**
 
 Run:
 
 ```powershell
-rg -n "#8e4a55|#91515a|rgba\(165, 73, 83|rgba\(142, 74, 85" frontend\src\styles
+rg -n "#8e4a55|#91515a|#8a3f49|#a37279|#9f4650|#5a353a|#2a1b1f|#9d5963|#8c4a54|#a14d58|#a35d68|#82515a|#553237|#7d3e46|#fff0ee|#ffe4e1|rgba\(165, 73, 83|rgba\(142, 74, 85|rgba\(133, 70, 78|rgba\(156, 61, 70|rgba\(255, 244, 243|rgba\(255, 245, 244|rgba\(255, 242, 240|rgba\(255, 238, 234|rgba\(255, 249, 248|rgba\(214, 130, 113" frontend\src
 ```
 
 Expected: No results. If results remain in comments or legacy code that is not main visual, document why; otherwise replace them.
@@ -283,7 +341,7 @@ Expected: PASS.
 Run:
 
 ```powershell
-git add frontend/src/styles/tokens.css frontend/src/styles/globals.css
+git add frontend/src/styles/tokens.css frontend/src/styles/globals.css frontend/src/features/patient-registry/patient-registry-alerts.tsx frontend/src/features/patient-registry/patient-records-panel.tsx frontend/src/features/patient-registry/recent-patients-panel.tsx frontend/src/features/patient-registry/registry-browser-pane.tsx frontend/src/features/doctor/doctor-database-view.tsx
 git commit -m "style: unify workspace colors with light blue tokens"
 ```
 
@@ -298,6 +356,7 @@ git commit -m "style: unify workspace colors with light blue tokens"
 - Create: `frontend/src/components/ui/input.tsx`
 - Create: `frontend/src/components/ui/textarea.tsx`
 - Create: `frontend/src/components/ui/message-bubble.tsx`
+- Create: `frontend/src/components/ui/class-names.ts`
 - Create: `frontend/src/components/ui/index.ts`
 - Create: `frontend/src/components/ui/ui-components.test.tsx`
 - Modify: `frontend/src/styles/globals.css`
@@ -382,12 +441,24 @@ npm --prefix frontend run test -- --run src/components/ui/ui-components.test.tsx
 
 Expected: FAIL because `frontend/src/components/ui` does not exist.
 
-- [ ] **Step 3: Implement `Card`**
+- [ ] **Step 3: Implement shared class helper**
+
+Create `frontend/src/components/ui/class-names.ts`:
+
+```ts
+export function classNames(values: Array<string | false | null | undefined>) {
+  return values.filter(Boolean).join(" ");
+}
+```
+
+- [ ] **Step 4: Implement `Card`**
 
 Create `frontend/src/components/ui/card.tsx`:
 
 ```tsx
 import type { HTMLAttributes, ReactNode } from "react";
+
+import { classNames } from "./class-names";
 
 type CardPadding = "none" | "sm" | "md";
 type CardTone = "surface" | "soft" | "warning" | "danger";
@@ -400,10 +471,6 @@ export interface CardProps extends HTMLAttributes<HTMLElement> {
   padding?: CardPadding;
   selected?: boolean;
   tone?: CardTone;
-}
-
-function classNames(values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(" ");
 }
 
 export function Card({
@@ -436,12 +503,14 @@ export function Card({
 }
 ```
 
-- [ ] **Step 4: Implement `Button`**
+- [ ] **Step 5: Implement `Button`**
 
 Create `frontend/src/components/ui/button.tsx`:
 
 ```tsx
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+
+import { classNames } from "./class-names";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md";
@@ -450,10 +519,6 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children: ReactNode;
   size?: ButtonSize;
   variant?: ButtonVariant;
-}
-
-function classNames(values: Array<string | false | null | undefined>) {
-  return values.filter(Boolean).join(" ");
 }
 
 export function Button({
@@ -476,7 +541,7 @@ export function Button({
 }
 ```
 
-- [ ] **Step 5: Implement `Input` and `Textarea`**
+- [ ] **Step 6: Implement `Input` and `Textarea`**
 
 Create `frontend/src/components/ui/input.tsx`:
 
@@ -536,7 +601,7 @@ export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
 }
 ```
 
-- [ ] **Step 6: Implement `MessageBubble`**
+- [ ] **Step 7: Implement `MessageBubble`**
 
 Create `frontend/src/components/ui/message-bubble.tsx`:
 
@@ -573,7 +638,7 @@ export function MessageBubble({ author, children, className, label, ...props }: 
 }
 ```
 
-- [ ] **Step 7: Export UI primitives**
+- [ ] **Step 8: Export UI primitives**
 
 Create `frontend/src/components/ui/index.ts`:
 
@@ -585,7 +650,7 @@ export { MessageBubble, type MessageBubbleProps } from "./message-bubble";
 export { Textarea } from "./textarea";
 ```
 
-- [ ] **Step 8: Add message styles**
+- [ ] **Step 9: Add message styles**
 
 Append to the `.ui-*` section in `frontend/src/styles/globals.css`:
 
@@ -643,7 +708,7 @@ Append to the `.ui-*` section in `frontend/src/styles/globals.css`:
 }
 ```
 
-- [ ] **Step 9: Run primitive tests**
+- [ ] **Step 10: Run primitive tests**
 
 Run:
 
@@ -653,7 +718,7 @@ npm --prefix frontend run test -- --run src/components/ui/ui-components.test.tsx
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit primitives**
+- [ ] **Step 11: Commit primitives**
 
 Run:
 
@@ -743,15 +808,16 @@ Create `frontend/src/components/ui/app-shell.tsx`:
 import type { HTMLAttributes, ReactNode } from "react";
 
 export interface AppShellProps extends HTMLAttributes<HTMLElement> {
+  bodyClassName?: string;
   children: ReactNode;
   topNav?: ReactNode;
 }
 
-export function AppShell({ children, className, topNav, ...props }: AppShellProps) {
+export function AppShell({ bodyClassName, children, className, topNav, ...props }: AppShellProps) {
   return (
     <main className={["ui-app-shell", className].filter(Boolean).join(" ")} {...props}>
       {topNav}
-      <div className="ui-app-body">{children}</div>
+      <div className={["ui-app-body", bodyClassName].filter(Boolean).join(" ")}>{children}</div>
     </main>
   );
 }
@@ -775,12 +841,14 @@ export interface TopNavProps {
   actionsLabel?: string;
   activeKey: string;
   brandLabel: string;
+  brandIcon?: ReactNode;
   className?: string;
   items: TopNavItem[];
   navLabel: string;
   onProfileClick?: () => void;
   onSelect: (key: string) => void;
   profileAriaLabel: string;
+  profileIcon?: ReactNode;
   profileLabel: string;
   statusLabel: string;
   statusTone?: "connected" | "safe";
@@ -791,12 +859,14 @@ export function TopNav({
   actionsLabel = "场景操作",
   activeKey,
   brandLabel,
+  brandIcon,
   className,
   items,
   navLabel,
   onProfileClick,
   onSelect,
   profileAriaLabel,
+  profileIcon,
   profileLabel,
   statusLabel,
   statusTone = "connected",
@@ -804,7 +874,7 @@ export function TopNav({
   return (
     <header className={["ui-top-nav", className].filter(Boolean).join(" ")} data-testid="workspace-toolbar">
       <div className="ui-top-nav-brand">
-        <span className="ui-top-nav-logo" aria-hidden="true" />
+        {brandIcon ?? <span className="ui-top-nav-logo" aria-hidden="true" />}
         <span>{brandLabel}</span>
       </div>
       <nav className="ui-top-nav-tabs" aria-label={navLabel}>
@@ -843,7 +913,7 @@ export function TopNav({
           {statusLabel}
         </span>
         <button type="button" className="ui-profile-switch clinical-profile-switch" aria-label={profileAriaLabel} onClick={onProfileClick}>
-          <span className="ui-profile-avatar" aria-hidden="true" />
+          {profileIcon ?? <span className="ui-profile-avatar" aria-hidden="true" />}
           <span>{profileLabel}</span>
           <span aria-hidden="true">v</span>
         </button>
@@ -997,11 +1067,30 @@ import { TopNav, type TopNavItem } from "../ui";
 export type ClinicalNavItem = TopNavItem;
 
 export function ClinicalNodeLogo() {
-  return <span className="ui-top-nav-logo clinical-logo-mark" aria-hidden="true" />;
+  return (
+    <svg className="clinical-logo-mark" viewBox="0 0 40 40" aria-hidden="true">
+      <line x1="12" y1="10" x2="28" y2="8" />
+      <line x1="12" y1="10" x2="9" y2="26" />
+      <line x1="28" y1="8" x2="31" y2="25" />
+      <line x1="9" y1="26" x2="22" y2="32" />
+      <line x1="31" y1="25" x2="22" y2="32" />
+      <line x1="12" y1="10" x2="31" y2="25" />
+      <circle cx="12" cy="10" r="4" />
+      <circle cx="28" cy="8" r="4" />
+      <circle cx="9" cy="26" r="4" />
+      <circle cx="31" cy="25" r="4" />
+      <circle cx="22" cy="32" r="4" />
+    </svg>
+  );
 }
 
 export function ClinicalUserIcon() {
-  return <span className="ui-profile-avatar" aria-hidden="true" />;
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 22c1.8-4.8 4.5-7.2 8-7.2s6.2 2.4 8 7.2" />
+    </svg>
+  );
 }
 
 type ClinicalTopNavProps = {
@@ -1021,7 +1110,14 @@ type ClinicalTopNavProps = {
 };
 
 export function ClinicalTopNav(props: ClinicalTopNavProps) {
-  return <TopNav {...props} className={["clinical-top-nav", props.className].filter(Boolean).join(" ")} />;
+  return (
+    <TopNav
+      {...props}
+      brandIcon={<ClinicalNodeLogo />}
+      profileIcon={<span className="clinical-avatar"><ClinicalUserIcon /></span>}
+      className={["clinical-top-nav", props.className].filter(Boolean).join(" ")}
+    />
+  );
 }
 ```
 
@@ -1052,7 +1148,11 @@ export function WorkspaceLayout({
   rightInspectorOpen = true,
 }: WorkspaceLayoutProps) {
   return (
-    <AppShell className="workspace-shell" topNav={toolbar ? <div className="workspace-toolbar">{toolbar}</div> : undefined}>
+    <AppShell
+      className="workspace-shell"
+      bodyClassName="ui-app-body-flush"
+      topNav={toolbar ? <div className="workspace-toolbar">{toolbar}</div> : undefined}
+    >
       <PanelGrid
         left={leftRail}
         center={centerWorkspace}
@@ -1129,6 +1229,8 @@ describe("DatabasePage light blue shell", () => {
 });
 ```
 
+`buildApiClientStub()` already returns default `getDatabaseStats()` and `searchDatabaseCases()` responses, so this smoke test does not need extra API overrides.
+
 - [ ] **Step 2: Run test to verify current behavior**
 
 Run:
@@ -1139,7 +1241,71 @@ npm --prefix frontend run test -- --run src/features/database/database-page.test
 
 Expected: PASS or FAIL only on the title text. If it fails on title text, update the regex to the actual visible title and rerun. Do not change component behavior for this test yet.
 
-- [ ] **Step 3: Migrate `DatabaseNaturalQueryBar`**
+- [ ] **Step 3: Migrate `DatabasePage` toolbar to `TopNav`**
+
+In `frontend/src/pages/database-page.tsx`, add this import:
+
+```tsx
+import { TopNav, type TopNavItem } from "../components/ui";
+```
+
+Add these nav items near `triStateLabel`:
+
+```tsx
+const DATABASE_NAV_ITEMS: TopNavItem[] = [
+  { key: "database", label: "数据库控制台" },
+  { key: "workspace", label: "对话工作台" },
+];
+```
+
+Replace the current `toolbar` JSX:
+
+```tsx
+const toolbar = (
+  <header className="workspace-global-header">
+    <div className="workspace-header-left">
+      <span className="workspace-brand">{"亿铸科技 -- 虚拟数据库控制台"}</span>
+    </div>
+    <div className="workspace-header-center">
+      <span className="workspace-stage-badge">{"Agentic UI"}</span>
+    </div>
+    <div className="workspace-header-right">
+      <a className="workspace-header-link" href="/">
+        {"对话工作台"}
+      </a>
+    </div>
+  </header>
+);
+```
+
+with:
+
+```tsx
+const toolbar = (
+  <TopNav
+    brandLabel="亿铸科技 -- 虚拟数据库控制台"
+    navLabel="数据库导航"
+    items={DATABASE_NAV_ITEMS}
+    activeKey="database"
+    onSelect={(key) => {
+      if (key === "workspace") {
+        window.location.href = "/";
+      }
+    }}
+    statusLabel="Agentic UI"
+    statusTone="connected"
+    profileLabel="数据库"
+    profileAriaLabel="返回对话工作台"
+    onProfileClick={() => {
+      window.location.href = "/";
+    }}
+  />
+);
+```
+
+This maps the old stage badge to `statusLabel` and the old header link to the `workspace` nav item plus profile action. Keep the visible title text so the page smoke test can find it.
+
+- [ ] **Step 4: Migrate `DatabaseNaturalQueryBar`**
 
 Modify `frontend/src/features/database/database-natural-query-bar.tsx`:
 
@@ -1202,7 +1368,7 @@ export function DatabaseNaturalQueryBar({
 }
 ```
 
-- [ ] **Step 4: Migrate `DatabaseFiltersPanel` controls**
+- [ ] **Step 5: Migrate `DatabaseFiltersPanel` controls**
 
 In `frontend/src/features/database/database-filters-panel.tsx`, import:
 
@@ -1243,11 +1409,11 @@ For selects, preserve existing `aria-label` values. Example:
 </Select>
 ```
 
-- [ ] **Step 5: Migrate remaining database card shells**
+- [ ] **Step 6: Migrate remaining database card shells**
 
 For `database-detail-panel.tsx`, `database-edit-form.tsx`, and `database-workbench-panel.tsx`:
 
-1. Import `Card`, `Button`, `Input`, and `Select` from `../../components/ui` in every database panel file that renders a card shell, button, text input, or select.
+1. Import `Card`, `Button`, `Input`, `Select`, and `Textarea` from `../../components/ui` in every database panel file that renders a card shell, button, text input, select, or textarea.
 2. Replace `workspace-card` and `workspace-banner` wrappers with `Card`.
 3. Replace form controls with shared `Input`/`Select`.
 4. Replace `workspace-button`, `workspace-primary-button`, and `workspace-secondary-button` with `Button`.
@@ -1263,9 +1429,10 @@ workspace-secondary-button -> <Button variant="secondary">
 workspace-button -> <Button variant="secondary">
 database-input -> <Input>
 database-select -> <Select>
+database-textarea -> <Textarea>
 ```
 
-- [ ] **Step 6: Keep table semantics and only token-back styles**
+- [ ] **Step 7: Keep table semantics and only token-back styles**
 
 In `database-results-table.tsx`, keep table markup. Only replace button classes:
 
@@ -1275,7 +1442,7 @@ className="database-table-button ui-button ui-button-ghost ui-button-sm"
 
 Do not replace table DOM with cards.
 
-- [ ] **Step 7: Run database tests**
+- [ ] **Step 8: Run database tests**
 
 Run:
 
@@ -1285,7 +1452,7 @@ npm --prefix frontend run test -- --run src/features/database/database-page.test
 
 Expected: PASS.
 
-- [ ] **Step 8: Commit database migration**
+- [ ] **Step 9: Commit database migration**
 
 Run:
 
@@ -1398,8 +1565,8 @@ it("renders messages through shared light-blue message bubbles", () => {
   render(
     <ConversationPanel
       messages={[
-        { cursor: "1", type: "user", content: "hello" },
-        { cursor: "2", type: "ai", content: "hi" },
+        { cursor: "1", type: "user", content: "hello", assetRefs: [] },
+        { cursor: "2", type: "ai", content: "hi", assetRefs: [] },
       ]}
       draft=""
       statusNode={null}
@@ -1420,7 +1587,7 @@ it("renders messages through shared light-blue message bubbles", () => {
 });
 ```
 
-If the local `FrontendMessage` type requires additional fields, use the smallest valid message object already used elsewhere in this test file.
+`assetRefs: []` is required by `FrontendMessage`; keep it on both test messages even though this component does not render assets in this assertion.
 
 - [ ] **Step 2: Run test to verify failure**
 
@@ -1613,7 +1780,7 @@ git commit -m "refactor: align workspace panels with shared card shell"
 Run:
 
 ```powershell
-rg -n "workspace-message-bubble|clinical-message-bubble|bubble-user|bubble-ai|workspace-primary-button|workspace-secondary-button|workspace-button|database-input|database-select" frontend\src
+rg -n "workspace-message-bubble|clinical-message-bubble|bubble-user|bubble-ai|workspace-primary-button|workspace-secondary-button|workspace-button|workspace-composer-input|workspace-composer-send|workspace-card|workspace-banner|clinical-card|database-input|database-select|database-textarea|database-pill|database-distribution-fill|workspace-inline-card-title|workspace-status-node" frontend\src
 ```
 
 Expected: Some legacy selectors may remain in CSS or compatibility paths. Any remaining TSX usage should be intentional and documented in the next step.
@@ -1644,7 +1811,7 @@ From `frontend/src/styles/globals.css`, delete blocks for selectors with no rema
 Run:
 
 ```powershell
-rg -n "#8e4a55|#91515a|#a35d68|rgba\(165, 73, 83|rgba\(142, 74, 85" frontend\src
+rg -n "#8e4a55|#91515a|#8a3f49|#a37279|#9f4650|#5a353a|#2a1b1f|#9d5963|#8c4a54|#a14d58|#a35d68|#82515a|#553237|#7d3e46|#fff0ee|#ffe4e1|rgba\(165, 73, 83|rgba\(142, 74, 85|rgba\(133, 70, 78|rgba\(156, 61, 70|rgba\(255, 244, 243|rgba\(255, 245, 244|rgba\(255, 242, 240|rgba\(255, 238, 234|rgba\(255, 249, 248|rgba\(214, 130, 113" frontend\src
 ```
 
 Expected: No results.
@@ -1719,7 +1886,7 @@ git commit -m "chore: clean up legacy visual styles"
 
 Before reporting completion:
 
-- [ ] `rg -n "#8e4a55|#91515a|#a35d68|rgba\(165, 73, 83|rgba\(142, 74, 85" frontend\src` returns no results.
+- [ ] `rg -n "#8e4a55|#91515a|#8a3f49|#a37279|#9f4650|#5a353a|#2a1b1f|#9d5963|#8c4a54|#a14d58|#a35d68|#82515a|#553237|#7d3e46|#fff0ee|#ffe4e1|rgba\(165, 73, 83|rgba\(142, 74, 85|rgba\(133, 70, 78|rgba\(156, 61, 70|rgba\(255, 244, 243|rgba\(255, 245, 244|rgba\(255, 242, 240|rgba\(255, 238, 234|rgba\(255, 249, 248|rgba\(214, 130, 113" frontend\src` returns no results.
 - [ ] `npm --prefix frontend run test -- --run` passes.
 - [ ] `npm --prefix frontend run build` passes.
 - [ ] Browser review covers `/database`, patient scene, doctor scene, and doctor database tab.
