@@ -1,4 +1,5 @@
 import type { FrontendMessage } from "../../app/api/types";
+import { Button, Card, MessageBubble, Textarea } from "../../components/ui";
 import { cardTitle, renderCardContent, type CardPromptHandler } from "../cards/card-renderers-extended";
 
 export type ConversationLatencyStatus =
@@ -131,7 +132,7 @@ export function ConversationPanel({
   const textareaDisabled = draftDisabled ?? disabled;
 
   return (
-    <section className="workspace-card clinical-conversation-card" data-testid="conversation-panel">
+    <Card as="section" padding="none" className="clinical-conversation-card" data-testid="conversation-panel">
       <div className="clinical-panel-header clinical-conversation-header">
         <span className="clinical-panel-icon clinical-chat-icon" aria-hidden="true" />
         <h2>对话</h2>
@@ -142,14 +143,15 @@ export function ConversationPanel({
       <div className="clinical-conversation-scroll">
         {canLoadHistory ? (
           <div className="clinical-history-row">
-            <button
+            <Button
               type="button"
-              className="workspace-secondary-button"
+              variant="secondary"
+              size="sm"
               disabled={isLoadingHistory}
               onClick={onLoadHistory}
             >
               {isLoadingHistory ? "正在加载历史..." : "加载更早消息"}
-            </button>
+            </Button>
           </div>
         ) : null}
 
@@ -166,13 +168,11 @@ export function ConversationPanel({
               }
 
               return (
-                <li
+                <MessageBubble
                   key={message.cursor}
-                  className={`workspace-message-bubble clinical-message-bubble ${isUser ? "bubble-user" : "bubble-ai"}`}
+                  author={isUser ? "user" : "assistant"}
+                  label={messageLabel(message)}
                 >
-                  <div className="bubble-header clinical-bubble-header">
-                    <strong>{messageLabel(message)}</strong>
-                  </div>
                   {!hideText || thinkText ? (
                     <div className="bubble-content">
                       {renderMessageContent(hideText ? "" : normalizedText, thinkText || undefined)}
@@ -203,7 +203,7 @@ export function ConversationPanel({
                       ))}
                     </div>
                   ) : null}
-                </li>
+                </MessageBubble>
               );
             })}
           </ol>
@@ -231,8 +231,8 @@ export function ConversationPanel({
 
         <div className="workspace-composer clinical-composer">
           <div className="clinical-composer-box">
-            <textarea
-              className="workspace-composer-input"
+            <Textarea
+              className="clinical-composer-textarea"
               placeholder="询问评估、治疗方案、引用依据或相似病例"
               value={draft}
               disabled={textareaDisabled}
@@ -248,7 +248,7 @@ export function ConversationPanel({
             />
             <button
               type="button"
-              className="workspace-composer-send"
+              className="workspace-composer-send ui-button ui-button-primary"
               disabled={textareaDisabled || !draft.trim()}
               onClick={onSubmit}
               aria-label="发送消息"
@@ -261,6 +261,6 @@ export function ConversationPanel({
           </div>
         </div>
       </div>
-    </section>
+    </Card>
   );
 }

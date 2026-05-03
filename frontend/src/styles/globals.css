@@ -1016,8 +1016,10 @@ body {
   justify-content: center;
   width: 36px;
   height: 36px;
+  min-height: 36px;
   border-radius: 10px;
   border: none;
+  padding: 0;
   background: var(--color-primary);
   color: white;
   cursor: pointer;
@@ -1843,6 +1845,13 @@ body {
   padding: 0 !important;
 }
 
+.clinical-conversation-card > .ui-card-body {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
 .clinical-conversation-scroll {
   flex: 1;
   overflow-y: auto;
@@ -1981,7 +1990,7 @@ body {
   position: relative;
 }
 
-.clinical-conversation-card .workspace-composer-input {
+.clinical-conversation-card .clinical-composer-textarea {
   min-height: 58px;
   resize: vertical;
   border-radius: 8px;
@@ -1995,7 +2004,9 @@ body {
   bottom: 12px;
   width: 34px;
   height: 34px;
+  min-height: 34px;
   border-radius: 8px;
+  padding: 0;
   background: var(--clinical-primary);
 }
 
