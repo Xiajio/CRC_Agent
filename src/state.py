@@ -264,12 +264,11 @@ class RetrievedReference(BaseModel):
     title: str = Field(default="", description="来源标题")
     url: str = Field(default="", description="来源URL")
     page: Optional[int] = Field(default=None, description="页码")
+    evidence_id: Optional[str] = None
+    section: Optional[str] = None
     snippet: str = Field(description="内容片段")
     retrieved_at: datetime = Field(default_factory=datetime.utcnow, description="检索时间")
     relevance: float = Field(default=1.0, description="相关性评分")
-    evidence_id: Optional[str] = None
-    section: Optional[str] = None
-
     @model_validator(mode="before")
     @classmethod
     def _normalize_legacy_reference(cls, data: Any):
@@ -340,6 +339,8 @@ class RetrievedReference(BaseModel):
             "title": str(title),
             "url": str(url),
             "page": page,
+            "evidence_id": d.get("evidence_id"),
+            "section": d.get("section"),
             "snippet": snippet,
             "relevance": relevance,
         }
@@ -403,13 +404,22 @@ def merge_evidence_by_id(
     left: List[Dict[str, Any]] | None,
     right: List[Dict[str, Any]] | None,
 ) -> List[Dict[str, Any]]:
-    merged: dict[str, Dict[str, Any]] = {}
+    merged: Dict[str, Dict[str, Any]] = {}
+    anonymous = 0
+    for item in left or []:
+        if not isinstance(item, dict):
+            continue
+        match = re.fullmatch(r"anon:(\d+)", str(item.get("evidence_id") or "").strip())
+        if match:
+            anonymous = max(anonymous, int(match.group(1)))
     for item in (left or []) + (right or []):
         if not isinstance(item, dict):
             continue
         evidence_id = str(item.get("evidence_id") or "").strip()
         if not evidence_id:
-            evidence_id = f"anon:{len(merged) + 1}"
+            anonymous += 1
+            evidence_id = f"anon:{anonymous}"
+            item = {**item, "evidence_id": evidence_id}
         merged[evidence_id] = item
     return list(merged.values())
 

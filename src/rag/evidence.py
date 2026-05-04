@@ -5,6 +5,7 @@ import json
 import re
 from pathlib import PurePath
 from typing import Any, Iterable, Mapping
+from uuid import uuid4
 
 
 TOOL_RETRIEVAL_PROFILES: dict[str, str] = {
@@ -79,7 +80,7 @@ def _first_present(*values: Any) -> Any:
     return None
 
 
-def _snippet(text: Any, limit: int = 220) -> str:
+def _snippet(text: Any, limit: int = 500) -> str:
     value = str(text or "").strip()
     value = re.sub(r"\s+", " ", value)
     if len(value) <= limit:
@@ -103,9 +104,11 @@ def _make_evidence_id(
     index: int | None = None,
 ) -> str:
     prefix = _clean_text(tool_name) or "rag"
-    stable_part = chunk_id or _hash_id([source, page, section, str(text or "")[:500], index])
-    digest = _hash_id([stable_part])
-    return f"{prefix}:{digest}"
+    chunk = _clean_text(chunk_id)
+    if chunk:
+        return f"{prefix}:{chunk}"
+    stable_part = _hash_id([source, page, section, str(text or "")[:500], index])
+    return f"{prefix}:{source or 'unknown'}:{page or index}:{stable_part}"
 
 
 def normalize_evidence(item: Mapping[str, Any] | Any, *, index: int | None = None) -> dict[str, Any]:
@@ -116,7 +119,11 @@ def normalize_evidence(item: Mapping[str, Any] | Any, *, index: int | None = Non
 
     source = _source_basename(data.get("source"))
     page = _coerce_int(data.get("page"))
-    section = _clean_text(data.get("section"))
+    section = (
+        _clean_text(data.get("section"))
+        or _clean_text(data.get("section_title"))
+        or _clean_text(data.get("chapter"))
+    )
     text = str(data.get("text") or data.get("content") or data.get("snippet") or data.get("preview") or "")
     snippet = _snippet(data.get("snippet") or data.get("preview") or text)
     tool_name = _clean_text(data.get("tool_name"))
@@ -161,7 +168,7 @@ def normalize_evidence(item: Mapping[str, Any] | Any, *, index: int | None = Non
         "frontend": {
             "title": title,
             "citation_label": citation_label,
-            "display_text": _clean_text(frontend.get("display_text")) or snippet,
+            "display_text": _clean_text(frontend.get("display_text")) or text,
         },
     }
 
@@ -176,29 +183,29 @@ def build_evidence_from_document(
 ) -> dict[str, Any]:
     metadata = dict(getattr(document, "metadata", {}) or {})
     content = str(getattr(document, "page_content", "") or "").strip()
-    source = _source_basename(metadata.get("source"))
-    page = _coerce_int(metadata.get("page"))
+    source = _source_basename(metadata.get("source") or metadata.get("file_name") or metadata.get("doc_title"))
+    page = _coerce_int(metadata.get("page") or metadata.get("page_number"))
     section = (
         _clean_text(metadata.get("section"))
+        or _clean_text(metadata.get("section_title"))
+        or _clean_text(metadata.get("chapter"))
         or _clean_text(metadata.get("section_h3"))
         or _clean_text(metadata.get("section_h2"))
     )
     profile = retrieval_profile or TOOL_RETRIEVAL_PROFILES.get(str(tool_name or ""), "general")
 
     scores = {
-        "vector": _coerce_float(_first_present(metadata.get("vector_score"), metadata.get("vector"))),
+        "vector": _coerce_float(_first_present(metadata.get("vector_score"), metadata.get("vector"), metadata.get("score"))),
         "bm25": _coerce_float(_first_present(metadata.get("bm25_score"), metadata.get("bm25"))),
         "fusion": _coerce_float(
             _first_present(
                 metadata.get("fusion_score"),
                 metadata.get("combined_score"),
-                metadata.get("score"),
                 metadata.get("relevance"),
             )
         ),
         "rerank": _coerce_float(_first_present(metadata.get("rerank_score"), metadata.get("rerank"))),
     }
-    snippet = _snippet(content)
     title = _clean_text(metadata.get("doc_title")) or source or "Unknown source"
 
     return normalize_evidence(
@@ -208,20 +215,20 @@ def build_evidence_from_document(
             "page": page,
             "section": section,
             "text": content,
-            "snippet": snippet,
+            "snippet": _snippet(content),
             "query": query,
             "tool_name": tool_name,
             "retrieval_profile": profile,
             "scores": scores,
             "provenance": {
                 "parse_method": metadata.get("parse_method"),
-                "source_file_hash": metadata.get("source_file_hash"),
-                "collection_version": metadata.get("collection_version"),
+                "source_file_hash": metadata.get("source_file_hash") or metadata.get("file_hash"),
+                "collection_version": metadata.get("collection_version") or metadata.get("index_version"),
             },
             "frontend": {
                 "title": title,
                 "citation_label": f"{title} p.{page}" if page is not None else title,
-                "display_text": snippet,
+                "display_text": content,
             },
         },
         index=index,
@@ -229,8 +236,12 @@ def build_evidence_from_document(
 
 
 def serialize_retrieved_evidence(evidence: Iterable[Mapping[str, Any]]) -> str:
-    normalized = [normalize_evidence(item, index=i) for i, item in enumerate(evidence, start=1)]
+    normalized = [normalize_evidence(item, index=i) for i, item in enumerate(evidence or [], start=1)]
     return f"<retrieved_evidence>{json.dumps(normalized, ensure_ascii=False)}</retrieved_evidence>"
+
+
+def serialize_evidence_block(evidence: Iterable[Mapping[str, Any]]) -> str:
+    return serialize_retrieved_evidence(evidence)
 
 
 def _load_json_list(payload: str) -> list[Any]:
@@ -257,6 +268,10 @@ def parse_retrieved_evidence(text: str | None) -> list[dict[str, Any]]:
     return evidence
 
 
+def extract_evidence_block(text: str | None) -> list[dict[str, Any]]:
+    return parse_retrieved_evidence(text)
+
+
 def parse_retrieved_metadata(text: str | None) -> list[dict[str, Any]]:
     if not text:
         return []
@@ -277,7 +292,7 @@ def metadata_to_evidence(
 ) -> list[dict[str, Any]]:
     profile = retrieval_profile or TOOL_RETRIEVAL_PROFILES.get(str(tool_name or ""), "general")
     evidence: list[dict[str, Any]] = []
-    for index, item in enumerate(metadata, start=1):
+    for index, item in enumerate(metadata or [], start=1):
         source = _source_basename(item.get("source") or item.get("title"))
         page = _coerce_int(item.get("page"))
         preview = item.get("preview") or item.get("snippet") or item.get("content") or ""
@@ -318,9 +333,11 @@ def metadata_to_evidence(
     return evidence
 
 
-def evidence_to_references(evidence: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+def evidence_to_references(evidence: Iterable[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
     references: list[dict[str, Any]] = []
-    for index, item in enumerate(evidence, start=1):
+    for index, item in enumerate(evidence or [], start=1):
+        if not isinstance(item, Mapping):
+            continue
         normalized = normalize_evidence(item, index=index)
         scores = normalized["scores"]
         score = _first_present(
@@ -331,26 +348,49 @@ def evidence_to_references(evidence: Iterable[Mapping[str, Any]]) -> list[dict[s
         )
         source = normalized.get("source")
         page = normalized.get("page")
-        ref_id = f"{source}:{page}" if source and page is not None else normalized["evidence_id"]
-        references.append(
-            {
-                "source": source,
-                "page": page,
-                "section": normalized.get("section"),
-                "snippet": normalized.get("snippet") or "",
-                "score": score,
-                "ref_id": ref_id,
-                "evidence_id": normalized["evidence_id"],
-            }
+        evidence_id = normalized["evidence_id"]
+        simple_id = ":" not in evidence_id
+        ref_id = evidence_id if simple_id else (
+            f"{source}:{page}" if source and page is not None else evidence_id
         )
+        ref = {
+            "source": source,
+            "page": page,
+            "section": normalized.get("section"),
+            "snippet": normalized.get("snippet") or "",
+            "score": score,
+            "ref_id": ref_id,
+            "evidence_id": evidence_id,
+        }
+        if simple_id:
+            frontend = normalized.get("frontend") or {}
+            ref["source_id"] = evidence_id
+            ref["title"] = frontend.get("title") or source or ""
+        references.append(ref)
     return references
 
 
 def dedupe_evidence_by_id(evidence: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     merged: dict[str, dict[str, Any]] = {}
-    for index, item in enumerate(evidence, start=1):
+    for index, item in enumerate(evidence or [], start=1):
         normalized = normalize_evidence(item, index=index)
         merged[normalized["evidence_id"]] = normalized
+    return list(merged.values())
+
+
+def dedupe_evidence(items: Iterable[Mapping[str, Any]] | None) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    anonymous = 0
+    for item in items or []:
+        if not isinstance(item, Mapping):
+            continue
+        evidence_id = str(item.get("evidence_id") or "").strip()
+        normalized = normalize_evidence(item)
+        if not evidence_id:
+            anonymous += 1
+            evidence_id = f"anon:{anonymous}"
+            normalized["evidence_id"] = evidence_id
+        merged[evidence_id] = normalized if evidence_id.startswith("anon:") else dict(item)
     return list(merged.values())
 
 
@@ -364,7 +404,7 @@ def build_rag_trace(
     rerank_enabled: bool | None = None,
     fallback_used: bool = False,
 ) -> dict[str, Any]:
-    normalized = [normalize_evidence(item, index=i) for i, item in enumerate(evidence, start=1)]
+    normalized = [normalize_evidence(item, index=i) for i, item in enumerate(evidence or [], start=1)]
     evidence_ids = [item["evidence_id"] for item in normalized]
     profile = retrieval_profile or (normalized[0]["retrieval_profile"] if normalized else "general")
     name = tool_name or (normalized[0].get("tool_name") if normalized else None) or "rag"
@@ -381,9 +421,33 @@ def build_rag_trace(
     }
 
 
+def make_rag_trace(
+    *,
+    tool_name: str,
+    query: str,
+    retrieval_profile: str,
+    evidence: Iterable[Mapping[str, Any]],
+    latency_ms: int | None = None,
+    rerank_enabled: bool | None = None,
+    fallback_used: bool = False,
+) -> dict[str, Any]:
+    trace = build_rag_trace(
+        tool_name=tool_name,
+        query=query,
+        retrieval_profile=retrieval_profile,
+        evidence=evidence,
+        latency_ms=latency_ms,
+        rerank_enabled=rerank_enabled,
+        fallback_used=fallback_used,
+    )
+    if not trace.get("trace_id"):
+        trace["trace_id"] = uuid4().hex
+    return trace
+
+
 def build_rag_traces_from_evidence(evidence: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
     groups: dict[tuple[str | None, str | None, str | None], list[dict[str, Any]]] = {}
-    for index, item in enumerate(evidence, start=1):
+    for index, item in enumerate(evidence or [], start=1):
         normalized = normalize_evidence(item, index=index)
         key = (
             normalized.get("tool_name"),
@@ -404,6 +468,10 @@ def build_rag_traces_from_evidence(evidence: Iterable[Mapping[str, Any]]) -> lis
         for (tool_name, query, profile), items in groups.items()
         if items
     ]
+
+
+def strip_evidence_block(text: str | None) -> str:
+    return EVIDENCE_BLOCK_RE.sub("", str(text or "")).strip()
 
 
 def strip_retrieval_payload_blocks(text: str | None) -> str:

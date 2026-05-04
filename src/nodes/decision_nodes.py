@@ -1862,6 +1862,10 @@ def node_decision(
                 r.model_dump(mode="json") if hasattr(r, "model_dump") else r
                 for r in (state.retrieved_references or [])
             ]
+            retrieved_evidence = [
+                e.model_dump(mode="json") if hasattr(e, "model_dump") else e
+                for e in (getattr(state, "retrieved_evidence", []) or [])
+            ]
             rag_context = _build_cached_rag_context_from_references(retrieved_refs)
             stage_record["cached_rag_reused"] = True
             if show_thinking:
@@ -1963,14 +1967,15 @@ def node_decision(
                         rag_payload = _extract_rag_payload(str(res))
                         ctx = rag_payload["content"]
                         refs = rag_payload["retrieved_references"]
-                        if rag_payload["retrieved_evidence"]:
-                            retrieved_evidence.extend(rag_payload["retrieved_evidence"])
-                        if rag_payload["rag_trace"]:
-                            rag_trace.extend(rag_payload["rag_trace"])
+                        evidence = rag_payload["retrieved_evidence"]
                         if ctx:
                             merged_context_parts.append(f"[Query] {q}\n{ctx}")
                         if refs:
                             merged_refs.extend(refs)
+                        if evidence:
+                            retrieved_evidence.extend(evidence)
+                        if rag_payload["rag_trace"]:
+                            rag_trace.extend(rag_payload["rag_trace"])
 
                     rag_context = "\n\n".join(merged_context_parts)
                     # 去重引用（按 source+page+ref_id）
@@ -2028,6 +2033,8 @@ def node_decision(
                     "retrieval_timings": retrieval_profiles,
                     "decision_json": decision_dict,
                     "retrieved_references": retrieved_refs,
+                    "retrieved_evidence": retrieved_evidence,
+                    "rag_trace": rag_trace,
                     "iteration_count": iteration + 1,
                     "error": None,
                     "findings": {"decision_strategy": "template_fast"},
@@ -2126,6 +2133,8 @@ def node_decision(
                 "retrieval_timings": retrieval_profiles,
                 "decision_json": decision_dict,  # 完整数据仍存在 decision_json 中
                 "retrieved_references": retrieved_refs,
+                "retrieved_evidence": retrieved_evidence,
+                "rag_trace": rag_trace,
                 "findings": {"decision_strategy": decision_strategy},
                 "iteration_count": iteration + 1,
                 "error": None
