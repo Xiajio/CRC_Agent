@@ -491,6 +491,8 @@ def node_knowledge_retrieval(
         retrieved_evidence = []
         rag_trace = []
         local_refs = []
+        local_evidence = []
+        local_trace = []
         if local_rag_tool and use_patient_context:
             try:
                 # Simple query for RAG
@@ -499,10 +501,13 @@ def node_knowledge_retrieval(
                 local_context = rag_payload["content"]
                 refs = rag_payload["retrieved_references"]
                 evidence = rag_payload["retrieved_evidence"]
+                trace = rag_payload["rag_trace"]
                 local_refs = refs
+                local_evidence = evidence
+                local_trace = trace
                 retrieved_refs.extend(refs)
                 retrieved_evidence.extend(evidence)
-                rag_trace.extend(rag_payload["rag_trace"])
+                rag_trace.extend(trace)
                 if show_thinking:
                     print(f"📚 [Knowledge] Local RAG retrieved {len(refs)} references")
             except Exception as e:
@@ -542,6 +547,12 @@ def node_knowledge_retrieval(
             if local_refs:
                 retrieved_refs = [r for r in retrieved_refs if r not in local_refs]
                 local_refs = []
+            if local_evidence:
+                retrieved_evidence = [e for e in retrieved_evidence if e not in local_evidence]
+                local_evidence = []
+            if local_trace:
+                rag_trace = [t for t in rag_trace if t not in local_trace]
+                local_trace = []
             needs_web_search = True
             if not search_reason or search_reason == "Local info missing":
                 search_reason = "本地内容与问题不匹配"

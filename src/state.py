@@ -406,6 +406,12 @@ def merge_evidence_by_id(
 ) -> List[Dict[str, Any]]:
     merged: Dict[str, Dict[str, Any]] = {}
     anonymous = 0
+    for item in left or []:
+        if not isinstance(item, dict):
+            continue
+        match = re.fullmatch(r"anon:(\d+)", str(item.get("evidence_id") or "").strip())
+        if match:
+            anonymous = max(anonymous, int(match.group(1)))
     for item in (left or []) + (right or []):
         if not isinstance(item, dict):
             continue

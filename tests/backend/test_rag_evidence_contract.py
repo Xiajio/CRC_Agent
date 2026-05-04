@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.documents import Document
+from langchain_core.runnables import RunnableLambda
 
+from src.nodes.knowledge_nodes import node_knowledge_retrieval
 from src.nodes.node_utils import _extract_and_update_references, _extract_structured_evidence
 from src.nodes.sub_agent import SubAgentContext
 from src.rag.evidence import (
@@ -158,6 +162,18 @@ def test_merge_evidence_by_id_deduplicates_and_keeps_later_value() -> None:
     ]
 
 
+def test_merge_evidence_by_id_assigns_monotonic_anonymous_ids() -> None:
+    merged = merge_evidence_by_id(
+        [{"evidence_id": "anon:1", "snippet": "old anonymous"}],
+        [{"snippet": "new anonymous"}],
+    )
+
+    assert merged == [
+        {"evidence_id": "anon:1", "snippet": "old anonymous"},
+        {"snippet": "new anonymous", "evidence_id": "anon:2"},
+    ]
+
+
 def test_retrieved_reference_preserves_evidence_id_and_section() -> None:
     ref = RetrievedReference.model_validate(
         {
@@ -240,3 +256,65 @@ def test_sub_agent_extract_references_prefers_retrieved_evidence() -> None:
 
     assert agent._collected_references[0]["evidence_id"] == "e1"
     assert agent._collected_references[0]["source"] == "NCCN.pdf"
+
+
+@pytest.mark.asyncio
+async def test_knowledge_rejects_irrelevant_local_context_without_publishing_evidence(monkeypatch) -> None:
+    evidence = _minimal_evidence(
+        evidence_id="local:e1",
+        query="treatment question",
+        tool_name="search_clinical_guidelines",
+        retrieval_profile="general",
+    )
+    local_output = (
+        "Unrelated cardiology context that is deliberately long enough to pass the local "
+        "context length gate before the relevance check discards it.\n"
+        + serialize_evidence_block([evidence])
+        + '<retrieved_metadata>[{"ref_id":"REF_1","source":"NCCN.pdf","page":12,"preview":"legacy"}]</retrieved_metadata>'
+    )
+
+    class FakeLocalRagTool:
+        name = "search_clinical_guidelines"
+
+        def invoke(self, _payload):
+            return local_output
+
+    class SufficientEval:
+        is_sufficient = True
+        missing_info = ""
+
+    class FakeSufficiencyEvaluator:
+        def invoke(self, _payload):
+            return SufficientEval()
+
+    monkeypatch.setattr(
+        "src.nodes.knowledge_nodes._create_sufficiency_evaluator",
+        lambda _model: FakeSufficiencyEvaluator(),
+    )
+    monkeypatch.setattr(
+        "src.nodes.knowledge_nodes._create_search_planner",
+        lambda _model: RunnableLambda(lambda _payload: None),
+    )
+    monkeypatch.setattr("src.nodes.knowledge_nodes._is_context_relevant", lambda _query, _context: False)
+    monkeypatch.setattr(
+        "src.nodes.knowledge_nodes._invoke_with_streaming",
+        lambda *args, **kwargs: AIMessage(content="answer without local evidence"),
+    )
+
+    runnable = node_knowledge_retrieval(
+        model=RunnableLambda(lambda _payload: AIMessage(content="unused")),
+        tools=[FakeLocalRagTool()],
+        streaming=False,
+        show_thinking=False,
+        use_sub_agent=False,
+    )
+    state = CRCAgentState(
+        messages=[HumanMessage(content="treatment question")],
+        findings={"requires_context": True},
+    )
+
+    update = await runnable(state)
+
+    assert "retrieved_references" not in update
+    assert "retrieved_evidence" not in update
+    assert "rag_trace" not in update
