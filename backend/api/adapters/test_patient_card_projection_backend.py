@@ -9,6 +9,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
 from backend.api.adapters.state_snapshot import build_recovery_snapshot
+from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_registry_service import PatientRegistryService
 from backend.api.services.payload_builder import build_graph_payload
 from backend.api.services.session_store import InMemorySessionStore, SessionMeta
@@ -194,15 +195,16 @@ def test_build_graph_payload_prefers_fresher_context_state_medical_card() -> Non
     assert prepared.payload["medical_card"] == {"type": "medical_card", "version": "fresh"}
 
 
-def test_store_session_upload_persists_medical_card_into_context_state(
+def test_store_session_upload_persists_medical_card_without_context_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     scratch_root = _make_scratch_root()
     session_store = InMemorySessionStore()
     session_meta = session_store.create_session(scene="patient", patient_id=None)
     registry = PatientRegistryService(scratch_root / "registry.sqlite3")
-    patient_id = registry.create_draft_patient(created_by_session_id=session_meta.session_id)
-    session_store.set_patient_id(session_meta.session_id, patient_id)
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id=session_meta.session_id)
+    session_store.set_patient_id(session_meta.session_id, patient.patient_id)
     monkeypatch.setattr(
         "backend.api.services.upload_service.convert_upload_to_medical_card",
         lambda *_args, **_kwargs: {
@@ -219,7 +221,7 @@ def test_store_session_upload_persists_medical_card_into_context_state(
     try:
         store_session_upload(
             session_store=session_store,
-            patient_registry=registry,
+            patient_commands=commands,
             assets_root=scratch_root / "assets",
             session_id=session_meta.session_id,
             filename="report.pdf",
@@ -227,9 +229,19 @@ def test_store_session_upload_persists_medical_card_into_context_state(
             file_bytes=b"pdf",
         )
 
-        saved = session_store.get_session(session_meta.session_id).context_state["medical_card"]
-        assert saved["type"] == "medical_card"
-        assert saved["data"]["patient_summary"]["age"] == 61
+        saved_meta = session_store.get_session(session_meta.session_id)
+        assert saved_meta is not None
+        assert "medical_card" not in saved_meta.context_state
+        with registry._connect() as connection:
+            events = connection.execute(
+                "SELECT event_type FROM patient_events WHERE patient_id = ? ORDER BY patient_version",
+                (patient.patient_id,),
+            ).fetchall()
+        assert [row["event_type"] for row in events] == [
+            "patient.created",
+            "patient.upload_received",
+            "patient.medical_card_extracted",
+        ]
     finally:
         del registry
         gc.collect()
@@ -243,8 +255,9 @@ def test_store_session_upload_rolls_back_context_medical_card_when_registry_writ
     session_store = InMemorySessionStore()
     session_meta = session_store.create_session(scene="patient", patient_id=None)
     registry = PatientRegistryService(scratch_root / "registry.sqlite3")
-    patient_id = registry.create_draft_patient(created_by_session_id=session_meta.session_id)
-    session_store.set_patient_id(session_meta.session_id, patient_id)
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id=session_meta.session_id)
+    session_store.set_patient_id(session_meta.session_id, patient.patient_id)
     monkeypatch.setattr(
         "backend.api.services.upload_service.convert_upload_to_medical_card",
         lambda *_args, **_kwargs: {
@@ -257,16 +270,16 @@ def test_store_session_upload_rolls_back_context_medical_card_when_registry_writ
         },
     )
     monkeypatch.setattr(
-        registry,
-        "write_medical_card_record",
-        lambda **_: (_ for _ in ()).throw(RuntimeError("registry write failed")),
+        commands,
+        "record_medical_card_extracted",
+        lambda **_: (_ for _ in ()).throw(RuntimeError("command write failed")),
     )
 
     try:
-        with pytest.raises(UploadProcessingError, match="registry write failed"):
+        with pytest.raises(UploadProcessingError, match="command write failed"):
             store_session_upload(
                 session_store=session_store,
-                patient_registry=registry,
+                patient_commands=commands,
                 assets_root=scratch_root / "assets",
                 session_id=session_meta.session_id,
                 filename="report.pdf",

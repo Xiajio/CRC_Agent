@@ -25,6 +25,7 @@ from backend.api.services.context_maintenance import (
     CONTEXT_MAINTENANCE_FAILED_MESSAGE,
     CONTEXT_MAINTENANCE_RUNNING_MESSAGE,
 )
+from backend.api.services.patient_context_resolver import PatientContextStaleError
 from backend.api.services.payload_builder import build_graph_payload, restore_pending_context_messages
 from backend.api.services.session_store import InMemorySessionStore, SessionMeta
 from src.nodes.node_utils import clear_stream_callback, set_stream_callback
@@ -79,11 +80,13 @@ class GraphService:
         compiled_graph: Any,
         session_store: InMemorySessionStore,
         *,
+        patient_context_resolver: Any | None = None,
         context_finalizer: Any | None = None,
         heartbeat_interval_seconds: float = 15.0,
     ) -> None:
         self._compiled_graph = compiled_graph
         self._session_store = session_store
+        self._patient_context_resolver = patient_context_resolver
         self._context_finalizer = context_finalizer
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._context_tasks: dict[str, asyncio.Task[Any]] = {}
@@ -93,6 +96,64 @@ class GraphService:
         if meta is None:
             raise SessionNotFoundError(f"Session not found: {session_id}")
         return meta
+
+    def _int_patient_version(self, value: Any) -> int | None:
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+        return None
+
+    def _doctor_patient_version_used(self, meta: SessionMeta) -> int | None:
+        context_state = meta.context_state if isinstance(meta.context_state, Mapping) else {}
+        if meta.scene == "doctor" and meta.patient_id is not None:
+            last_injected_version = self._int_patient_version(
+                context_state.get("last_injected_patient_version")
+            )
+            if last_injected_version is not None:
+                return last_injected_version
+            return self._int_patient_version(context_state.get("bound_patient_version"))
+
+        return None
+
+    def _safe_session_patient_version(self, meta: SessionMeta) -> int | None:
+        return self._doctor_patient_version_used(meta)
+
+    def _patient_version_used(self, meta: SessionMeta, prepared_payload: Mapping[str, Any]) -> int | None:
+        patient_context = prepared_payload.get("patient_context")
+        if isinstance(patient_context, Mapping):
+            patient_version = self._int_patient_version(patient_context.get("patient_version"))
+            if patient_version is not None:
+                return patient_version
+
+        return self._doctor_patient_version_used(meta)
+
+    def _stale_patient_context_stream(
+        self,
+        *,
+        thread_id: str,
+        run_id: str,
+        snapshot_version: int,
+        patient_version_used: int | None,
+        exc: PatientContextStaleError,
+    ) -> AsyncIterator[str]:
+        async def _generator() -> AsyncIterator[str]:
+            yield encode_sse_event(
+                ErrorEvent(
+                    code="PATIENT_CONTEXT_STALE",
+                    message=str(exc),
+                    recoverable=True,
+                )
+            )
+            yield encode_sse_event(
+                DoneEvent(
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    snapshot_version=snapshot_version,
+                    patient_version_used=patient_version_used,
+                    patient_context_stale=True,
+                )
+            )
+
+        return _generator()
 
     def _load_agent_state_for_thread(self, thread_id: str) -> dict[str, Any] | None:
         loader = getattr(self._compiled_graph, "load_state", None)
@@ -500,24 +561,42 @@ class GraphService:
 
     def stream_turn(self, session_id: str, chat_request: Any) -> AsyncIterator[str]:
         meta = self._get_session_meta(session_id)
-        meta = self._prepare_session_meta(session_id, chat_request, meta)
-        self._cancel_context_maintenance(session_id)
-        thread_id = meta.thread_id
-        starting_snapshot_version = meta.snapshot_version
         run_id = f"run_{uuid4().hex}"
-        phase0_trace = self._phase0_trace_from_request(session_id, run_id, chat_request)
-        phase1_trace = self._phase1_trace_from_request(session_id, run_id, chat_request, scene=meta.scene)
 
         if not self._session_store.try_acquire_run_lock(session_id, run_id):
             raise SessionBusyError(f"Session is busy: {session_id}")
 
-        prepared = None
+        patient_version_used: int | None = None
+
         try:
+            meta = self._prepare_session_meta(session_id, chat_request, meta)
+            if self._patient_context_resolver is not None:
+                try:
+                    self._patient_context_resolver.resolve(session_id)
+                    meta = self._session_store.get_session(session_id) or meta
+                except PatientContextStaleError as exc:
+                    meta = self._session_store.get_session(session_id) or meta
+                    patient_version_used = self._safe_session_patient_version(meta)
+                    self._session_store.release_run_lock(session_id, run_id)
+                    return self._stale_patient_context_stream(
+                        thread_id=meta.thread_id,
+                        run_id=run_id,
+                        snapshot_version=meta.snapshot_version,
+                        patient_version_used=patient_version_used,
+                        exc=exc,
+                    )
+            self._cancel_context_maintenance(session_id)
+            thread_id = meta.thread_id
+            starting_snapshot_version = meta.snapshot_version
+            phase0_trace = self._phase0_trace_from_request(session_id, run_id, chat_request)
+            phase1_trace = self._phase1_trace_from_request(session_id, run_id, chat_request, scene=meta.scene)
+
             prepared = build_graph_payload(
                 chat_request=chat_request,
                 session_meta=meta,
                 state_snapshot=self.load_agent_state(session_id) or {},
             )
+            patient_version_used = self._patient_version_used(meta, prepared.payload)
             if isinstance(chat_request, Mapping):
                 trace_id = chat_request.get("trace_id")
                 if isinstance(trace_id, str) and trace_id.strip():
@@ -622,6 +701,8 @@ class GraphService:
                     thread_id=thread_id,
                     run_id=run_id,
                     snapshot_version=snapshot_version,
+                    patient_version_used=patient_version_used,
+                    patient_context_stale=False,
                 )
                 self._schedule_context_maintenance(session_id, run_id)
                 release_run_lock()
@@ -650,6 +731,8 @@ class GraphService:
                     thread_id=thread_id,
                     run_id=run_id,
                     snapshot_version=starting_snapshot_version,
+                    patient_version_used=patient_version_used,
+                    patient_context_stale=False,
                 )
                 release_run_lock()
                 yield encode_sse_event(done_event)
@@ -677,11 +760,13 @@ class PatientGraphService(GraphService):
         compiled_graph: Any,
         session_store: InMemorySessionStore,
         *,
+        patient_context_resolver: Any | None = None,
         heartbeat_interval_seconds: float = 15.0,
     ) -> None:
         super().__init__(
             compiled_graph,
             session_store,
+            patient_context_resolver=patient_context_resolver,
             context_finalizer=None,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
         )
@@ -694,6 +779,7 @@ class DoctorGraphService(GraphService):
         session_store: InMemorySessionStore,
         *,
         patient_registry: Any | None = None,
+        patient_context_resolver: Any | None = None,
         context_finalizer: Any | None = None,
         heartbeat_interval_seconds: float = 15.0,
     ) -> None:
@@ -701,6 +787,7 @@ class DoctorGraphService(GraphService):
         super().__init__(
             compiled_graph,
             session_store,
+            patient_context_resolver=patient_context_resolver,
             context_finalizer=context_finalizer,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
         )
@@ -709,13 +796,14 @@ class DoctorGraphService(GraphService):
         self,
         summary_message: Any,
         alerts: list[Mapping[str, Any]],
+        patient_version: int | None = None,
     ) -> HumanMessage | Any:
         if isinstance(summary_message, HumanMessage):
             summary_text = summary_message.content
         else:
             summary_text = str(summary_message)
 
-        if not alerts:
+        if not alerts and patient_version is None:
             return summary_message if isinstance(summary_message, HumanMessage) else HumanMessage(content=summary_text)
 
         warning_parts: list[str] = []
@@ -728,9 +816,18 @@ class DoctorGraphService(GraphService):
                 else:
                     warning_parts.append(kind)
 
+        context_lines: list[str] = []
         if warning_parts:
+            context_lines.append(f"Warnings: {'; '.join(warning_parts)}")
+        if patient_version is not None:
+            context_lines.append(f"Patient version: {patient_version}.")
+
+        if context_lines:
             summary_text = summary_text.rstrip()
-            summary_text = f"{summary_text}\nWarnings: {'; '.join(warning_parts)}"
+            if summary_text:
+                summary_text = f"{summary_text}\n" + "\n".join(context_lines)
+            else:
+                summary_text = "\n".join(context_lines)
 
         return HumanMessage(content=summary_text)
 
@@ -746,8 +843,26 @@ class DoctorGraphService(GraphService):
             return meta
 
         context_state = meta.context_state if isinstance(meta.context_state, Mapping) else {}
-        if context_state.get("bound_patient_id") == patient_id:
-            return meta
+        current_patient_version = None
+        patient_version_known = False
+        get_patient_context_projection = getattr(self._patient_registry, "get_patient_context_projection", None)
+        if callable(get_patient_context_projection):
+            try:
+                projection = get_patient_context_projection(patient_id)
+            except Exception:
+                projection = None
+            if isinstance(projection, Mapping):
+                version = projection.get("patient_version")
+                if isinstance(version, int):
+                    current_patient_version = version
+                    patient_version_known = True
+
+        bound_patient_id = context_state.get("bound_patient_id")
+        if bound_patient_id == patient_id:
+            if not patient_version_known:
+                return meta
+            if context_state.get("last_injected_patient_version") == current_patient_version:
+                return meta
 
         get_summary_message = getattr(self._patient_registry, "get_patient_summary_message", None)
         list_patient_alerts = getattr(self._patient_registry, "list_patient_alerts", None)
@@ -765,7 +880,11 @@ class DoctorGraphService(GraphService):
             if summary_message is not None:
                 self._session_store.enqueue_context_message(
                     session_id,
-                    self._compose_registry_context_message(summary_message, alerts),
+                    self._compose_registry_context_message(
+                        summary_message,
+                        alerts,
+                        patient_version=current_patient_version,
+                    ),
                 )
 
         bound_snapshot_version = None
@@ -778,14 +897,19 @@ class DoctorGraphService(GraphService):
             if isinstance(detail, Mapping):
                 bound_snapshot_version = detail.get("updated_at")
 
-        self._session_store.merge_context_state(
-            session_id,
-            {
-                "bound_patient_id": patient_id,
-                "bound_patient_snapshot_version": bound_snapshot_version,
-                "bound_patient_alert_count": len(alerts),
-            },
-        )
+        context_updates: dict[str, Any] = {
+            "bound_patient_id": patient_id,
+            "bound_patient_snapshot_version": bound_snapshot_version,
+            "bound_patient_alert_count": len(alerts),
+        }
+        if patient_version_known:
+            context_updates["bound_patient_version"] = current_patient_version
+            context_updates["last_injected_patient_version"] = current_patient_version
+        elif bound_patient_id != patient_id:
+            context_updates["bound_patient_version"] = None
+            context_updates["last_injected_patient_version"] = None
+
+        self._session_store.merge_context_state(session_id, context_updates)
         refreshed_meta = self._session_store.get_session(session_id)
         return refreshed_meta or meta
 

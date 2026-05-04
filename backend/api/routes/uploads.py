@@ -24,10 +24,10 @@ def _get_runtime_dependency(request: Request) -> tuple[InMemorySessionStore, obj
     runtime = getattr(request.app.state, "runtime", None)
     session_store = getattr(runtime, "session_store", None)
     assets_root = getattr(runtime, "assets_root", None)
-    patient_registry = getattr(runtime, "patient_registry_service", None)
-    if session_store is None or assets_root is None or patient_registry is None:
+    patient_commands = getattr(runtime, "patient_command_service", None)
+    if session_store is None or assets_root is None or patient_commands is None:
         raise HTTPException(status_code=503, detail="Runtime is not initialized")
-    return session_store, assets_root, patient_registry
+    return session_store, assets_root, patient_commands
 
 
 async def _read_upload_bytes(file: UploadFile) -> bytes:
@@ -50,7 +50,7 @@ async def upload_session_file(
     request: Request,
     file: UploadFile = File(...),
 ):
-    session_store, assets_root, patient_registry = _get_runtime_dependency(request)
+    session_store, assets_root, patient_commands = _get_runtime_dependency(request)
     try:
         _, run_id = reserve_upload_session(session_store, session_id)
     except UploadSessionNotFoundError as exc:
@@ -62,7 +62,7 @@ async def upload_session_file(
         file_bytes = await _read_upload_bytes(file)
         return store_session_upload(
             session_store=session_store,
-            patient_registry=patient_registry,
+            patient_commands=patient_commands,
             assets_root=assets_root,
             session_id=session_id,
             filename=file.filename or "upload.bin",

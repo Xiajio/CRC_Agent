@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.api.routes import sessions
+from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_registry_service import PatientRegistryService
 from backend.api.services.session_store import InMemorySessionStore
 
@@ -24,9 +25,11 @@ def identity_app(monkeypatch: pytest.MonkeyPatch):
     scratch_root = _make_scratch_root()
     session_store = InMemorySessionStore()
     registry = PatientRegistryService(scratch_root / "patient_registry.sqlite3")
+    commands = PatientCommandService(registry)
 
     monkeypatch.setattr(sessions, "session_store", session_store)
     monkeypatch.setattr(sessions, "patient_registry_service", registry)
+    monkeypatch.setattr(sessions, "patient_command_service", commands)
     monkeypatch.setattr(sessions, "load_agent_state", lambda _session_id: None)
     monkeypatch.setattr(
         sessions,

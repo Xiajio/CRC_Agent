@@ -15,6 +15,7 @@ from backend.api.services.session_store import InMemorySessionStore
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 session_store = InMemorySessionStore()
 patient_registry_service: Any | None = None
+patient_command_service: Any | None = None
 
 
 class CreateSessionRequest(BaseModel):
@@ -91,12 +92,12 @@ async def create_session(request: CreateSessionRequest) -> SessionResponse:
 
     meta = session_store.create_session(scene=scene)
     if scene == "patient":
-        if patient_registry_service is None:
+        if patient_command_service is None:
             raise HTTPException(status_code=503, detail="Patient registry is not initialized")
-        patient_id = patient_registry_service.create_draft_patient(
+        result = patient_command_service.create_patient(
             created_by_session_id=meta.session_id,
         )
-        session_store.set_patient_id(meta.session_id, patient_id, allow_replace=True)
+        session_store.set_patient_id(meta.session_id, result.patient_id, allow_replace=True)
 
     return _build_session_response(meta.session_id)
 
@@ -161,14 +162,15 @@ async def set_session_patient_identity(
         raise HTTPException(status_code=409, detail="NOT_PATIENT_SESSION")
     if meta.patient_id is None:
         raise HTTPException(status_code=409, detail="PATIENT_IDENTITY_NOT_FOUND")
-    if patient_registry_service is None:
+    if patient_command_service is None:
         raise HTTPException(status_code=503, detail="Patient registry is not initialized")
 
     try:
-        patient_registry_service.set_patient_identity(
-            meta.patient_id,
-            request.patient_name,
-            request.patient_number,
+        patient_command_service.set_identity(
+            patient_id=meta.patient_id,
+            patient_name=request.patient_name,
+            patient_number=request.patient_number,
+            source_session_id=session_id,
         )
     except PatientNumberConflictError as exc:
         raise HTTPException(status_code=409, detail="PATIENT_NUMBER_ALREADY_EXISTS") from exc
