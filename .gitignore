@@ -49,3 +49,7 @@ data_temp.csv
 Thumbs.db
 
 docs/superpowers/
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/acceptance/
+!docs/superpowers/acceptance/*.md

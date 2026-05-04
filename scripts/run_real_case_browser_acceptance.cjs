@@ -6,7 +6,8 @@ const { spawn } = require("node:child_process");
 const repoRoot = path.resolve(__dirname, "..");
 const frontendDist = path.join(repoRoot, "frontend", "dist");
 const { chromium } = require(path.join(repoRoot, "frontend", "node_modules", "playwright"));
-const outputDir = path.join(repoRoot, "output", "browser-acceptance");
+const fixtureCase = "real_case_human_review";
+const outputDir = path.join(repoRoot, "output", "browser-acceptance", fixtureCase);
 const pythonExe = "D:\\anaconda3\\envs\\LangG\\python.exe";
 const backendPort = 8101;
 const frontendPort = 4176;
@@ -25,6 +26,9 @@ async function waitForHttp(url, child, timeoutMs = 30000) {
   const started = Date.now();
   let lastError = null;
   while (Date.now() - started < timeoutMs) {
+    if (child?.spawnError) {
+      throw new Error(`Process failed to start before ${url} became ready: ${child.spawnError.message}`);
+    }
     if (child && child.exitCode !== null) {
       throw new Error(`Process exited before ${url} became ready with code ${child.exitCode}`);
     }
@@ -45,7 +49,7 @@ async function waitForHttp(url, child, timeoutMs = 30000) {
 function startBackend() {
   const stdout = fs.openSync(path.join(outputDir, "real-case-backend.out.log"), "w");
   const stderr = fs.openSync(path.join(outputDir, "real-case-backend.err.log"), "w");
-  return spawn(
+  const backend = spawn(
     pythonExe,
     ["-m", "uvicorn", "backend.app:app", "--host", "127.0.0.1", "--port", String(backendPort)],
     {
@@ -54,7 +58,7 @@ function startBackend() {
         ...process.env,
         AUTH_MODE: "none",
         GRAPH_RUNNER_MODE: "fixture",
-        GRAPH_FIXTURE_CASE: "real_case_human_review",
+        GRAPH_FIXTURE_CASE: fixtureCase,
         UPLOAD_CONVERTER_MODE: "fixture",
         RAG_WARMUP: "false",
         FRONTEND_ORIGINS: frontendUrl,
@@ -65,6 +69,10 @@ function startBackend() {
       windowsHide: true,
     },
   );
+  backend.once("error", (error) => {
+    backend.spawnError = error;
+  });
+  return backend;
 }
 
 function contentType(filePath) {
@@ -215,8 +223,11 @@ async function runAcceptance() {
     const screenshotPath = path.join(outputDir, "real-case-human-review-acceptance.png");
     await page.screenshot({ path: screenshotPath, fullPage: true });
 
+    const resultPath = path.join(outputDir, "real-case-human-review-acceptance.json");
     const result = {
       ok: true,
+      fixtureCase,
+      repoRoot,
       frontendUrl,
       backendUrl,
       planRows,
@@ -228,7 +239,9 @@ async function runAcceptance() {
       failedResponses,
       consoleErrors,
       screenshotPath,
+      resultPath,
     };
+    fs.writeFileSync(resultPath, `${JSON.stringify(result, null, 2)}\n`, "utf-8");
     console.log(JSON.stringify(result, null, 2));
   } finally {
     if (browser) {

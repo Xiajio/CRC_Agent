@@ -13,7 +13,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT_PATH = ROOT / "output" / "pdf" / "e2e-acceptance-exec-summary-2026-04-13.pdf"
+OUTPUT_PATH = ROOT / "output" / "pdf" / "real-case-human-review-exec-summary-2026-05-03.pdf"
 
 
 def register_cn_font() -> str:
@@ -197,28 +197,28 @@ def build_document() -> None:
         rightMargin=15 * mm,
         topMargin=13 * mm,
         bottomMargin=12 * mm,
-        title="智能体 E2E 全量验收简版汇报",
+        title="真实病例人工复核验收简版汇报",
         author="Codex",
     )
 
     story = [
-        Paragraph("智能体 E2E 全量验收简版汇报", styles["ExecTitle"]),
-        Paragraph("面向领导/客户 | 2026-04-13 | 项目：LangG_New", styles["ExecSubtitle"]),
+        Paragraph("真实病例人工复核验收简版汇报", styles["ExecTitle"]),
+        Paragraph("面向领导/客户 | 2026-05-03 | 项目：LangG | 仓库：D:\\YiZhu_Agnet\\LangG", styles["ExecSubtitle"]),
     ]
 
     callout = Table(
         [
             [
                 Paragraph("自动化验收结论：PASS", styles["CalloutTitle"]),
-                Paragraph("发布建议：PASS WITH CONDITIONS", styles["CalloutTitle"]),
+                Paragraph("发布建议：PASS WITH HUMAN REVIEW REQUIRED", styles["CalloutTitle"]),
             ],
             [
                 Paragraph(
-                    "后端 acceptance-support 34 passed，前端 Playwright E2E 14 passed，当前无 skipped、无 conditional-pass 例外项。",
+                    "浏览器验收已通过：ok=true，planRows=3，roadmapSteps=4，blockedRoadmapSteps=1，warningCount=5，failedResponses=[]。",
                     styles["CalloutBody"],
                 ),
                 Paragraph(
-                    "上线前仍建议补齐人工签字项，覆盖医疗文案、视觉呈现、引用可信度与 Trust & Safety 结果复核。",
+                    "没有医学与安全人工签署前，该病例建议不得被解释为无需复核的最终治疗方案。",
                     styles["CalloutBody"],
                 ),
             ],
@@ -243,10 +243,10 @@ def build_document() -> None:
     metrics = Table(
         [
             [
-                metric_card("后端自动化", "34 passed", styles),
-                metric_card("前端 E2E", "14 passed", styles),
-                metric_card("计划任务", "10 / 10 完成", styles),
-                metric_card("阻断缺陷", "0", styles),
+                metric_card("Plan rows", "3", styles),
+                metric_card("Roadmap", "4 steps", styles),
+                metric_card("Blocked", "1 step", styles),
+                metric_card("Warnings", "5 visible", styles),
             ]
         ],
         colWidths=[42 * mm, 42 * mm, 42 * mm, 42 * mm],
@@ -258,9 +258,9 @@ def build_document() -> None:
         section_table(
             "本次目标",
             [
-                "在前后端真实联调条件下，用受控 fixture 与测试库完成一轮可复现的全量验收。",
-                "覆盖工作区主对话、数据库工作台、文件上传、卡片交互、会话恢复与消息持久化一致性。",
-                "形成可重复执行的脚本、证据目录、运行手册和发布报告模板，支持后续版本复用。",
+                "使用真实病例 fixture 验证缺少直接 guideline references 时，系统是否明确进入人工肿瘤专科复核。",
+                "覆盖 built frontend、fixture backend、headless browser、执行计划、roadmap 和 clinical event stream 的可见性。",
+                "形成可交付的 runbook、人工复核清单、Markdown 报告和 PDF 简版汇报模板。",
             ],
             styles,
         ),
@@ -268,9 +268,9 @@ def build_document() -> None:
         section_table(
             "关键完善",
             [
-                "完成 Task 1 到 Task 10，打通 fixture 透传、受控数据库、上传卡片、Playwright acceptance harness 与全量 runner。",
-                "将不稳定的 graph fixtures 收敛为可信的混合模式：数据库场景保留 live capture，其余高风险场景改为 deterministic template。",
-                "解锁并跑通工作区、数据库、上传三组 E2E 套件，补齐此前被 skip 或 fixme 的主链路场景。",
+                "将 handoff 从旧 LangG_New 路径与旧一键全量验收口径，修正为当前仓库 D:\\YiZhu_Agnet\\LangG。",
+                "把 scripts/run_real_case_browser_acceptance.cjs 纳入交付说明，并统一输出 JSON、截图和后端日志证据。",
+                "明确旧 full-pack runner 仅为历史入口；当前 active handoff 是真实病例浏览器验收。",
             ],
             styles,
         ),
@@ -278,11 +278,11 @@ def build_document() -> None:
 
     right_col = [
         section_table(
-            "验收结果",
+            "验收检查点",
             [
-                "后端验收支持用例 34 passed；Playwright 端到端用例 14 passed；核心链路全部通过。",
-                "工作区、数据库、上传与卡片动作均已形成证据，统一归档到 output/acceptance。",
-                "当前自动化结果可作为版本放行依据，说明系统在受控环境下已具备稳定复测能力。",
+                "浏览器验收应产生 real-case-human-review-acceptance.json、截图和 backend stdout/stderr 日志。",
+                "JSON 需记录 ok=true、fixtureCase=real_case_human_review，以及非零 plan/roadmap/event 计数。",
+                "截图需显示 HUMAN_REVIEW_REQUIRED、建议保留、无直接引用披露和 blocked review step。",
             ],
             styles,
         ),
@@ -290,9 +290,9 @@ def build_document() -> None:
         section_table(
             "剩余事项",
             [
-                "仍需按人工清单完成医疗合理性、视觉体验、引用可信度和 Trust & Safety 的签字确认。",
-                "存在一项非阻断技术尾项：document_converter.py 仍有 Pydantic deprecation warning。",
-                "当前工作区不是 git repo，因此本次未形成 commit 或 branch checkpoint，但不影响验收结论与证据完整性。",
+                "本次使用已有 frontend dist 完成浏览器验收；当前环境重新构建被 esbuild spawn EPERM / Access is denied 阻断。",
+                "由医学、产品/测试、安全复核人员完成签署，确认治疗文案和安全披露没有误导。",
+                "如需恢复旧 full-pack E2E，先恢复 tests/e2e/acceptance 再运行 run_e2e_full_acceptance.ps1。",
             ],
             styles,
         ),
@@ -318,7 +318,7 @@ def build_document() -> None:
 
     story.append(
         Paragraph(
-            "证据目录：output/acceptance。详细版技术报告：e2e-release-report-2026-04-13.md。",
+            "证据目录：output/browser-acceptance/real_case_human_review。详细报告：real-case-human-review-acceptance-report-2026-05-03.md。",
             styles["FooterCN"],
         )
     )
