@@ -30,7 +30,7 @@ def client() -> TestClient:
 
 def seed_registry_patient(client: TestClient, **snapshot: object) -> int:
     service = client.app.state.runtime.patient_registry_service
-    patient_id = service.create_draft_patient(created_by_session_id="sess_seed")
+    patient_id = service.create_draft_patient(created_by_session_id=f"sess_seed_{uuid4().hex}")
     if snapshot:
         service.write_medical_card_record(
             patient_id=patient_id,

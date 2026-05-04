@@ -297,14 +297,20 @@ def reserve_upload_session(session_store: InMemorySessionStore, session_id: str)
 def store_session_upload(
     *,
     session_store: InMemorySessionStore,
-    patient_commands: PatientCommandService,
     assets_root: Path,
     session_id: str,
     filename: str,
     content_type: str,
     file_bytes: bytes,
+    patient_commands: PatientCommandService | None = None,
+    patient_registry: Any | None = None,
     reserved_run_id: str | None = None,
 ) -> dict[str, Any]:
+    if patient_commands is None:
+        if patient_registry is None:
+            raise UploadValidationError("PATIENT_COMMAND_SERVICE_REQUIRED")
+        patient_commands = PatientCommandService(patient_registry)
+
     acquired_here = False
     if reserved_run_id is None:
         meta, run_id = reserve_upload_session(session_store, session_id)

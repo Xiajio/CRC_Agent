@@ -288,7 +288,7 @@ async def test_stream_turn_restores_pending_context_messages_when_payload_build_
         heartbeat_interval_seconds=0,
     )
 
-    with pytest.raises(ValueError, match="broken state access: patient_profile"):
+    with pytest.raises(ValueError, match="broken state access: medical_card"):
         service.stream_turn(session.session_id, make_chat_request("hello"))
 
     assert session_store.get_session(session.session_id).pending_context_messages == [pending_message]
@@ -357,14 +357,6 @@ def _compile_patient_context_capture_graph(received_contexts: list[dict[str, Any
     builder.set_entry_point("capture_patient_context")
     builder.add_edge("capture_patient_context", END)
     return builder.compile()
-
-
-def make_chat_request(message: str) -> dict[str, Any]:
-    return {"message": HumanMessage(content=message)}
-
-
-async def collect_sse_events(stream) -> list[str]:
-    return [chunk async for chunk in stream]
 
 
 def parse_sse_payloads(chunks: list[str | dict[str, Any]]) -> list[dict[str, Any]]:
