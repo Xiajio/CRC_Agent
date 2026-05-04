@@ -409,8 +409,16 @@ class PatientRegistryService:
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
-        with self._connect() as connection:
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
             yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _ensure_columns(
         self,
@@ -700,6 +708,12 @@ class PatientRegistryService:
 
             connection.execute("DELETE FROM patient_records WHERE patient_id = ?", (patient_id,))
             connection.execute("DELETE FROM patient_assets WHERE patient_id = ?", (patient_id,))
+            connection.execute(
+                "DELETE FROM patient_projection_state WHERE patient_id = ?",
+                (patient_id,),
+            )
+            connection.execute("DELETE FROM patient_snapshots WHERE patient_id = ?", (patient_id,))
+            connection.execute("DELETE FROM patient_events WHERE patient_id = ?", (patient_id,))
             connection.execute("DELETE FROM patients WHERE id = ?", (patient_id,))
 
         for asset_path in deleted_asset_paths:
@@ -744,6 +758,9 @@ class PatientRegistryService:
 
             connection.execute("DELETE FROM patient_records")
             connection.execute("DELETE FROM patient_assets")
+            connection.execute("DELETE FROM patient_projection_state")
+            connection.execute("DELETE FROM patient_snapshots")
+            connection.execute("DELETE FROM patient_events")
             connection.execute("DELETE FROM patients")
 
         for asset_path in deleted_asset_paths:

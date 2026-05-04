@@ -182,6 +182,39 @@ def test_resolver_imports_session_only_legacy_medical_card_once(tmp_path: Path) 
     assert imported_events == 1
 
 
+def test_resolver_bootstraps_legacy_registry_patient_without_session_medical_card(
+    tmp_path: Path,
+) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    patient_id = registry.create_draft_patient(created_by_session_id="legacy_session")
+    registry.write_medical_card_record(
+        patient_id=patient_id,
+        asset_row={
+            "filename": "legacy.pdf",
+            "content_type": "application/pdf",
+            "sha256": "legacy-sha",
+            "storage_path": str(tmp_path / "assets" / "legacy.pdf"),
+            "source": "patient_generated",
+        },
+        patient_snapshot={"clinical_stage": "cT2N0M0"},
+        record_payload={"document_type": "patient_report"},
+        summary_text="legacy",
+        record_type="medical_card",
+    )
+    commands = PatientCommandService(registry)
+    store = InMemorySessionStore()
+    session = store.create_session(scene="doctor", patient_id=patient_id)
+    resolver = PatientContextResolver(registry, store, patient_commands=commands)
+
+    context = resolver.resolve(session.session_id)
+
+    state = store.get_session(session.session_id).context_state
+    assert context["patient_id"] == patient_id
+    assert context["medical_card_snapshot"] == {"document_type": "patient_report"}
+    assert state["patient_context_cache"]["patient_version"] == context["patient_version"]
+    assert "medical_card" not in state
+
+
 def test_resolver_imports_healthy_projection_legacy_medical_card_once(
     tmp_path: Path,
 ) -> None:

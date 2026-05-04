@@ -55,6 +55,21 @@ class PatientContextResolver:
 
         try:
             projection = self._registry.get_patient_context_projection(session.patient_id)
+        except KeyError as exc:
+            if self._patient_commands is None:
+                raise PatientContextStaleError(
+                    "PATIENT_CONTEXT_STALE: projection unavailable"
+                ) from exc
+            try:
+                self._patient_commands.bootstrap_legacy_patient(
+                    session.patient_id,
+                    source_session_id=session_id,
+                )
+                projection = self._registry.get_patient_context_projection(session.patient_id)
+            except Exception as migration_exc:
+                raise PatientContextStaleError(
+                    "PATIENT_CONTEXT_STALE: projection unavailable"
+                ) from migration_exc
         except Exception as exc:
             raise PatientContextStaleError(
                 "PATIENT_CONTEXT_STALE: projection unavailable"

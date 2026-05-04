@@ -468,7 +468,6 @@ class PatientCommandService:
     ) -> PatientCommandResult:
         try:
             with self._registry.transaction() as connection:
-                connection.execute("BEGIN IMMEDIATE")
                 patient = connection.execute(
                     """
                     SELECT id, status, created_by_session_id

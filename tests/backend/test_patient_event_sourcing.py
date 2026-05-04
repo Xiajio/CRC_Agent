@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
+from threading import Barrier, BrokenBarrierError
 
 import pytest
 
@@ -90,6 +92,67 @@ def test_create_patient_appends_created_event_and_snapshot(tmp_path: Path) -> No
     assert event["patient_version"] == 1
     assert snapshot["patient_version"] == 1
     assert snapshot["projection_version"] == 1
+
+
+def test_delete_patient_removes_event_projection_rows(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    commands.record_upload_received(
+        patient_id=patient.patient_id,
+        filename="report.pdf",
+        content_type="application/pdf",
+        size_bytes=12,
+        sha256="abc123",
+        storage_path=str(tmp_path / "assets" / "report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    registry.delete_patient(patient.patient_id)
+
+    with pytest.raises(KeyError):
+        registry.get_patient_context_projection(patient.patient_id)
+    with registry._connect() as connection:
+        for table_name in (
+            "patient_events",
+            "patient_snapshots",
+            "patient_projection_state",
+        ):
+            row = connection.execute(
+                f"SELECT COUNT(*) AS count FROM {table_name} WHERE patient_id = ?",
+                (patient.patient_id,),
+            ).fetchone()
+            assert int(row["count"]) == 0
+
+
+def test_clear_registry_removes_event_projection_rows(tmp_path: Path) -> None:
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    first = commands.create_patient(created_by_session_id="sess_patient_1")
+    second = commands.create_patient(created_by_session_id="sess_patient_2")
+    commands.record_upload_received(
+        patient_id=first.patient_id,
+        filename="report.pdf",
+        content_type="application/pdf",
+        size_bytes=12,
+        sha256="abc123",
+        storage_path=str(tmp_path / "assets" / "report.pdf"),
+        source_session_id="sess_patient_1",
+    )
+
+    registry.clear_registry()
+
+    for patient_id in (first.patient_id, second.patient_id):
+        with pytest.raises(KeyError):
+            registry.get_patient_context_projection(patient_id)
+    with registry._connect() as connection:
+        for table_name in (
+            "patient_events",
+            "patient_snapshots",
+            "patient_projection_state",
+        ):
+            row = connection.execute(f"SELECT COUNT(*) AS count FROM {table_name}").fetchone()
+            assert int(row["count"]) == 0
 
 
 def test_bootstrap_existing_patient_creates_legacy_events_once(tmp_path: Path) -> None:
@@ -392,6 +455,72 @@ def test_upload_received_reuses_existing_asset_by_sha256(tmp_path: Path) -> None
             (patient.patient_id,),
         ).fetchone()
     assert int(event_count["count"]) == 1
+
+
+def test_concurrent_upload_received_commands_allocate_versions_without_conflict(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "patient_registry.db"
+    setup_registry = PatientRegistryService(db_path)
+    setup_commands = PatientCommandService(setup_registry)
+    patient = setup_commands.create_patient(created_by_session_id="sess_patient_1")
+    first_commands = PatientCommandService(PatientRegistryService(db_path))
+    second_commands = PatientCommandService(PatientRegistryService(db_path))
+    version_barrier = Barrier(2)
+
+    for commands in (first_commands, second_commands):
+        original_next_patient_version = commands._next_patient_version
+
+        def synced_next_patient_version(
+            connection: sqlite3.Connection,
+            patient_id: int,
+            *,
+            original_next_patient_version=original_next_patient_version,
+        ) -> int:
+            version = original_next_patient_version(connection, patient_id)
+            try:
+                version_barrier.wait(timeout=1)
+            except BrokenBarrierError:
+                pass
+            return version
+
+        commands._next_patient_version = synced_next_patient_version  # type: ignore[method-assign]
+
+    def record_upload(commands: PatientCommandService, suffix: str):
+        return commands.record_upload_received(
+            patient_id=patient.patient_id,
+            filename=f"report-{suffix}.pdf",
+            content_type="application/pdf",
+            size_bytes=12,
+            sha256=f"sha-{suffix}",
+            storage_path=str(tmp_path / "assets" / f"report-{suffix}.pdf"),
+            source_session_id=f"sess_patient_{suffix}",
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(record_upload, first_commands, "a"),
+            executor.submit(record_upload, second_commands, "b"),
+        ]
+        results = [future.result(timeout=10) for future in futures]
+
+    assert sorted(result.patient_version for result in results) == [2, 3]
+    assert all(result.snapshot_changed is True for result in results)
+    assert all(result.reused is False for result in results)
+    with setup_registry._connect() as connection:
+        versions = [
+            int(row["patient_version"])
+            for row in connection.execute(
+                """
+                SELECT patient_version
+                FROM patient_events
+                WHERE patient_id = ?
+                ORDER BY patient_version
+                """,
+                (patient.patient_id,),
+            )
+        ]
+    assert versions == [1, 2, 3]
 
 
 def test_upload_parse_failed_updates_asset_without_snapshot(tmp_path: Path) -> None:
