@@ -29,8 +29,6 @@
 - `backend/api/services/payload_builder.py`
   - Inject new context fields into graph payloads.
   - Map legacy `current_patient_id` to `case_database_patient_id` only.
-- `backend/api/routes/sessions.py`
-  - Ensure explicit doctor binding flows surface `registry_patient_id`.
 - `src/nodes/database_nodes.py`
   - Store case database sample ids under `case_database_patient_id`.
   - Stop writing `current_patient_id` for sample lookup branches.
@@ -40,6 +38,8 @@
   - Resolve sample id from `case_database_patient_id` before legacy `current_patient_id`.
 - `src/nodes/planner.py`
   - Prefer `case_database_patient_id` for database-oriented planning context.
+- `src/nodes/intent_nodes.py`
+  - Pass registry and case sample context into intent classification instead of stale `current_patient_id`.
 - `frontend/src/app/api/types.ts`
   - Add snake-case snapshot fields and camel-case session state fields.
 - `frontend/src/app/store/stream-reducer.ts`
@@ -68,6 +68,8 @@
 
 - `backend/api/services/session_store.py`
   - Confirm `SessionMeta.patient_id` remains the registry binding source.
+- `backend/api/routes/sessions.py`
+  - Confirm PATCH `/{session_id}` can remain unchanged because `SessionMeta.patient_id` is surfaced as `registry_patient_id` by snapshot mapping.
 - `backend/api/services/patient_context_resolver.py`
   - Confirm doctor registry context injection uses only `SessionMeta.patient_id`.
 - `tests/backend/test_patient_context_resolver.py`
@@ -82,6 +84,7 @@
 - `current_patient_id` remains in responses temporarily but must not drive registry fetches.
 - Chat text and case database extraction can produce only `case_database_patient_id`.
 - Only explicit registry creation, selection, or bind actions can produce `registry_patient_id`.
+- `backend/api/routes/sessions.py` does not need a route-level write change for PATCH binding; it already sets `SessionMeta.patient_id`, and Task 2 maps that value to snapshot `registry_patient_id`.
 
 ## Task 1: Backend Schema And State Fields
 
@@ -555,6 +558,7 @@ git commit -m "feat: store case database ids separately"
 - Modify: `src/nodes/radiology_nodes.py`
 - Modify: `src/nodes/pathology_nodes.py`
 - Modify: `src/nodes/planner.py`
+- Modify: `src/nodes/intent_nodes.py`
 - Modify: `src/nodes/node_utils.py`
 - Modify: `src/nodes/knowledge_utils.py`
 - Test: `tests/backend/test_patient_context_split_backend.py`
@@ -660,6 +664,31 @@ patient_id = (
 )
 ```
 
+In `src/nodes/intent_nodes.py`, replace:
+
+```python
+            "current_patient_id": state.current_patient_id or "None",
+```
+
+with:
+
+```python
+            "registry_patient_id": getattr(state, "registry_patient_id", None) or "None",
+            "case_database_patient_id": (
+                getattr(state, "case_database_patient_id", None)
+                or (state.findings or {}).get("case_database_patient_id")
+                or getattr(state, "current_patient_id", None)
+                or "None"
+            ),
+```
+
+Then update `src/prompts/intent_prompts.py` only if the prompt requires the old `current_patient_id` template variable. If it does, replace the single current-patient line with explicit registry/sample lines:
+
+```text
+- Current registry patient ID: {registry_patient_id}
+- Current case database sample ID: {case_database_patient_id}
+```
+
 In `src/nodes/node_utils.py`, where state prompt context uses `current_patient_id`, prefer registry then sample:
 
 ```python
@@ -668,6 +697,22 @@ patient_id = (
     or getattr(state, "case_database_patient_id", None)
     or getattr(state, "current_patient_id", None)
 )
+```
+
+In `src/nodes/node_utils.py`, update `_generate_fallback_plan(...)` to use the same priority chain:
+
+```python
+def _generate_fallback_plan(state: Any) -> dict[str, Any]:
+    patient_id = (
+        getattr(state, "registry_patient_id", None)
+        or getattr(state, "case_database_patient_id", None)
+        or getattr(state, "current_patient_id", None)
+    )
+    return {
+        "strategy": "fallback",
+        "summary": "Insufficient structured evidence; recommend clinician review.",
+        "patient_id": patient_id,
+    }
 ```
 
 In `src/nodes/knowledge_utils.py`, change the current-patient display to:
@@ -688,7 +733,7 @@ status_parts = [f"**Current Context ID: {patient_id}**:"]
 Run:
 
 ```powershell
-D:\anaconda3\envs\LangG\python.exe -m pytest tests\backend\test_patient_context_split_backend.py tests\backend\test_chat_main_database_integration.py tests\backend\test_graph_service_streaming.py -q --basetemp=tmp\pytest-patient-context-split-task4
+D:\anaconda3\envs\LangG\python.exe -m pytest tests\backend\test_patient_context_split_backend.py tests\backend\test_chat_main_database_integration.py tests\backend\test_graph_service_streaming.py tests\backend\test_node_utils_streaming.py -q --basetemp=tmp\pytest-patient-context-split-task4
 ```
 
 Expected: selected tests pass.
@@ -696,7 +741,7 @@ Expected: selected tests pass.
 - [ ] **Step 6: Commit Task 4**
 
 ```powershell
-git add src/nodes/radiology_nodes.py src/nodes/pathology_nodes.py src/nodes/planner.py src/nodes/node_utils.py src/nodes/knowledge_utils.py tests/backend/test_patient_context_split_backend.py
+git add src/nodes/radiology_nodes.py src/nodes/pathology_nodes.py src/nodes/planner.py src/nodes/intent_nodes.py src/prompts/intent_prompts.py src/nodes/node_utils.py src/nodes/knowledge_utils.py tests/backend/test_patient_context_split_backend.py
 git commit -m "feat: route sample context to imaging and pathology"
 ```
 
@@ -1064,7 +1109,7 @@ def test_legacy_current_patient_id_never_becomes_registry_id_in_snapshot_or_payl
 Run:
 
 ```powershell
-D:\anaconda3\envs\LangG\python.exe -m pytest tests\backend\test_patient_context_split_backend.py tests\backend\test_chat_main_database_integration.py tests\backend\test_patient_context_resolver.py tests\backend\test_graph_service_streaming.py tests\backend\test_state_tools_executor_regressions.py -q --basetemp=tmp\pytest-patient-context-split-final
+D:\anaconda3\envs\LangG\python.exe -m pytest tests\backend\test_patient_context_split_backend.py tests\backend\test_chat_main_database_integration.py tests\backend\test_patient_context_resolver.py tests\backend\test_graph_service_streaming.py tests\backend\test_state_tools_executor_regressions.py tests\backend\test_node_utils_streaming.py -q --basetemp=tmp\pytest-patient-context-split-final
 ```
 
 Expected: all selected backend tests pass.
