@@ -11,15 +11,14 @@ import { ConversationPanel, type ConversationLatencyStatus } from "../features/c
 import { ClinicalTopNav } from "../components/layout/clinical-top-nav";
 import { Card } from "../components/ui";
 import { DoctorSceneShell } from "../features/doctor/doctor-scene-shell";
-import { ExecutionPlanPanel } from "../features/execution-plan/execution-plan-panel";
 import { PatientBackgroundPanel } from "../features/cards/patient-background-panel";
 import { PatientIdentityPanel } from "../features/patient-identity/patient-identity-panel";
-import { RoadmapPanel } from "../features/roadmap/roadmap-panel";
 import { UploadsPanel } from "../features/uploads/uploads-panel";
 import { useDatabaseWorkbench } from "../features/database/use-database-workbench";
 import { usePatientRegistry } from "../features/patient-registry/use-patient-registry";
 import { useRegistryBrowser } from "../features/patient-registry/use-registry-browser";
 import { useSceneSessions } from "../features/workspace/use-scene-sessions";
+import { readFiniteNumber, readText } from "../features/workspace/workspace-flow-utils";
 import { getVisibleCards } from "./visible-cards";
 
 type SceneDrafts = Record<Scene, string>;
@@ -57,27 +56,6 @@ declare global {
   interface Window {
     __chatLatency?: ChatLatencyDebugSurface;
   }
-}
-
-function readFiniteNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  return null;
-}
-
-function readText(value: unknown): string | null {
-  if (typeof value === "string" && value.trim()) {
-    return value.trim();
-  }
-
-  return null;
 }
 
 function readUploadMaxBytes(): number {
@@ -1092,5 +1070,3 @@ export function WorkspacePage() {
   );
 
 }
-
-
