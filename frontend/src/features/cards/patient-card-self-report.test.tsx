@@ -160,6 +160,31 @@ describe("patient card self-report rendering", () => {
     expect(screen.getByText("危险因素")).toBeInTheDocument();
   });
 
+  it("renders symptom focus from self-report history", () => {
+    renderPatientCard({
+      type: "patient_card",
+      card_meta: {
+        source_mode: "patient_self_report",
+      },
+      patient_id: "SR-1003",
+      field_meta: {
+        history_block: {
+          symptom_focus: {
+            display: "说不清",
+          },
+        },
+      },
+      data: {
+        history_block: {
+          symptom_focus: "说不清",
+        },
+      },
+    });
+
+    expect(screen.getByText("症状归类")).toBeInTheDocument();
+    expect(screen.getByText("说不清")).toBeInTheDocument();
+  });
+
   it("keeps legacy patient cards sparse and preserves doctor quick actions", () => {
     renderPatientCard({
       type: "patient_card",

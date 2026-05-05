@@ -18,6 +18,7 @@ PLACEHOLDER_TEXT = {
 PROJECTION_VERSION = "patient_self_report.v1"
 TRIAGE_FRESH_FIELDS = {
     "history_block.chief_complaint",
+    "history_block.symptom_focus",
     "history_block.symptom_duration",
 }
 
@@ -363,6 +364,13 @@ def _field_specs(
                 ("medical_card.history_block.chief_complaint", medical_history.get("chief_complaint")),
             ],
         },
+        "history_block.symptom_focus": {
+            "kind": "text",
+            "candidates": [
+                ("symptom_snapshot.symptom_focus", symptom_snapshot.get("symptom_focus")),
+                ("medical_card.history_block.symptom_focus", medical_history.get("symptom_focus")),
+            ],
+        },
         "history_block.symptom_duration": {
             "kind": "text",
             "candidates": [
@@ -479,6 +487,7 @@ def project_patient_card(
         },
         "history_block": {
             "chief_complaint": None,
+            "symptom_focus": None,
             "symptom_duration": None,
             "family_history": None,
             "family_history_details": None,

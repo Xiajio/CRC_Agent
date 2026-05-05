@@ -21,3 +21,26 @@ def test_outpatient_triage_emits_self_report_patient_card() -> None:
     assert result["patient_card"]["data"]["patient_info"]["age"] == 57
     assert result["patient_card"]["field_meta"]["patient_info"]["age"]["display"] == "57"
     assert result["findings"]["encounter_track"] == "outpatient_triage"
+
+
+def test_vague_symptom_focus_answer_projects_to_self_report_patient_card() -> None:
+    triage = node_outpatient_triage(show_thinking=False)
+    first_result = triage(CRCAgentState(messages=[HumanMessage(content="我有点不舒服")]))
+
+    second_result = triage(
+        CRCAgentState(
+            messages=[HumanMessage(content="我有点不舒服"), HumanMessage(content="我也说不清")],
+            encounter_track="outpatient_triage",
+            symptom_snapshot=first_result["symptom_snapshot"],
+            findings=first_result["findings"],
+        )
+    )
+
+    assert first_result["findings"]["triage_current_field"] == "symptom_focus"
+    assert second_result["symptom_snapshot"]["symptom_focus"] == "说不清"
+    assert second_result["findings"]["triage_current_field"] == "duration"
+    assert second_result["patient_card"]["data"]["history_block"]["symptom_focus"] == "说不清"
+    assert second_result["patient_card"]["field_meta"]["history_block"]["symptom_focus"] == {
+        "status": "confirmed",
+        "display": "说不清",
+    }

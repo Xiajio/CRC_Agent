@@ -148,6 +148,12 @@ TRIAGE_SPECIFIC_SYMPTOM_KEYWORDS = (
 )
 NON_GI_VAGUE_SCOPE_MARKERS = ("浑身", "全身", "哪里都", "整个人")
 VAGUE_DISCOMFORT_KEYWORDS = ("不舒服", "不适", "难受")
+SYMPTOM_FOCUS_LABELS = {
+    "gi_abdominal": "腹部/肠胃不适",
+    "bowel_change": "腹泻/便秘/便血",
+    "fever_vomit": "发热/呕吐",
+    "unsure": "说不清",
+}
 
 
 def _normalize_text(value: Any) -> str:
@@ -305,6 +311,27 @@ def _extract_fever(text: str) -> bool | None:
     return _extract_boolean(text, ("发热", "发烧", "呕吐", "停止排气", "停止排便", "不排气", "不排便"))
 
 
+def _extract_symptom_focus(text: str) -> str | None:
+    compact = _normalize_user_text(text)
+    lowered = compact.lower()
+    if not compact:
+        return None
+
+    if "bowel_change" in lowered or any(keyword in compact for keyword in ("腹泻", "便秘", "便血", "黑便", "排便", "大便")):
+        return SYMPTOM_FOCUS_LABELS["bowel_change"]
+
+    if "fever_vomit" in lowered or any(keyword in compact for keyword in ("发热", "发烧", "呕吐", "吐")):
+        return SYMPTOM_FOCUS_LABELS["fever_vomit"]
+
+    if "gi_abdominal" in lowered or any(keyword in compact for keyword in ("腹部", "肠胃", "胃肠", "肚子", "胃不舒服", "胃不适", "腹痛", "腹胀")):
+        return SYMPTOM_FOCUS_LABELS["gi_abdominal"]
+
+    if "unsure" in lowered or any(keyword in compact for keyword in ("说不清", "不清楚", "不确定", "不好说")):
+        return SYMPTOM_FOCUS_LABELS["unsure"]
+
+    return None
+
+
 def _conversation_user_text(state: CRCAgentState) -> str:
     parts: list[str] = []
     for message in state.messages or []:
@@ -315,13 +342,17 @@ def _conversation_user_text(state: CRCAgentState) -> str:
     return "\n".join(parts)
 
 
-def _update_symptom_snapshot(state: CRCAgentState, user_text: str) -> dict[str, Any]:
+def _update_symptom_snapshot(state: CRCAgentState, user_text: str, *, answered_field: str | None = None) -> dict[str, Any]:
     existing = dict(state.symptom_snapshot or (state.findings or {}).get("symptom_snapshot") or {})
     latest_text = str(user_text or "").strip()
     compact = _normalize_user_text(latest_text)
 
     if latest_text and not existing.get("chief_symptoms"):
         existing["chief_symptoms"] = latest_text
+
+    symptom_focus = _extract_symptom_focus(compact) if answered_field == "symptom_focus" else None
+    if symptom_focus:
+        existing["symptom_focus"] = symptom_focus
 
     duration = _extract_duration(compact)
     if duration:
@@ -406,7 +437,7 @@ def _disposition_label(disposition: str) -> str:
 
 
 def _triage_progress_made(previous_snapshot: dict[str, Any], next_snapshot: dict[str, Any]) -> bool:
-    tracked_fields = set(TRIAGE_FIELD_ORDER) | {"bleeding_detail"}
+    tracked_fields = set(TRIAGE_FIELD_ORDER) | {"bleeding_detail", "symptom_focus"}
     return any(previous_snapshot.get(field) != next_snapshot.get(field) for field in tracked_fields)
 
 
@@ -512,7 +543,7 @@ def node_outpatient_triage(
         user_intent = previous_findings.get("user_intent")
 
         risk_level, disposition, tests, symptoms, known_crc_signals = _triage_from_symptoms(combined_user_text)
-        symptom_snapshot = _update_symptom_snapshot(state, user_text)
+        symptom_snapshot = _update_symptom_snapshot(state, user_text, answered_field=str(previous_field or ""))
         symptom_snapshot["risk_flags"] = {**dict(previous_snapshot.get("risk_flags") or {}), **symptoms}
         if not symptom_snapshot.get("chief_symptoms"):
             symptom_snapshot["chief_symptoms"] = user_text

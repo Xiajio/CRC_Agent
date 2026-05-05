@@ -431,6 +431,7 @@ function renderPatientCard(payload: JsonObject, onPromptRequest?: CardPromptHand
   ];
   const historyItems = [
     { label: "主诉", value: patientCardFieldText(payload, "history_block", "chief_complaint", readValue(historyBlock, "chief_complaint"), isSelfReport) },
+    { label: "症状归类", value: patientCardFieldText(payload, "history_block", "symptom_focus", readValue(historyBlock, "symptom_focus"), isSelfReport) },
     { label: "症状持续时间", value: patientCardFieldText(payload, "history_block", "symptom_duration", readValue(historyBlock, "symptom_duration"), isSelfReport) },
     { label: "家族史", value: patientCardFieldText(payload, "history_block", "family_history", readValue(historyBlock, "family_history"), isSelfReport, { booleanAsLabel: true }) },
     { label: "家族史详情", value: patientCardFieldText(payload, "history_block", "family_history_details", readValue(historyBlock, "family_history_details"), isSelfReport) },
@@ -699,6 +700,7 @@ function renderTriageCard(payload: JsonObject) {
           .filter((item): item is string => Boolean(item))
           .join("、")
       : null);
+  const symptomFocus = asString(payload.symptom_focus) ?? asString(symptomSnapshot?.symptom_focus);
   const suggestedTests = renderValueList(payload.suggested_tests);
 
   return (
@@ -708,6 +710,7 @@ function renderTriageCard(payload: JsonObject) {
         { label: "风险等级", value: riskLevel },
         { label: "建议去向", value: disposition },
         { label: "主诉症状", value: chiefSymptoms },
+        { label: "症状归类", value: symptomFocus },
       ])}
       {suggestedTests ? (
         <div className="workspace-card-section">
