@@ -52,8 +52,5 @@ data_temp.csv
 .DS_Store
 Thumbs.db
 
-docs/superpowers/
-!docs/superpowers/
-docs/superpowers/*
-!docs/superpowers/acceptance/
-!docs/superpowers/acceptance/*.md
+# Local documentation drafts and generated reports
+docs/
