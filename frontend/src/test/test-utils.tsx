@@ -45,7 +45,7 @@ export function makeSessionResponse(
       assessment_draft: overrides.snapshot?.assessment_draft ?? null,
       case_database_patient_id: overrides.snapshot?.case_database_patient_id ?? null,
       registry_patient_id: overrides.snapshot?.registry_patient_id ?? patientId,
-      current_patient_id: overrides.snapshot?.current_patient_id ?? patientId,
+      current_patient_id: overrides.snapshot?.current_patient_id ?? null,
       references: overrides.snapshot?.references ?? [],
       plan: overrides.snapshot?.plan ?? [],
       critic: overrides.snapshot?.critic ?? null,
@@ -183,7 +183,6 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
       patient_id: patientId,
       snapshot: {
         registry_patient_id: patientId,
-        current_patient_id: patientId,
       },
     }),
   );
@@ -264,6 +263,10 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
     clearPatientRegistry,
     ...overrides,
   };
+}
+
+export function buildStreamingApiClientStub(overrides: Partial<ApiClient> = {}): ApiClient {
+  return buildApiClientStub(overrides);
 }
 
 export function buildAppWrapper(apiClient: ApiClient) {

@@ -42,6 +42,26 @@ def _normalize_text(value: Any) -> str | None:
     return text
 
 
+def _resolve_patient_card_id(payload: dict[str, Any]) -> str:
+    findings = _coerce_mapping(payload.get("findings"))
+    patient_profile = _coerce_mapping(payload.get("patient_profile"))
+    for value in (
+        payload.get("case_database_patient_id"),
+        findings.get("case_database_patient_id"),
+        patient_profile.get("case_database_patient_id"),
+        payload.get("registry_patient_id"),
+        findings.get("registry_patient_id"),
+        patient_profile.get("registry_patient_id"),
+        payload.get("current_patient_id"),
+        findings.get("current_patient_id"),
+        patient_profile.get("current_patient_id"),
+    ):
+        text = _normalize_text(value)
+        if text is not None:
+            return text
+    return "current"
+
+
 def _normalize_bool(value: Any) -> bool | None:
     if value is None:
         return None
@@ -570,5 +590,5 @@ def project_patient_self_report_card(state: Any) -> dict[str, Any] | None:
         findings=payload.get("findings"),
         symptom_snapshot=payload.get("symptom_snapshot"),
         medical_card=payload.get("medical_card"),
-        patient_id=str(payload.get("current_patient_id") or "current"),
+        patient_id=_resolve_patient_card_id(payload),
     )

@@ -5,6 +5,17 @@ type PatientProfilePanelProps = {
   patientProfile: JsonObject | null;
 };
 
+const PRIMARY_PATIENT_IDENTITY_KEYS = [
+  "case_database_patient_id",
+  "registry_patient_id",
+  "patient_id",
+];
+
+const PATIENT_IDENTITY_DISPLAY_ORDER = [
+  ...PRIMARY_PATIENT_IDENTITY_KEYS,
+  "current_patient_id",
+];
+
 function formatValue(value: unknown): string {
   if (value === null || value === undefined) {
     return "未知";
@@ -26,7 +37,9 @@ function fieldLabel(key: string): string {
     dob: "出生日期",
     birth_date: "出生日期",
     date_of_birth: "出生日期",
-    current_patient_id: "当前患者ID",
+    case_database_patient_id: "病例库样本ID",
+    registry_patient_id: "登记患者ID",
+    current_patient_id: "兼容患者ID",
     patient_id: "患者ID",
     allergies: "过敏史",
     medications: "用药",
@@ -42,13 +55,37 @@ function fieldLabel(key: string): string {
   return labels[key] ?? `字段：${key.replace(/_/g, "")}`;
 }
 
+function patientProfileEntries(patientProfile: JsonObject): Array<[string, unknown]> {
+  const hasPrimaryIdentity = PRIMARY_PATIENT_IDENTITY_KEYS.some(
+    (key) => patientProfile[key] !== undefined && patientProfile[key] !== null,
+  );
+
+  return Object.entries(patientProfile)
+    .filter(([key]) => !(key === "current_patient_id" && hasPrimaryIdentity))
+    .sort(([left], [right]) => {
+      const leftIndex = PATIENT_IDENTITY_DISPLAY_ORDER.indexOf(left);
+      const rightIndex = PATIENT_IDENTITY_DISPLAY_ORDER.indexOf(right);
+
+      if (leftIndex >= 0 && rightIndex >= 0) {
+        return leftIndex - rightIndex;
+      }
+      if (leftIndex >= 0) {
+        return -1;
+      }
+      if (rightIndex >= 0) {
+        return 1;
+      }
+      return 0;
+    });
+}
+
 export function PatientProfilePanel({ patientProfile }: PatientProfilePanelProps) {
   return (
     <Card className="workspace-card">
       <h2>患者画像</h2>
       {patientProfile ? (
         <dl className="workspace-detail-list">
-          {Object.entries(patientProfile).map(([key, value]) => (
+          {patientProfileEntries(patientProfile).map(([key, value]) => (
             <div key={key} className="workspace-detail-row">
               <dt>{fieldLabel(key)}</dt>
               <dd>{formatValue(value)}</dd>

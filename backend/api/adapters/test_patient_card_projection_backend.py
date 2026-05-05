@@ -82,6 +82,7 @@ def test_project_patient_card_emits_full_spec_skeleton_and_metadata() -> None:
         },
         "history_block": {
             "chief_complaint": "Rectal bleeding",
+            "symptom_focus": None,
             "symptom_duration": "2 weeks",
             "family_history": True,
             "family_history_details": "father had CRC",
@@ -175,6 +176,33 @@ def test_project_patient_card_prefers_latest_triage_snapshot_for_self_report_fie
     assert card["data"]["history_block"]["chief_complaint"] == "New triage complaint"
     assert card["data"]["history_block"]["symptom_duration"] == "3 days"
     assert _nested_meta(card, "history_block", "chief_complaint") == {"status": "confirmed", "display": "New triage complaint"}
+
+
+def test_project_patient_self_report_card_uses_split_identity_before_legacy_current() -> None:
+    card = project_patient_self_report_card(
+        {
+            "case_database_patient_id": "093",
+            "registry_patient_id": 7,
+            "current_patient_id": "legacy-current",
+            "findings": {},
+        }
+    )
+
+    assert card is not None
+    assert card["patient_id"] == "093"
+
+
+def test_project_patient_self_report_card_uses_registry_identity_without_case_sample() -> None:
+    card = project_patient_self_report_card(
+        {
+            "registry_patient_id": 7,
+            "current_patient_id": "legacy-current",
+            "findings": {},
+        }
+    )
+
+    assert card is not None
+    assert card["patient_id"] == "7"
 
 
 def test_build_graph_payload_prefers_fresher_context_state_medical_card() -> None:
