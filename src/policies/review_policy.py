@@ -5,8 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from .constants import (
+    DEFAULT_EVALUATION_SCORE,
     MAX_DECISION_RETRIES,
     MAX_EVALUATION_RETRIES,
+    MIN_PASSING_EVALUATION_SCORE,
 )
 from .types import DegradedSignal, ReviewDecision, ReviewSignal, TurnFacts
 
@@ -62,10 +64,10 @@ def _normalize_reasons(value: Any) -> tuple[str, ...]:
 def _normalize_scores(report: dict[str, Any] | None) -> dict[str, int]:
     report = report or {}
     return {
-        "factual_accuracy": _safe_int(report.get("factual_accuracy"), default=3),
-        "citation_accuracy": _safe_int(report.get("citation_accuracy"), default=3),
-        "completeness": _safe_int(report.get("completeness"), default=3),
-        "safety": _safe_int(report.get("safety"), default=3),
+        "factual_accuracy": _safe_int(report.get("factual_accuracy"), default=DEFAULT_EVALUATION_SCORE),
+        "citation_accuracy": _safe_int(report.get("citation_accuracy"), default=DEFAULT_EVALUATION_SCORE),
+        "completeness": _safe_int(report.get("completeness"), default=DEFAULT_EVALUATION_SCORE),
+        "safety": _safe_int(report.get("safety"), default=DEFAULT_EVALUATION_SCORE),
     }
 
 
@@ -100,13 +102,17 @@ def _evaluator_retryable(report: dict[str, Any] | None, citation_report: dict[st
 
     scores = _normalize_scores(report)
     raw_verdict = _normalize_text(report.get("verdict")).upper()
-    verdict = "FAIL" if raw_verdict == "FAIL" or any(score < 3 for score in scores.values()) else "PASS"
+    verdict = "FAIL" if raw_verdict == "FAIL" or any(score < MIN_PASSING_EVALUATION_SCORE for score in scores.values()) else "PASS"
     citation_report = citation_report or {}
 
-    if scores["factual_accuracy"] < 3 or scores["safety"] < 3 or scores["completeness"] < 3:
+    if (
+        scores["factual_accuracy"] < MIN_PASSING_EVALUATION_SCORE
+        or scores["safety"] < MIN_PASSING_EVALUATION_SCORE
+        or scores["completeness"] < MIN_PASSING_EVALUATION_SCORE
+    ):
         return True
 
-    if scores["citation_accuracy"] < 3:
+    if scores["citation_accuracy"] < MIN_PASSING_EVALUATION_SCORE:
         if _normalize_bool(citation_report.get("needs_more_sources")):
             return True
         return verdict == "FAIL"
@@ -151,7 +157,7 @@ def build_evaluator_review_signal(
     citation_report = dict(citation_report or {})
     scores = _normalize_scores(report)
     raw_verdict = _normalize_text(report.get("verdict")).upper() or "PASS"
-    verdict = "FAIL" if raw_verdict == "FAIL" or any(score < 3 for score in scores.values()) else "PASS"
+    verdict = "FAIL" if raw_verdict == "FAIL" or any(score < MIN_PASSING_EVALUATION_SCORE for score in scores.values()) else "PASS"
     coverage_score = _safe_int(citation_report.get("coverage_score"), default=0)
     inline_anchor_count = _inline_anchor_count(citation_report)
 
@@ -163,7 +169,7 @@ def build_evaluator_review_signal(
 
     reasons: list[str] = []
     for key, score in scores.items():
-        if score < 3:
+        if score < MIN_PASSING_EVALUATION_SCORE:
             reasons.append(key)
     if verdict == "FAIL" and not reasons:
         reasons.append("verdict_fail")

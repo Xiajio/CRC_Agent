@@ -83,7 +83,8 @@ describe("DoctorSceneShell", () => {
     return render(
       <DoctorSceneShell
         toolbar={null}
-        currentPatientId={null}
+        registryPatientId={null}
+        caseDatabasePatientId={null}
         patientRegistry={
           {
             boundPatientDetail: null,
@@ -137,7 +138,8 @@ describe("DoctorSceneShell", () => {
     render(
       <DoctorSceneShell
         toolbar={<button type="button">重置当前场景</button>}
-        currentPatientId={1024}
+        registryPatientId={1024}
+        caseDatabasePatientId="093"
         patientRegistry={
           {
             boundPatientDetail: null,
@@ -177,6 +179,10 @@ describe("DoctorSceneShell", () => {
     expect(screen.getByText("工作流路线图")).toBeInTheDocument();
     expect(screen.getByText("执行计划")).toBeInTheDocument();
     expect(screen.getByText("参考列表（前 2 条）")).toBeInTheDocument();
+    expect(screen.getByText("Registry patient:")).toBeInTheDocument();
+    expect(screen.getByText("P-1024")).toBeInTheDocument();
+    expect(screen.getByText("Case sample:")).toBeInTheDocument();
+    expect(screen.getByText("093")).toBeInTheDocument();
     const profileSwitch = getDoctorProfileSwitch();
     expect(profileSwitch).toHaveClass("clinical-profile-switch");
     expect(profileSwitch).toHaveTextContent("医生");
@@ -186,7 +192,8 @@ describe("DoctorSceneShell", () => {
     render(
       <DoctorSceneShell
         toolbar={null}
-        currentPatientId={null}
+        registryPatientId={null}
+        caseDatabasePatientId={null}
         patientRegistry={
           {
             boundPatientDetail: null,
@@ -233,7 +240,8 @@ describe("DoctorSceneShell", () => {
     render(
       <DoctorSceneShell
         toolbar={null}
-        currentPatientId={null}
+        registryPatientId={null}
+        caseDatabasePatientId={null}
         patientRegistry={
           {
             boundPatientDetail: null,
@@ -284,7 +292,8 @@ describe("DoctorSceneShell", () => {
       />,
     );
 
-    expect(screen.getByText("P-93")).toBeInTheDocument();
+    expect(screen.getByText("093")).toBeInTheDocument();
+    expect(screen.getByText("Case sample:")).toBeInTheDocument();
     expect(screen.getByText("31")).toBeInTheDocument();
     expect(screen.getByText("male")).toBeInTheDocument();
     expect(screen.getByText("CRC")).toBeInTheDocument();
@@ -296,7 +305,8 @@ describe("DoctorSceneShell", () => {
     render(
       <DoctorSceneShell
         toolbar={null}
-        currentPatientId={null}
+        registryPatientId={null}
+        caseDatabasePatientId={null}
         patientRegistry={
           {
             boundPatientDetail: null,
@@ -359,5 +369,34 @@ describe("DoctorSceneShell", () => {
     expect(screen.getByText("Critic REJECTED")).toBeInTheDocument();
     expect(screen.getAllByText("missing references").length).toBeGreaterThan(0);
     expect(screen.getAllByText("HUMAN_REVIEW_REQUIRED").length).toBeGreaterThan(0);
+  });
+
+  it("keeps raw critic reasoning out of the event stream", () => {
+    const rawFeedback = [
+      "<think>The critic considered the treatment plan.</think>",
+      '{"verdict":"APPROVED","feedback":"需要补充 MMR/MSI 检测。"}',
+    ].join("\n");
+
+    renderDoctorSceneShell({
+      eventLog: [
+        {
+          id: "event-1",
+          kind: "critic",
+          title: "Critic APPROVED",
+          detail: rawFeedback,
+          tone: "success",
+          requiresHumanReview: false,
+        },
+      ],
+      critic: {
+        verdict: "APPROVED",
+        feedback: rawFeedback,
+        requires_human_review: true,
+      },
+    } as any);
+
+    expect(screen.getAllByText("需要补充 MMR/MSI 检测。").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/The critic considered/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/<think>/)).not.toBeInTheDocument();
   });
 });

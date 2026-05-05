@@ -13,6 +13,7 @@ import type {
   SessionState,
   StreamEvent,
 } from "../api/types";
+import { compactClinicalEventDetail, formatCriticFeedback } from "../clinical/critic-feedback";
 
 const INLINE_CARD_TYPES = new Set([
   "patient_card",
@@ -302,6 +303,8 @@ export function createInitialSessionState(): SessionState {
     critic: null,
     safetyAlert: null,
     assessmentDraft: null,
+    caseDatabasePatientId: null,
+    registryPatientId: null,
     currentPatientId: null,
     uploadedAssets: {},
     contextMaintenance: null,
@@ -338,6 +341,8 @@ export function hydrateSessionState(state: SessionState, response: SessionRespon
     critic: snapshot.critic,
     safetyAlert: (snapshot.safety_alert as SafetyAlertState | null) ?? null,
     assessmentDraft: snapshot.assessment_draft,
+    caseDatabasePatientId: snapshot.case_database_patient_id ?? null,
+    registryPatientId: snapshot.registry_patient_id ?? response.patient_id ?? null,
     currentPatientId: snapshot.current_patient_id,
     uploadedAssets: snapshot.uploaded_assets,
     contextMaintenance: (snapshot.context_maintenance as ContextMaintenanceState | null) ?? null,
@@ -612,11 +617,14 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
       };
     case "critic.verdict": {
       const requiresHumanReview = criticRequiresHumanReview(event.verdict, event.requires_human_review);
+      const readableFeedback = typeof event.feedback === "string"
+        ? formatCriticFeedback(event.feedback, "") || null
+        : null;
       const nextState = {
         ...state,
         critic: {
           verdict: event.verdict,
-          feedback: event.feedback ?? null,
+          feedback: readableFeedback,
           iteration_count: event.iteration_count ?? null,
           requires_human_review: requiresHumanReview,
         },
@@ -624,7 +632,7 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
       return appendEventLog(nextState, {
         kind: "critic",
         title: `Critic ${event.verdict}`,
-        detail: event.feedback ?? null,
+        detail: compactClinicalEventDetail(readableFeedback),
         tone: requiresHumanReview ? "warning" : "success",
         requiresHumanReview,
       });

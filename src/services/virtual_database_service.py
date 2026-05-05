@@ -13,8 +13,10 @@ CLINICAL_CASE_DIR = DATA_ROOT / "Clinical Case"
 CLASSIFICATION_FILE = CLINICAL_CASE_DIR / "classification.xlsx"
 RADIOGRAPHIC_IMAGING_DIR = DATA_ROOT / "Radiographic Imaging"
 PATHOLOGY_THUMBNAILS_DIR = DATA_ROOT / "Pathology Thumbnails"
-PATHOLOGY_SLIDES_DIR = DATA_ROOT / "Silds"
-PATHOLOGY_SLIDE_FOLDERS = [PATHOLOGY_SLIDES_DIR]
+PATHOLOGY_SLIDES_PREFERRED_DIR = DATA_ROOT / "Slides"
+PATHOLOGY_SLIDES_LEGACY_DIR = DATA_ROOT / "Silds"
+PATHOLOGY_SLIDES_DIR = PATHOLOGY_SLIDES_LEGACY_DIR
+PATHOLOGY_SLIDE_FOLDERS = [PATHOLOGY_SLIDES_PREFERRED_DIR, PATHOLOGY_SLIDES_LEGACY_DIR]
 
 EMPTY_CASE_STATISTICS: dict[str, Any] = {
     "total_cases": 0,
@@ -264,7 +266,7 @@ def get_pathology_slides_by_patient_id(patient_id: str) -> dict[str, Any]:
 
 def get_all_folder_names() -> list[str]:
     folders: set[str] = set()
-    for root in (RADIOGRAPHIC_IMAGING_DIR, PATHOLOGY_THUMBNAILS_DIR, PATHOLOGY_SLIDES_DIR):
+    for root in (RADIOGRAPHIC_IMAGING_DIR, PATHOLOGY_THUMBNAILS_DIR, *PATHOLOGY_SLIDE_FOLDERS):
         if not root.exists():
             continue
         folders.update(path.name for path in root.iterdir() if path.is_dir())
@@ -273,6 +275,9 @@ def get_all_folder_names() -> list[str]:
 
 __all__ = [
     "CLASSIFICATION_FILE",
+    "PATHOLOGY_SLIDES_PREFERRED_DIR",
+    "PATHOLOGY_SLIDES_LEGACY_DIR",
+    "PATHOLOGY_SLIDES_DIR",
     "PATHOLOGY_SLIDE_FOLDERS",
     "EMPTY_CASE_STATISTICS",
     "VirtualCaseDatabase",

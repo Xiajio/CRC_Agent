@@ -30,6 +30,8 @@ from langchain_core.tools import tool, StructuredTool
 from langchain_core.messages import ToolMessage
 from pydantic import BaseModel, Field
 
+from ..services.virtual_database_service import PATHOLOGY_SLIDE_FOLDERS
+
 
 # ==============================================================================
 # 路径配置
@@ -832,7 +834,7 @@ def perform_comprehensive_pathology_analysis(patient_id: str) -> Dict:
     高级聚合工具：输入患者 ID，自动执行完整的病理切片分析流程
     
     功能说明：
-    - 输入患者 ID（如 "93" 或 "093"）
+    - 输入患者 ID（如 "<case_id>" 或 "<case_id>"）
     - 自动查找对应的病理切片文件
     - 执行 CLAM 分析
     - 返回汇总的诊断报告
@@ -848,7 +850,7 @@ def perform_comprehensive_pathology_analysis(patient_id: str) -> Dict:
     - summary: 汇总诊断
     
     使用示例：
-    - perform_comprehensive_pathology_analysis(patient_id="93")
+    - perform_comprehensive_pathology_analysis(patient_id="<case_id>")
     
     适用场景：
     - 病理诊断请求
@@ -869,11 +871,7 @@ def perform_comprehensive_pathology_analysis(patient_id: str) -> Dict:
         folder_name = patient_id_str
     
     # 查找病理切片目录（可根据实际情况调整路径）
-    base_paths = [
-        Path(r"E:/LangG/data/Case Database/Silds"),
-        Path(r"E:/LangG/data/Case Database/Pathological Slides"),
-        Path(r"E:/LangG/data/pathology"),
-    ]
+    base_paths = list(PATHOLOGY_SLIDE_FOLDERS)
     
     slides = []
     for base_path in base_paths:

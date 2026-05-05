@@ -14,6 +14,7 @@ let lastPatientBackgroundProps: any;
 let lastDoctorSceneProps: any;
 let lastUploadsPanelProps: any;
 let mockGenerateTraceId: ReturnType<typeof vi.fn>;
+const mockUsePatientRegistry = vi.hoisted(() => vi.fn(() => ({ bindPatient: vi.fn() })));
 
 vi.mock("../features/workspace/use-scene-sessions", () => ({
   useSceneSessions: () => mockSceneSessions,
@@ -24,7 +25,7 @@ vi.mock("../app/api/generate-trace-id", () => ({
 }));
 
 vi.mock("../features/patient-registry/use-patient-registry", () => ({
-  usePatientRegistry: () => ({ bindPatient: vi.fn() }),
+  usePatientRegistry: mockUsePatientRegistry,
 }));
 
 vi.mock("../features/patient-registry/use-registry-browser", () => ({
@@ -314,6 +315,8 @@ describe("WorkspacePage patient triage submission wiring", () => {
     mockGenerateTraceId = vi.fn(() => "trace-123");
     window.localStorage.removeItem("chatLatencyDebug");
     vi.restoreAllMocks();
+    mockUsePatientRegistry.mockClear();
+    mockUsePatientRegistry.mockImplementation(() => ({ bindPatient: vi.fn() }));
   });
 
   afterEach(() => {
@@ -871,6 +874,38 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(lastDoctorSceneProps?.cards).toEqual({
       patient_card: patientCard,
     });
+  });
+
+  it("does not bind patient registry from case database sample context", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    mockSceneSessions.doctor.state = makeSessionState({
+      sessionId: "doctor-session",
+      caseDatabasePatientId: "093",
+      registryPatientId: null,
+      currentPatientId: "093",
+    });
+
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    expect(mockUsePatientRegistry).toHaveBeenCalledWith(
+      expect.objectContaining({ registryPatientId: null }),
+    );
+  });
+
+  it("does not request registry detail for legacy currentPatientId when registryPatientId is null", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    mockSceneSessions.doctor.state = makeSessionState({
+      sessionId: "doctor-session",
+      caseDatabasePatientId: null,
+      registryPatientId: null,
+      currentPatientId: "093",
+    });
+
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    expect(mockUsePatientRegistry).toHaveBeenCalledWith(
+      expect.objectContaining({ registryPatientId: null }),
+    );
   });
 
   it("primes doctor workflow panels for clinical planning prompts before stream events arrive", async () => {

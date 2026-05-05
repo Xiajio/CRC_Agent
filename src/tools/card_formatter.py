@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import base64
+import mimetypes
 import os
 from datetime import datetime
 from typing import Any, Dict
 
 from ..services.virtual_database_service import get_case_database
+
+CARD_IMAGE_PREVIEW_LIMIT = 8
 
 
 class CardFormatter:
@@ -62,9 +65,11 @@ class CardFormatter:
 
         folder_name = imaging_data.get("folder_name", "Unknown")
         total = imaging_data.get("total_images", 0)
+        formatted_data = dict(imaging_data)
+        formatted_data["images"] = self._embed_preview_images(imaging_data.get("images", []))
         return {
             "type": "imaging_card",
-            "data": imaging_data,
+            "data": formatted_data,
             "text_summary": f"影像目录 {folder_name}，共 {total} 张图像。",
         }
 
@@ -136,6 +141,33 @@ class CardFormatter:
                 return base64.b64encode(handle.read()).decode()
         except Exception:
             return ""
+
+    @staticmethod
+    def _image_mime_type(image_path: str) -> str:
+        mime_type, _ = mimetypes.guess_type(image_path)
+        if mime_type and mime_type.startswith("image/"):
+            return mime_type
+        return "image/png"
+
+    def _embed_preview_images(self, images: Any, limit: int = CARD_IMAGE_PREVIEW_LIMIT) -> list[dict[str, Any]]:
+        if not isinstance(images, list):
+            return []
+
+        processed_images: list[dict[str, Any]] = []
+        for index, image_info in enumerate(images):
+            if not isinstance(image_info, dict):
+                continue
+
+            preview = dict(image_info)
+            image_path = str(preview.get("image_path") or "")
+            if index < limit and image_path:
+                image_base64 = str(preview.get("image_base64") or "") or self._read_image_as_base64(image_path)
+                if image_base64:
+                    preview["image_base64"] = image_base64
+                    preview["image_mime_type"] = str(preview.get("image_mime_type") or self._image_mime_type(image_path))
+            processed_images.append(preview)
+
+        return processed_images
 
     def format_comprehensive_tumor_detection(
         self,

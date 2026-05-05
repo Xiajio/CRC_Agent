@@ -112,6 +112,23 @@ class FakeStreamingGraph:
         yield {"general": {"messages": [response]}}
 
 
+class ThinkingMessageGraph:
+    def load_state(self, thread_id: str) -> dict[str, object]:
+        return {}
+
+    async def astream(self, payload: dict[str, object], config: dict[str, object]) -> AsyncIterator[dict[str, object]]:
+        yield {
+            "general": {
+                "messages": [
+                    AIMessage(
+                        content="visible answer",
+                        additional_kwargs={"thinking_content": "private reasoning"},
+                    )
+                ]
+            }
+        }
+
+
 class _BrokenState:
     def __getattr__(self, name: str) -> object:
         raise ValueError(f"broken state access: {name}")
@@ -821,6 +838,23 @@ async def test_patient_graph_service_never_emits_context_maintenance_running() -
     events = await collect_sse_events(service.stream_turn(meta.session_id, make_chat_request("hello")))
 
     assert all(event["type"] != "context.maintenance" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_patient_graph_service_does_not_emit_thinking_content() -> None:
+    session_store = InMemorySessionStore()
+    meta = session_store.create_session(scene="patient", patient_id=10)
+    service = PatientGraphService(
+        compiled_graph=ThinkingMessageGraph(),
+        session_store=session_store,
+        heartbeat_interval_seconds=0,
+    )
+
+    events = await collect_sse_events(service.stream_turn(meta.session_id, make_chat_request("hello")))
+    message_done = find_event(events, "message.done")
+
+    assert message_done["content"] == "visible answer"
+    assert message_done["thinking"] is None
 
 
 @pytest.mark.asyncio

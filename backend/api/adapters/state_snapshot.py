@@ -358,10 +358,22 @@ def build_recovery_snapshot(
 
     findings = _coerce_mapping(_get_value(state, "findings", {})) or {}
     findings = _merge_triage_state_fields(state, findings)
+    case_database_patient_id = (
+        _get_value(state, "case_database_patient_id")
+        or findings.get("case_database_patient_id")
+        or _get_value(state, "current_patient_id")
+        or findings.get("current_patient_id")
+    )
+    if case_database_patient_id is not None:
+        case_database_patient_id = str(case_database_patient_id).zfill(3)
+    registry_patient_id = (
+        _get_value(state, "registry_patient_id")
+        or findings.get("registry_patient_id")
+        or session_meta.patient_id
+    )
     current_patient_id = (
         _get_value(state, "current_patient_id")
         or findings.get("current_patient_id")
-        or session_meta.patient_id
     )
     critic_verdict = _get_value(state, "critic_verdict")
     critic_feedback = _get_value(state, "critic_feedback")
@@ -418,6 +430,8 @@ def build_recovery_snapshot(
         patient_profile=strip_binary(_coerce_mapping(_get_value(state, "patient_profile"))),
         stage=_get_value(state, "stage") or _get_value(state, "clinical_stage"),
         assessment_draft=strip_binary(_get_value(state, "assessment_draft")),
+        case_database_patient_id=case_database_patient_id,
+        registry_patient_id=registry_patient_id,
         current_patient_id=current_patient_id,
         references=strip_binary(
             normalize_reference_list(

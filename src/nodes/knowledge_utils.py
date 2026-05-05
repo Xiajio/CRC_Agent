@@ -6,10 +6,15 @@ def _get_patient_state_description(state: CRCAgentState) -> str:
     [Context Injection] 获取患者当前关键状态描述
     用于强制注入到 Knowledge Query 中，防止上下文丢失。
     """
-    if not state.current_patient_id:
+    patient_id = (
+        getattr(state, "registry_patient_id", None)
+        or getattr(state, "case_database_patient_id", None)
+        or getattr(state, "current_patient_id", None)
+    )
+    if not patient_id:
         return ""
     
-    status_parts = [f"**Current Patient State (ID: {state.current_patient_id})**:"]
+    status_parts = [f"**Current Context ID: {patient_id}**:"]
     
     # 1. 诊断状态
     if state.pathology_confirmed:

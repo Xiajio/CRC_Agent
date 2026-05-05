@@ -21,7 +21,7 @@ type RegistryBrowserPaneProps = {
   previewDetail: PatientRegistryDetail | null;
   previewRecords: PatientRegistryRecord[];
   previewAlerts: PatientRegistryAlert[];
-  currentPatientId: number | null;
+  registryPatientId: number | null;
   isSearching: boolean;
   isLoadingPreview: boolean;
   isBindingCurrentPatient: boolean;
@@ -67,7 +67,7 @@ export function RegistryBrowserPane({
   previewDetail,
   previewRecords,
   previewAlerts,
-  currentPatientId,
+  registryPatientId,
   isSearching,
   isLoadingPreview,
   isBindingCurrentPatient,
@@ -82,9 +82,9 @@ export function RegistryBrowserPane({
   onClearRegistry,
 }: RegistryBrowserPaneProps) {
   const summaryItems = previewSummary(previewDetail);
-  const canBind = previewPatientId !== null && previewPatientId !== currentPatientId && !isLoadingPreview;
-  const canDeletePreview = previewPatientId !== null && previewPatientId !== currentPatientId && !isLoadingPreview;
-  const canClearRegistry = currentPatientId === null;
+  const canBind = previewPatientId !== null && previewPatientId !== registryPatientId && !isLoadingPreview;
+  const canDeletePreview = previewPatientId !== null && previewPatientId !== registryPatientId && !isLoadingPreview;
+  const canClearRegistry = registryPatientId === null;
 
   return (
     <div className="workspace-panel-stack">
@@ -173,7 +173,7 @@ export function RegistryBrowserPane({
           <ul className="workspace-list" style={{ gap: "10px", marginTop: "16px" }}>
             {searchResults.map((item) => {
               const isPreviewed = item.patient_id === previewPatientId;
-              const isCurrent = item.patient_id === currentPatientId;
+              const isCurrent = item.patient_id === registryPatientId;
               return (
                 <li key={item.patient_id} className="workspace-list-item">
                   <strong>{`患者 #${item.patient_id}`}</strong>
@@ -232,7 +232,7 @@ export function RegistryBrowserPane({
             }}
             aria-label={previewPatientId !== null ? `set current patient ${previewPatientId}` : "set current patient"}
           >
-            {previewPatientId !== null && previewPatientId === currentPatientId
+            {previewPatientId !== null && previewPatientId === registryPatientId
               ? `✅ 当前患者 #${previewPatientId}`
               : isBindingCurrentPatient
                 ? "正在绑定..."
@@ -255,7 +255,7 @@ export function RegistryBrowserPane({
             {isDeletingPatient ? "正在删除..." : "🗑️ 删除患者"}
           </Button>
         </div>
-        {!canDeletePreview && previewPatientId === currentPatientId && previewPatientId !== null ? (
+        {!canDeletePreview && previewPatientId === registryPatientId && previewPatientId !== null ? (
           <p className="workspace-copy workspace-copy-tight">
             删除此患者记录前，请先重置或更改当前患者。
           </p>

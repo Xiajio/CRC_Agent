@@ -258,11 +258,18 @@ def node_intent_classifier(model, streaming: bool = False, show_thinking: bool =
                 "error": None,
             }
 
+        findings = state.findings or {}
         ctx = {
             "user_input": user_text,
-            "has_diagnosis": "Yes" if (state.findings or {}).get("pathology_confirmed") else "No",
+            "has_diagnosis": "Yes" if findings.get("pathology_confirmed") else "No",
             "has_treatment_plan": "Yes" if state.decision_json else "No",
-            "current_patient_id": state.current_patient_id or "None",
+            "registry_patient_id": getattr(state, "registry_patient_id", None) or "None",
+            "case_database_patient_id": (
+                getattr(state, "case_database_patient_id", None)
+                or findings.get("case_database_patient_id")
+                or getattr(state, "current_patient_id", None)
+                or "None"
+            ),
             "recent_conversation": _get_recent_conversation_history(state, max_turns=3),
             "summary_memory": state.summary_memory or "",
             "pinned_context": _build_pinned_context(state),

@@ -13,7 +13,7 @@ type DoctorDatabaseViewProps = {
   parentToolbar?: React.ReactNode;
   activeSource: DoctorDatabaseSource;
   onSourceChange: (value: DoctorDatabaseSource) => void;
-  currentPatientId: number | null;
+  registryPatientId: number | null;
   databaseWorkbench: ReturnType<typeof useDatabaseWorkbench>;
   registryBrowser: ReturnType<typeof useRegistryBrowser>;
   isBindingCurrentPatient: boolean;
@@ -53,7 +53,7 @@ export function DoctorDatabaseView({
   parentToolbar,
   activeSource,
   onSourceChange,
-  currentPatientId,
+  registryPatientId,
   databaseWorkbench,
   registryBrowser,
   isBindingCurrentPatient,
@@ -131,7 +131,7 @@ export function DoctorDatabaseView({
           previewDetail={registryBrowser.previewDetail}
           previewRecords={registryBrowser.previewRecords}
           previewAlerts={registryBrowser.previewAlerts}
-          currentPatientId={currentPatientId}
+          registryPatientId={registryPatientId}
           isSearching={registryBrowser.isSearching}
           isLoadingPreview={registryBrowser.isLoadingPreview}
           isBindingCurrentPatient={isBindingCurrentPatient}

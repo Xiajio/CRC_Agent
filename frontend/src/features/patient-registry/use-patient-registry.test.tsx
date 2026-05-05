@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppProviders } from "../../app/providers";
+import { ApiClientError } from "../../app/api/client";
 import type {
   PatientRegistryAlertsResponse,
   PatientRegistryDetail,
@@ -58,9 +59,9 @@ function makePatientResponses(patientId: number) {
 
 function renderPatientRegistry(
   apiClient = buildApiClientStub(),
-  initialProps = { enabled: true, currentPatientId: 1 as number | null },
+  initialProps = { enabled: true, registryPatientId: 1 as number | null },
 ) {
-  return renderHook((props: { enabled: boolean; currentPatientId: number | null }) => usePatientRegistry(props), {
+  return renderHook((props: { enabled: boolean; registryPatientId: number | null }) => usePatientRegistry(props), {
     initialProps,
     wrapper: ({ children }) => <AppProviders apiClient={apiClient}>{children}</AppProviders>,
   });
@@ -71,7 +72,40 @@ describe("usePatientRegistry", () => {
     vi.clearAllMocks();
   });
 
-  it("clears bound patient detail immediately when currentPatientId changes", async () => {
+  it("does not load registry data when only a case database sample id exists elsewhere", async () => {
+    const apiClient = buildApiClientStub();
+
+    renderPatientRegistry(apiClient, { enabled: true, registryPatientId: null });
+
+    await waitFor(() => {
+      expect(apiClient.getPatientRegistryDetail).not.toHaveBeenCalled();
+      expect(apiClient.getPatientRecords).not.toHaveBeenCalled();
+      expect(apiClient.getPatientRegistryAlerts).not.toHaveBeenCalled();
+    });
+  });
+
+  it("does not retry the same missing registry id until the id changes", async () => {
+    const apiClient = buildApiClientStub({
+      getPatientRegistryDetail: vi
+        .fn()
+        .mockRejectedValueOnce(new ApiClientError(404, "missing", { detail: "missing" }))
+        .mockResolvedValueOnce(makePatientResponses(7).detail),
+      getPatientRecords: vi.fn(async (patientId: number) => makePatientResponses(patientId).records),
+      getPatientRegistryAlerts: vi.fn(async (patientId: number) => makePatientResponses(patientId).alerts),
+    });
+    const { rerender } = renderPatientRegistry(apiClient, { enabled: true, registryPatientId: 93 });
+
+    await waitFor(() => expect(apiClient.getPatientRegistryDetail).toHaveBeenCalledTimes(1));
+
+    rerender({ enabled: false, registryPatientId: 93 });
+    rerender({ enabled: true, registryPatientId: 93 });
+    await waitFor(() => expect(apiClient.getPatientRegistryDetail).toHaveBeenCalledTimes(1));
+
+    rerender({ enabled: true, registryPatientId: 7 });
+    await waitFor(() => expect(apiClient.getPatientRegistryDetail).toHaveBeenCalledTimes(2));
+  });
+
+  it("clears bound patient detail immediately when registryPatientId changes", async () => {
     const first = makePatientResponses(1);
     const second = {
       detail: createDeferred<PatientRegistryDetail>(),
@@ -95,7 +129,7 @@ describe("usePatientRegistry", () => {
     expect(result.current.boundPatientRecords[0]?.patient_id).toBe(1);
     expect(result.current.boundPatientAlerts[0]?.patient_id).toBe(1);
 
-    rerender({ enabled: true, currentPatientId: 2 });
+    rerender({ enabled: true, registryPatientId: 2 });
 
     expect(result.current.boundPatientDetail).toBeNull();
     expect(result.current.boundPatientRecords).toEqual([]);
@@ -129,7 +163,7 @@ describe("usePatientRegistry", () => {
     });
     const { result, rerender } = renderPatientRegistry(apiClient);
 
-    rerender({ enabled: true, currentPatientId: 2 });
+    rerender({ enabled: true, registryPatientId: 2 });
 
     await act(async () => {
       second.detail.resolve(makePatientResponses(2).detail);

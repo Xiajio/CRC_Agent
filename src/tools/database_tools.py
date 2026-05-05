@@ -62,7 +62,7 @@ def get_patient_case_info(patient_id: int) -> Dict[str, Any]:
     根据患者ID查询详细病历信息。
 
     参数:
-        patient_id: 患者编号 (数字，例如 93)
+        patient_id: 患者编号（例如 <case_id>）
 
     返回:
         包含患者完整病历信息的字典，包含：
@@ -125,7 +125,7 @@ def get_patient_imaging(patient_id: str) -> Dict[str, Any]:
     获取患者的影像资料/图片/CT/MRI。
 
     参数:
-        patient_id: 患者ID (例如 "093" 或 "93")
+        patient_id: 患者ID（例如 "<case_id>"）
 
     返回:
         包含影像信息的字典，包含：
@@ -151,7 +151,7 @@ def summarize_patient_existing_info(patient_id: str) -> Dict[str, Any]:
     汇总患者当前数据库中已收录的资料，用于回答“目前有哪些数据/已有信息”等问题。
 
     参数:
-        patient_id: 患者ID (例如 "093" 或 "93")
+        patient_id: 患者ID（例如 "<case_id>"）
 
     返回:
         包含患者已收录资料概览的字典，包括病例摘要、影像数量、病理切片数量和自然语言汇总。
@@ -240,7 +240,7 @@ def get_patient_pathology_slides(patient_id: str) -> Dict[str, Any]:
     获取患者的病理切片预览图（将大切片转换为 256px PNG）。
 
     参数:
-        patient_id: 患者ID (例如 "093" 或 "93")
+        patient_id: 患者ID（例如 "<case_id>"）
 
     返回:
         包含病理切片信息的字典，包含：
@@ -327,7 +327,7 @@ def list_imaging_folders() -> List[str]:
     列出所有可用的影像文件夹名称。
 
     返回:
-        所有患者影像文件夹名称列表（如 ['001', '002', '093', ...]）
+        所有患者影像文件夹名称列表（如 ['<case_folder>', ...]）
     """
     return get_all_folder_names()
 

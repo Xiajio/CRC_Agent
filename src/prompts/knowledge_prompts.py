@@ -11,6 +11,8 @@
 - JSON 示例中的花括号必须使用 {{ }} 转义
 """
 
+from datetime import date
+
 # ==============================================================================
 # 1. 搜索规划器 Prompt
 # ==============================================================================
@@ -129,7 +131,7 @@ KNOWLEDGE_SYNTHESIS_SYSTEM_PROMPT = """你是一名专注于循证肿瘤学的�
 - 如果指南未直接提及，请寻找临床试验或荟萃分析（Meta-analysis）。
 - 查看 PubMed/研究文章中的有效性和安全性数据。
 - 证据等级：荟萃分析 > 随机对照试验 (RCT) > 观察性研究。
-- 引用时注明证据等级，例如："[[Meta-analysis, 2023]]"。
+- 引用时注明证据等级，例如："[[Meta-analysis, __CURRENT_YEAR__]]"。
 
 **第三层 - 警示层 (Warning Layer)**:
 - 始终检查禁忌症 (Contraindications)。
@@ -174,7 +176,7 @@ KNOWLEDGE_SYNTHESIS_SYSTEM_PROMPT = """你是一名专注于循证肿瘤学的�
 
 【上下文】:
 {context}"""
-
+KNOWLEDGE_SYNTHESIS_SYSTEM_PROMPT = KNOWLEDGE_SYNTHESIS_SYSTEM_PROMPT.replace("__CURRENT_YEAR__", str(date.today().year))
 
 # ==============================================================================
 # 4. 通用知识综合生成 Prompt（不使用患者档案）

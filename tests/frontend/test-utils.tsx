@@ -41,6 +41,8 @@ export function makeSessionResponse(
       patient_profile: overrides.snapshot?.patient_profile ?? null,
       stage: overrides.snapshot?.stage ?? null,
       assessment_draft: overrides.snapshot?.assessment_draft ?? null,
+      case_database_patient_id: overrides.snapshot?.case_database_patient_id ?? null,
+      registry_patient_id: overrides.snapshot?.registry_patient_id ?? patientId,
       current_patient_id: overrides.snapshot?.current_patient_id ?? patientId,
       references: overrides.snapshot?.references ?? [],
       plan: overrides.snapshot?.plan ?? [],
@@ -177,7 +179,10 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
       session_id: sessionId,
       scene: "doctor",
       patient_id: patientId,
-      snapshot: { current_patient_id: patientId },
+      snapshot: {
+        registry_patient_id: patientId,
+        current_patient_id: patientId,
+      },
     }),
   );
   const getDatabaseStats = vi.fn(async () => makeDatabaseStatsResponse());

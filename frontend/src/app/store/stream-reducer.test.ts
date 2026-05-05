@@ -1,7 +1,47 @@
 import { describe, expect, it } from "vitest";
 
 import type { CardUpsertEvent, MessageDeltaEvent, MessageDoneEvent } from "../api/types";
-import { createInitialSessionState, reduceStreamEvent } from "./stream-reducer";
+import { createInitialSessionState, hydrateSessionState, reduceStreamEvent } from "./stream-reducer";
+
+describe("hydrateSessionState", () => {
+  it("hydrates split patient context fields from recovery snapshots", () => {
+    const state = hydrateSessionState(createInitialSessionState(), {
+      session_id: "sess",
+      thread_id: "thread",
+      scene: "doctor",
+      patient_id: 7,
+      snapshot_version: 1,
+      runtime: { runner_mode: "real", fixture_case: null },
+      snapshot: {
+        snapshot_version: 1,
+        messages: [],
+        messages_total: 0,
+        messages_next_before_cursor: null,
+        cards: [],
+        roadmap: [],
+        findings: {},
+        patient_profile: null,
+        patient_identity: null,
+        stage: null,
+        assessment_draft: null,
+        case_database_patient_id: "093",
+        registry_patient_id: 7,
+        current_patient_id: "093",
+        references: [],
+        plan: [],
+        critic: null,
+        safety_alert: null,
+        uploaded_assets: {},
+        context_maintenance: null,
+        context_state: null,
+      },
+    });
+
+    expect(state.caseDatabasePatientId).toBe("093");
+    expect(state.registryPatientId).toBe(7);
+    expect(state.currentPatientId).toBe("093");
+  });
+});
 
 describe("reduceStreamEvent", () => {
   it("records a bounded visible event log for clinical stream events", () => {
@@ -46,6 +86,27 @@ describe("reduceStreamEvent", () => {
       detail: "missing references",
       requiresHumanReview: true,
     });
+  });
+
+  it("extracts readable critic feedback from raw thinking-wrapped JSON output", () => {
+    const rawFeedback = [
+      "<think>The critic considered the plan and quoted {'verdict': 'APPROVED'}.</think>",
+      '{"verdict":"APPROVED","feedback":"需要补充 MMR/MSI 检测。"}',
+    ].join("\n");
+
+    const state = reduceStreamEvent(createInitialSessionState(), {
+      type: "critic.verdict",
+      verdict: "APPROVED",
+      feedback: rawFeedback,
+      requires_human_review: false,
+    } as any);
+
+    expect((state as any).critic.feedback).toBe("需要补充 MMR/MSI 检测。");
+    expect((state as any).eventLog[0]).toMatchObject({
+      kind: "critic",
+      detail: "需要补充 MMR/MSI 检测。",
+    });
+    expect(JSON.stringify((state as any).eventLog)).not.toContain("<think>");
   });
 
   it("keeps only the latest clinical event log entries", () => {

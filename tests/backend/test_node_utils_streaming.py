@@ -25,6 +25,18 @@ class _TaggedReasoningStreamingChain:
         yield AIMessage(content="我专注于结直肠癌诊疗相关问题。")
 
 
+class _EnglishReasoningStreamingChain:
+    def stream(self, context: dict):
+        yield AIMessage(content="analysis: private chain of thought\n\n")
+        yield AIMessage(content="final answer: Hello")
+
+
+class _OrphanClosingThinkStreamingChain:
+    def stream(self, context: dict):
+        yield AIMessage(content="AI\nAssistant\nReasoning process\nprivate")
+        yield AIMessage(content="\n</think>\n\nHello")
+
+
 def test_invoke_with_streaming_emits_stable_message_id_and_matching_final_message() -> None:
     callback_events: list[dict[str, object]] = []
     token = set_stream_callback(callback_events.append)
@@ -53,7 +65,7 @@ def test_invoke_with_streaming_emits_stable_message_id_and_matching_final_messag
     assert result.content == "Hello world"
 
 
-def test_invoke_with_streaming_only_emits_visible_response_deltas_and_preserves_thinking() -> None:
+def test_invoke_with_streaming_only_emits_visible_response_deltas_and_preserves_thinking_when_enabled() -> None:
     callback_events: list[dict[str, object]] = []
     token = set_stream_callback(callback_events.append)
     try:
@@ -61,7 +73,7 @@ def test_invoke_with_streaming_only_emits_visible_response_deltas_and_preserves_
             _ReasoningStreamingChain(),
             {},
             streaming=True,
-            show_thinking=False,
+            show_thinking=True,
         )
     finally:
         clear_stream_callback(token)
@@ -72,7 +84,44 @@ def test_invoke_with_streaming_only_emits_visible_response_deltas_and_preserves_
     assert result.additional_kwargs.get("thinking_content") == "根据系统提示，我应该先分析。"
 
 
-def test_invoke_with_streaming_strips_thinking_prefix_before_summary_marker() -> None:
+def test_invoke_with_streaming_omits_thinking_when_display_is_disabled() -> None:
+    callback_events: list[dict[str, object]] = []
+    token = set_stream_callback(callback_events.append)
+    try:
+        result = _invoke_with_streaming(
+            _EnglishReasoningStreamingChain(),
+            {},
+            streaming=True,
+            show_thinking=False,
+        )
+    finally:
+        clear_stream_callback(token)
+
+    assert [event.get("delta") for event in callback_events if event["type"] == "delta"] == ["Hello"]
+    assert result.content == "Hello"
+    assert "thinking_content" not in result.additional_kwargs
+
+
+def test_invoke_with_streaming_strips_orphan_closing_think_block_when_display_is_disabled() -> None:
+    callback_events: list[dict[str, object]] = []
+    token = set_stream_callback(callback_events.append)
+    try:
+        result = _invoke_with_streaming(
+            _OrphanClosingThinkStreamingChain(),
+            {},
+            streaming=True,
+            show_thinking=False,
+        )
+    finally:
+        clear_stream_callback(token)
+
+    assert [event.get("delta") for event in callback_events if event["type"] == "delta"] == ["Hello"]
+    assert result.content == "Hello"
+    assert "Reasoning process" not in result.content
+    assert "thinking_content" not in result.additional_kwargs
+
+
+def test_invoke_with_streaming_strips_thinking_prefix_before_summary_marker_when_enabled() -> None:
     callback_events: list[dict[str, object]] = []
     token = set_stream_callback(callback_events.append)
     try:
@@ -80,7 +129,7 @@ def test_invoke_with_streaming_strips_thinking_prefix_before_summary_marker() ->
             _TaggedReasoningStreamingChain(),
             {},
             streaming=True,
-            show_thinking=False,
+            show_thinking=True,
         )
     finally:
         clear_stream_callback(token)

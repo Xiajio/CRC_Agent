@@ -227,7 +227,8 @@ function renderDisclosure(title: string, payload: JsonObject) {
 function previewImageSrc(image: JsonObject): string | null {
   const base64 = asString(image.image_base64);
   if (base64) {
-    return `data:image/png;base64,${base64}`;
+    const mimeType = asString(image.image_mime_type) ?? "image/png";
+    return `data:${mimeType};base64,${base64}`;
   }
   return asString(image.image_url);
 }

@@ -29,7 +29,7 @@ function renderPane(overrides: Partial<Parameters<typeof RegistryBrowserPane>[0]
     previewDetail: makePatientRegistryDetail({ patient_id: 33 }),
     previewRecords: [],
     previewAlerts: [],
-    currentPatientId: null,
+    registryPatientId: null,
     isSearching: false,
     isLoadingPreview: true,
     isBindingCurrentPatient: false,
@@ -113,7 +113,7 @@ describe("RegistryBrowserPane", () => {
 
   it("explains why clear and delete actions are disabled for the current patient", () => {
     renderPane({
-      currentPatientId: 33,
+      registryPatientId: 33,
       isLoadingPreview: false,
     });
 

@@ -8,7 +8,7 @@ function renderView(overrides: Partial<Parameters<typeof DoctorDatabaseView>[0]>
   const props: Parameters<typeof DoctorDatabaseView>[0] = {
     activeSource: "patient_registry",
     onSourceChange: vi.fn(),
-    currentPatientId: null,
+    registryPatientId: null,
     databaseWorkbench: {} as never,
     registryBrowser: {
       recentPatients: [],

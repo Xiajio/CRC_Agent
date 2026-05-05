@@ -25,6 +25,15 @@ from .planner import get_current_pending_step, mark_step_completed
 
 
 # === UI-friendly summarization helpers ===
+def _normalize_case_database_patient_id(value) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text.zfill(3) if text.isdigit() else text
+
+
 def _format_case_summary_markdown(case_data: dict) -> str:
     """把数据库病例信息整理成更友好的 Markdown 摘要（用于“总结/目前情况”类请求）。"""
     if not isinstance(case_data, dict) or case_data.get("error"):
@@ -295,7 +304,7 @@ def _build_case_findings_update(case_data: dict) -> dict[str, object]:
         },
         "data_source": "database_query",
         "db_query_patient_id": str(patient_id),
-        "current_patient_id": str(patient_id).zfill(3) if patient_id is not None else None,
+        "case_database_patient_id": _normalize_case_database_patient_id(patient_id),
     }
 
 
@@ -450,7 +459,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
             normalized_id = str(patient_id).zfill(3) if patient_id is not None else None
             findings_updates = dict(state.findings or {})
             if normalized_id:
-                findings_updates["current_patient_id"] = normalized_id
+                findings_updates["case_database_patient_id"] = normalized_id
             findings_updates["patient_record"] = payload
             findings_updates = _merge_database_workbench_findings(
                 findings_updates,
@@ -468,7 +477,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                 "messages": [AIMessage(content=message)],
                 "clinical_stage": "CaseDatabase",
                 "findings": findings_updates,
-                "current_patient_id": normalized_id,
+                "case_database_patient_id": normalized_id,
             })
         if payload and ("受试者编号" in payload or "patient_id" in payload):
             tool_map = {tool.name: tool for tool in ATOMIC_DATABASE_TOOLS}
@@ -485,7 +494,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
             normalized_id = str(int(subject_id)).zfill(3) if subject_id is not None else None
             findings_updates = dict(state.findings or {})
             if normalized_id:
-                findings_updates["current_patient_id"] = normalized_id
+                findings_updates["case_database_patient_id"] = normalized_id
             findings_updates["patient_record"] = payload
             message = tool_result.get("message") if isinstance(tool_result, dict) else str(tool_result)
             if normalized_id:
@@ -494,7 +503,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                 "messages": [AIMessage(content=message)],
                 "clinical_stage": "CaseDatabase",
                 "findings": findings_updates,
-                "current_patient_id": normalized_id,
+                "case_database_patient_id": normalized_id,
             })
 
         try:
@@ -541,7 +550,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
             def _infer_patient_id_from_history() -> str | None:
                 """
                 Streamlit 场景里 current_patient_id 可能未持久化/被 None 覆盖，
-                但用户上一轮往往明确提过“93号/093”等。这里从历史 HumanMessage 回溯推断。
+                但用户上一轮往往明确提过“<case_id>号/<case_id>”等。这里从历史 HumanMessage 回溯推断。
                 """
                 for msg in reversed(state.messages or []):
                     if isinstance(msg, HumanMessage):
@@ -552,9 +561,13 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
 
             # 提取 patient_id（优先：本轮文本；其次：state.current_patient_id；再次：历史回溯）
             extracted_patient_id = _extract_patient_id_from_text(user_text or "")
+            findings = state.findings or {}
             active_patient_id = (
                 extracted_patient_id
+                or getattr(state, "case_database_patient_id", None)
+                or findings.get("case_database_patient_id")
                 or (str(state.current_patient_id) if state.current_patient_id else None)
+                or findings.get("current_patient_id")
                 or _infer_patient_id_from_history()
             )
             imaging_analysis_support_request = _is_imaging_analysis_support_request(state, user_text)
@@ -593,6 +606,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
 
             # 提取 patient_id（如果有）
             current_patient_id = active_patient_id
+            case_database_patient_id = _normalize_case_database_patient_id(active_patient_id)
 
             response = None
             final_messages = []
@@ -633,7 +647,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                             selected_patient_id=_safe_int(current_patient_id),
                         ),
                     ),
-                    "current_patient_id": str(current_patient_id).zfill(3) if current_patient_id else None,
+                    "case_database_patient_id": case_database_patient_id,
                 })
 
             # 如果检测到肿瘤检测相关关键词，直接构造工具调用
@@ -714,7 +728,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                         "patient_card": None,
                         "imaging_card": imaging_card,
                         # [关键] 写入强类型字段，供 Intent Router/后续轮次识别“该患者”
-                        "current_patient_id": str(current_patient_id).zfill(3) if current_patient_id else None,
+                        "case_database_patient_id": case_database_patient_id,
                         "radiomics_report_card": None,
                         "error": None,
                     })
@@ -732,7 +746,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                 target_patient_id = _safe_int(current_patient_id)
                 findings_updates = {}
                 if current_patient_id:
-                    findings_updates["current_patient_id"] = str(current_patient_id).zfill(3)
+                    findings_updates["case_database_patient_id"] = case_database_patient_id
                 return _finalize_return({
                     "messages": [AIMessage(content="已进入病例编辑模式。请在数据库编辑表单中确认并点击保存后写回数据库。")],
                     "clinical_stage": "CaseDatabase",
@@ -745,7 +759,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                             selected_patient_id=target_patient_id,
                         ),
                     ),
-                    "current_patient_id": str(current_patient_id).zfill(3) if current_patient_id else None,
+                    "case_database_patient_id": case_database_patient_id,
                 })
             elif is_obvious_db_query and current_patient_id:
                 # 尽量同时拉取“病例信息”和“影像信息”（当用户提到影像时）
@@ -917,7 +931,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                     findings_updates.update(extracted_clinical_data)
                 elif is_obvious_db_query and not current_patient_id:
                     # 明确是数据库总结/查询，但无法确定患者ID：直接追问，避免掉回 LLM 卡住
-                    final_messages.append(AIMessage(content="请提供患者编号（例如 93 或 093），我才能总结该患者目前情况。"))
+                    final_messages.append(AIMessage(content="请提供患者编号（例如 <case_id> 或 <case_id>），我才能总结该患者目前情况。"))
 
                 return _finalize_return({
                     "messages": final_messages,
@@ -930,7 +944,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                     "findings": findings_updates if findings_updates else None,
                     # [关键] 写入强类型字段，供 Intent Router/后续轮次识别“该患者”
                     "radiomics_report_card": radiomics_report_card if "radiomics_report_card" in locals() else None,
-                    "current_patient_id": str(current_patient_id).zfill(3) if current_patient_id else None,
+                    "case_database_patient_id": case_database_patient_id,
                 })
 
             # 如果没有检测到肿瘤检测关键词，让 LLM 决定
@@ -1115,6 +1129,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                                 if result.get('patient_id'):
                                     # 记录当前活跃的患者ID，供 Router 参考
                                     current_patient_id = str(result.get('patient_id')).zfill(3)
+                                    case_database_patient_id = _normalize_case_database_patient_id(result.get('patient_id'))
                                     database_workbench_context = _build_database_workbench_context(
                                         mode="detail",
                                         query_text=user_text,
@@ -1158,6 +1173,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                                         "db_query_patient_id": str(case_info.get("patient_id")),
                                     }
                                     current_patient_id = str(case_info.get("patient_id")).zfill(3)
+                                    case_database_patient_id = _normalize_case_database_patient_id(case_info.get("patient_id"))
 
                         elif name == "search_cases":
                             database_workbench_context = _build_database_workbench_context(
@@ -1276,7 +1292,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
 
             # 如果有患者ID，更新 current_patient_id
             if 'current_patient_id' in locals() and current_patient_id:
-                findings_updates['current_patient_id'] = current_patient_id
+                findings_updates['case_database_patient_id'] = _normalize_case_database_patient_id(current_patient_id)
 
             fallback_patient_match = re.search(r"(\d{1,3})", user_text or "")
             fallback_patient_id = current_patient_id or (fallback_patient_match.group(1) if fallback_patient_match else None)
@@ -1303,7 +1319,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                     database_workbench_context,
                 ),
                 # [关键] 写入强类型字段，供 Intent Router/后续轮次识别“该患者”
-                "current_patient_id": str(current_patient_id).zfill(3) if current_patient_id else None,
+                "case_database_patient_id": case_database_patient_id,
             })
 
 

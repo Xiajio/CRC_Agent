@@ -288,7 +288,7 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
                 show_thinking,
                 node_name=stream_node_name,
             )
-            msg = _ensure_message(response)
+            msg = _ensure_message(response, include_thinking=show_thinking)
             return {
                 "messages": [msg],
                 "clinical_stage": "General",
@@ -394,7 +394,7 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
                     node_name=stream_node_name,
                 )
             
-            msg = _ensure_message(response)
+            msg = _ensure_message(response, include_thinking=show_thinking)
             return {
                 "messages": [msg],
                 "clinical_stage": "General",
@@ -433,7 +433,7 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
                 node_name=stream_node_name,
             )
         
-        msg = _ensure_message(response)
+        msg = _ensure_message(response, include_thinking=show_thinking)
         return {
             "messages": [msg],
             "clinical_stage": "General",

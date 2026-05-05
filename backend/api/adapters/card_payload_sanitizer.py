@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import base64
+import mimetypes
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 CARD_PREVIEW_LIMIT = 8
+MAX_PREVIEW_IMAGE_BYTES = 2 * 1024 * 1024
 
 _PREVIEW_IMAGE_FIELDS = {
     "image_name",
     "image_base64",
+    "image_mime_type",
     "image_url",
     "image_path",
     "source_slide",
@@ -39,6 +44,29 @@ def strip_binary(value: Any) -> Any:
     return value
 
 
+def _image_mime_type(image_path: str) -> str:
+    mime_type, _ = mimetypes.guess_type(image_path)
+    if mime_type and mime_type.startswith("image/"):
+        return mime_type
+    return "image/png"
+
+
+def _read_preview_image_as_base64(image_path: str) -> str:
+    if not image_path:
+        return ""
+
+    try:
+        path = Path(image_path)
+        if not path.is_file() or path.stat().st_size > MAX_PREVIEW_IMAGE_BYTES:
+            return ""
+        mime_type, _ = mimetypes.guess_type(str(path))
+        if not mime_type or not mime_type.startswith("image/"):
+            return ""
+        return base64.b64encode(path.read_bytes()).decode()
+    except Exception:
+        return ""
+
+
 def _sanitize_preview_item(preview: Mapping[str, Any]) -> dict[str, Any]:
     cleaned: dict[str, Any] = {}
     for field in _PREVIEW_IMAGE_FIELDS:
@@ -46,6 +74,15 @@ def _sanitize_preview_item(preview: Mapping[str, Any]) -> dict[str, Any]:
         if value is None:
             continue
         cleaned[field] = value
+
+    image_path = cleaned.get("image_path")
+    if isinstance(image_path, str) and image_path:
+        if not cleaned.get("image_base64"):
+            image_base64 = _read_preview_image_as_base64(image_path)
+            if image_base64:
+                cleaned["image_base64"] = image_base64
+        if cleaned.get("image_base64") and not cleaned.get("image_mime_type"):
+            cleaned["image_mime_type"] = _image_mime_type(image_path)
     return cleaned
 
 
@@ -61,13 +98,15 @@ def sanitize_visual_card_payload(payload: Mapping[str, Any], preview_collection_
 
     previews = data.get(preview_collection_key)
     if isinstance(previews, Sequence) and not isinstance(previews, (str, bytes)):
-        sanitized_previews = [
-            _sanitize_preview_item(image)
-            for image in previews
-            if isinstance(image, Mapping)
-        ]
+        sanitized_previews: list[dict[str, Any]] = []
+        for image in previews:
+            if not isinstance(image, Mapping):
+                continue
+            sanitized_previews.append(_sanitize_preview_item(image))
+            if len(sanitized_previews) >= CARD_PREVIEW_LIMIT:
+                break
         sanitized_data = dict(sanitized_data)
-        sanitized_data[preview_collection_key] = sanitized_previews[:CARD_PREVIEW_LIMIT]
+        sanitized_data[preview_collection_key] = sanitized_previews
         sanitized["data"] = sanitized_data
 
     return sanitized

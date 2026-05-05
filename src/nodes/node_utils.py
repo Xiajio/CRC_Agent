@@ -31,6 +31,11 @@ _STREAM_CALLBACK: ContextVar[Callable[[dict[str, Any]], None] | None] = ContextV
 
 _THINKING_TAG_PATTERN = re.compile(r"<think(?:ing)?>([\s\S]*?)</think(?:ing)?>", re.IGNORECASE)
 _OPEN_THINKING_TAG_PATTERN = re.compile(r"<think(?:ing)?>", re.IGNORECASE)
+_CLOSE_THINKING_TAG_PATTERN = re.compile(r"</think(?:ing)?>", re.IGNORECASE)
+_ORPHAN_THINKING_HEADER_PATTERN = re.compile(
+    "^\\s*(?:AI\\s*)?(?:Assistant|\u52a9\u624b)?\\s*(?:Reasoning process|\u63a8\u7406\u8fc7\u7a0b)(?:\\s|$)",
+    re.IGNORECASE,
+)
 _VISIBLE_RESPONSE_MARKER_PATTERN = re.compile(
     r"(?:【?\s*长期记忆（摘要）\s*】?)|(?:【?\s*最终回复\s*】?)|(?:最终回复|最终答案|用户可见内容)\s*[:：]",
     re.IGNORECASE,
@@ -39,6 +44,8 @@ _FINAL_ANSWER_PATTERN = re.compile(
     r"(?:^|\n)\s*(?:final\s+answer|final\s+response|最终回复|最终答案|用户可见内容)\s*[:：]",
     re.IGNORECASE,
 )
+_THINKING_KWARG_KEYS = ("thinking_content", "reasoning_content", "thinking")
+
 _INTERNAL_LINE_PATTERNS = (
     re.compile(r"^\s*\[Router\].*$", re.MULTILINE),
     re.compile(r"^\s*\[Intent\].*$", re.MULTILINE),
@@ -99,8 +106,16 @@ def _extract_text_content(value: Any) -> str:
     return str(value)
 
 
+def _strip_thinking_blocks(value: str) -> str:
+    text = _THINKING_TAG_PATTERN.sub("", value or "").strip()
+    orphan_close_match = _CLOSE_THINKING_TAG_PATTERN.search(text)
+    if orphan_close_match and not _OPEN_THINKING_TAG_PATTERN.search(text[: orphan_close_match.start()]):
+        return text[orphan_close_match.end() :].strip()
+    return text
+
+
 def _clean_json_string(value: str) -> str:
-    text = (value or "").strip()
+    text = _strip_thinking_blocks(value)
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
@@ -193,10 +208,21 @@ def _looks_like_reasoning(text: str) -> bool:
     )
 
 
+def _looks_like_orphan_thinking_header(text: str) -> bool:
+    return bool(_ORPHAN_THINKING_HEADER_PATTERN.match(text.strip()))
+
+
 def _split_inline_thinking(content: str) -> tuple[str, str]:
     text = (content or "").strip("\n\r\t")
     if not text:
         return "", ""
+
+    orphan_close_match = _CLOSE_THINKING_TAG_PATTERN.search(text)
+    if orphan_close_match and not _OPEN_THINKING_TAG_PATTERN.search(text[: orphan_close_match.start()]):
+        thinking = text[: orphan_close_match.start()].strip()
+        response = text[orphan_close_match.end() :].strip("\n\r\t ")
+        if not thinking or _looks_like_reasoning(thinking) or _looks_like_orphan_thinking_header(thinking):
+            return thinking, response
 
     marker_match = _VISIBLE_RESPONSE_MARKER_PATTERN.search(text)
     if marker_match:
@@ -213,6 +239,9 @@ def _split_inline_thinking(content: str) -> tuple[str, str]:
     if _OPEN_THINKING_TAG_PATTERN.search(text):
         thinking = _OPEN_THINKING_TAG_PATTERN.sub("", text).strip()
         return thinking, ""
+
+    if _looks_like_orphan_thinking_header(text):
+        return text, ""
 
     if _looks_like_reasoning(text):
         parts = re.split(r"\n\s*\n", text, maxsplit=1)
@@ -274,12 +303,16 @@ def _coerce_message_additional_kwargs(message: AIMessage) -> dict[str, Any]:
     return {}
 
 
-def _ensure_message(message: Any) -> AIMessage:
+def _drop_thinking_kwargs(kwargs: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in kwargs.items() if key not in _THINKING_KWARG_KEYS}
+
+
+def _ensure_message(message: Any, include_thinking: bool = True) -> AIMessage:
     if isinstance(message, AIMessage):
         if isinstance(message.content, str):
             parts = _sanitize_message_parts(message.content)
             kwargs = _coerce_message_additional_kwargs(message)
-            if parts.thinking:
+            if include_thinking and parts.thinking:
                 existing = (
                     kwargs.get("thinking_content")
                     or kwargs.get("reasoning_content")
@@ -289,13 +322,15 @@ def _ensure_message(message: Any) -> AIMessage:
                 kwargs["thinking_content"] = "\n\n".join(
                     [value for value in (str(existing).strip(), parts.thinking) if value]
                 ).strip()
+            elif not include_thinking:
+                kwargs = _drop_thinking_kwargs(kwargs)
             message.content = parts.response
             message.additional_kwargs = kwargs
         return message
 
     content = _extract_text_content(message)
     parts = _sanitize_message_parts(content)
-    additional_kwargs = {"thinking_content": parts.thinking} if parts.thinking else {}
+    additional_kwargs = {"thinking_content": parts.thinking} if include_thinking and parts.thinking else {}
     return AIMessage(content=parts.response, additional_kwargs=additional_kwargs)
 
 
@@ -306,12 +341,10 @@ def _invoke_with_streaming(
     show_thinking: bool = True,
     node_name: str | None = None,
 ) -> AIMessage:
-    del show_thinking
-
     if not streaming:
         if hasattr(chain, "invoke"):
-            return _ensure_message(chain.invoke(context))
-        return _ensure_message(chain(context))
+            return _ensure_message(chain.invoke(context), include_thinking=show_thinking)
+        return _ensure_message(chain(context), include_thinking=show_thinking)
 
     message_id = f"msg_{uuid4().hex}"
     callback = _STREAM_CALLBACK.get()
@@ -350,7 +383,10 @@ def _invoke_with_streaming(
                     }
                 )
     except Exception:
-        fallback = _ensure_message(chain.invoke(context) if hasattr(chain, "invoke") else chain(context))
+        fallback = _ensure_message(
+            chain.invoke(context) if hasattr(chain, "invoke") else chain(context),
+            include_thinking=show_thinking,
+        )
         fallback.id = message_id
         if callback is not None:
             callback({"type": "end", "message_id": message_id, "node": node_name})
@@ -358,7 +394,7 @@ def _invoke_with_streaming(
 
     parts = _sanitize_message_parts(raw_accumulated)
     additional_kwargs: dict[str, Any] = {}
-    if parts.thinking:
+    if show_thinking and parts.thinking:
         additional_kwargs["thinking_content"] = parts.thinking
 
     if callback is not None:
@@ -672,7 +708,11 @@ def _profile_as_text(profile: Any) -> str:
 
 def _build_pinned_context(state: Any) -> str:
     sections: list[str] = []
-    patient_id = getattr(state, "current_patient_id", None)
+    patient_id = (
+        getattr(state, "registry_patient_id", None)
+        or getattr(state, "case_database_patient_id", None)
+        or getattr(state, "current_patient_id", None)
+    )
     if patient_id:
         sections.append(f"patient_id: {patient_id}")
     profile_text = _profile_as_text(getattr(state, "patient_profile", None))
@@ -758,15 +798,6 @@ def _invoke_structured_with_recovery(
             raw_chain = (prompt | model) if prompt is not None else model
             raw_response = raw_chain.invoke(dict(payload))
             raw_text = _extract_text_content(raw_response)
-            if raw_text_parser is not None:
-                parsed_from_text = raw_text_parser(raw_text)
-                if parsed_from_text is not None:
-                    if isinstance(parsed_from_text, schema):
-                        return parsed_from_text
-                    if hasattr(schema, "model_validate"):
-                        return schema.model_validate(parsed_from_text)
-                    return schema(**parsed_from_text)
-
             parsed = _clean_and_validate_json(raw_text)
             if parsed is None:
                 parsed = _extract_first_json_object(raw_text)
@@ -775,6 +806,14 @@ def _invoke_structured_with_recovery(
                 if hasattr(schema, "model_validate"):
                     return schema.model_validate(normalized)
                 return schema(**normalized)
+            if raw_text_parser is not None:
+                parsed_from_text = raw_text_parser(raw_text)
+                if parsed_from_text is not None:
+                    if isinstance(parsed_from_text, schema):
+                        return parsed_from_text
+                    if hasattr(schema, "model_validate"):
+                        return schema.model_validate(parsed_from_text)
+                    return schema(**parsed_from_text)
         except Exception:
             pass
 
@@ -795,10 +834,15 @@ def _is_postop_context(value: Any) -> bool:
 
 
 def _generate_fallback_plan(state: Any) -> dict[str, Any]:
+    patient_id = (
+        getattr(state, "registry_patient_id", None)
+        or getattr(state, "case_database_patient_id", None)
+        or getattr(state, "current_patient_id", None)
+    )
     return {
         "strategy": "fallback",
         "summary": "Insufficient structured evidence; recommend clinician review.",
-        "patient_id": getattr(state, "current_patient_id", None),
+        "patient_id": patient_id,
     }
 
 

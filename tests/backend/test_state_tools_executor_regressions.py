@@ -3,17 +3,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from langchain_core.messages import HumanMessage
+import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel
 
 from backend.api.adapters.event_normalizer import normalize_tick
 from backend.api.adapters.state_snapshot import build_recovery_snapshot
 from backend.api.services.session_store import SessionMeta
 from src.nodes.citation_nodes import _fast_citation_report
-from src.nodes.decision_nodes import _format_final_response, node_finalize
+from src.nodes.decision_nodes import _format_final_response, node_decision, node_finalize
 from src.nodes.node_utils import _invoke_structured_with_recovery
 from src.nodes.tools_executor import node_tool_executor
-from src.state import CRCAgentState, PlanStep, update_step_status
+from src.state import CRCAgentState, PatientProfile, PlanStep, update_step_status
 
 
 def test_update_step_status_does_not_mutate_original_plan_step() -> None:
@@ -91,6 +92,40 @@ def test_invoke_structured_with_recovery_uses_raw_text_parser_after_structured_f
     assert result.feedback == "REJECTED: missing citation support"
 
 
+def test_invoke_structured_with_recovery_prefers_json_after_thinking_over_raw_parser() -> None:
+    class ReviewSchema(BaseModel):
+        verdict: str = "APPROVED"
+        feedback: str = ""
+
+    class FailingStructuredModel:
+        def invoke(self, payload):
+            raise RuntimeError("structured unavailable")
+
+    class RawModel:
+        def with_structured_output(self, schema):
+            return FailingStructuredModel()
+
+        def invoke(self, payload):
+            return (
+                '<think>The critic considered {"verdict":"REJECTED","feedback":"wrong"} first.</think>\n'
+                '{"verdict":"APPROVED","feedback":"需要补充 MMR/MSI 检测。"}'
+            )
+
+    result = _invoke_structured_with_recovery(
+        prompt=None,
+        model=RawModel(),
+        schema=ReviewSchema,
+        payload={"decision": "x"},
+        raw_text_parser=lambda text: {
+            "verdict": "APPROVED",
+            "feedback": text,
+        },
+    )
+
+    assert result.verdict == "APPROVED"
+    assert result.feedback == "需要补充 MMR/MSI 检测。"
+
+
 def test_rejected_critic_event_marks_human_review_required() -> None:
     events = normalize_tick(
         "critic",
@@ -104,6 +139,80 @@ def test_rejected_critic_event_marks_human_review_required() -> None:
     critic_event = next(event for event in events if getattr(event, "type", None) == "critic.verdict")
 
     assert critic_event.requires_human_review is True
+
+
+def test_internal_decision_and_critic_status_messages_are_not_emitted_as_chat() -> None:
+    decision_events = normalize_tick(
+        "decision",
+        {
+            "messages": [
+                HumanMessage(content="进行诊断"),
+                AIMessage(content="[Decision] template-fast 患者为结肠中，当前临床分期支持 cT4bN1cM0。"),
+            ],
+        },
+    )
+    critic_events = normalize_tick(
+        "critic",
+        {
+            "critic_verdict": "REJECTED",
+            "critic_feedback": "missing references",
+            "messages": [
+                AIMessage(content="❌ **诊断流程审核未通过** (Critic: REJECTED)"),
+            ],
+        },
+    )
+
+    assert all(getattr(event, "type", None) != "message.done" for event in decision_events)
+    assert all(getattr(event, "type", None) != "message.done" for event in critic_events)
+    assert any(getattr(event, "type", None) == "critic.verdict" for event in critic_events)
+
+
+def test_current_diagnosis_status_messages_are_not_emitted_as_chat() -> None:
+    events = normalize_tick(
+        "decision",
+        {
+            "messages": [
+                AIMessage(content="[Decision] template-fast \u60a3\u8005\u4e3a\u7ed3\u80a0\u4e2d\uff0c\u5f53\u524d\u4e34\u5e8a\u5206\u671f\u652f\u6301 cT4bN1cM0\u3002"),
+                AIMessage(content="\u274c **\u8bca\u65ad\u6d41\u7a0b\u5ba1\u6838\u672a\u901a\u8fc7** (Critic: REJECTED)"),
+                AIMessage(content="\U0001f4cb \u6cbb\u7597\u65b9\u6848\u5df2\u751f\u6210: \u4e34\u5e8a\u51b3\u7b56\u6458\u8981"),
+            ],
+        },
+    )
+
+    assert all(getattr(event, "type", None) != "message.done" for event in events)
+
+
+@pytest.mark.asyncio
+async def test_template_fast_retry_preserves_structured_plan_after_quality_rejection() -> None:
+    state = CRCAgentState(
+        messages=[HumanMessage(content="\u5f00\u59cb\u8bca\u65ad\u6d41\u7a0b")],
+        patient_profile=PatientProfile(
+            age=31,
+            gender="\u7537",
+            ecog_score=0,
+            pathology_confirmed=True,
+            mmr_status="pMMR (MSS)",
+            tnm_staging={"cT": "cT4b", "cN": "cN1c", "cM": "cM0"},
+        ),
+        findings={
+            "fast_pass_mode": True,
+            "pathology_confirmed": True,
+            "tumor_location": "colon",
+            "tumor_subsite": "\u4e2d",
+            "histology_type": "\u7ed3\u80a0\u764c",
+            "mmr_status": "pMMR (MSS)",
+            "tnm_staging": {"cT": "cT4b", "cN": "cN1c", "cM": "cM0", "stage_group": "III"},
+        },
+        critic_verdict="REJECTED",
+        critic_feedback='{"verdict":"APPROVED","feedback":"no_direct_references"}',
+        iteration_count=1,
+    )
+
+    result = await node_decision(model=None, tools=[], show_thinking=False)(state)
+
+    assert result["findings"]["decision_strategy"] == "template_fast"
+    assert result["decision_json"]["summary"] != "\u4e34\u5e8a\u51b3\u7b56\u6458\u8981"
+    assert len(result["decision_json"]["treatment_plan"]) >= 5
 
 
 def test_rejected_critic_snapshot_marks_human_review_required() -> None:
@@ -120,7 +229,7 @@ def test_rejected_critic_snapshot_marks_human_review_required() -> None:
     assert snapshot.critic["requires_human_review"] is True
 
 
-def test_final_response_starts_with_human_review_warning_when_critic_rejects() -> None:
+def test_final_response_renders_concise_quality_notice_when_critic_rejects() -> None:
     text = _format_final_response(
         decision={
             "summary": "Synthetic rectal cancer case.",
@@ -138,8 +247,40 @@ def test_final_response_starts_with_human_review_warning_when_critic_rejects() -
         evaluation_report={"verdict": "PASS"},
     )
 
-    assert text.startswith("> [!WARNING]\n> HUMAN_REVIEW_REQUIRED")
-    assert "missing citation support" in text.splitlines()[1]
+    assert text.startswith("# 🏥 临床治疗建议")
+    assert "### 质控提示" in text
+    assert "需人工复核" in text
+    assert "missing citation support" in text
+
+
+def test_final_response_extracts_critic_json_feedback_and_does_not_show_raw_payload() -> None:
+    raw_feedback = (
+        '<think>{"verdict":"REJECTED","feedback":"wrong"}</think>\n'
+        '{"verdict":"APPROVED","feedback":"需要补充 MMR/MSI 检测。"}'
+    )
+
+    text = _format_final_response(
+        decision={
+            "summary": "患者为结肠癌，当前临床分期支持 cT4bN1cM0。",
+            "treatment_plan": [
+                {"title": "手术方案", "content": "推荐结肠癌根治术。"},
+            ],
+            "follow_up": ["术后复查 CEA。"],
+        },
+        verdict="REJECTED",
+        feedback=raw_feedback,
+        references=[],
+        citation_report={"coverage_score": 65, "missing_claims": ["no_direct_references"], "needs_more_sources": True},
+        evaluation_report={"verdict": "FAIL", "feedback": "no_direct_references"},
+    )
+
+    assert "需要补充 MMR/MSI 检测。" not in text
+    assert "HUMAN_REVIEW_REQUIRED" not in text
+    assert '"verdict"' not in text
+    assert "<think>" not in text
+    assert "### 质控提示" in text
+    assert "引用依据不足" in text
+    assert "LLM-Judge" not in text
 
 
 def test_finalize_emits_panel_data_and_human_review_flag_for_rejected_decision() -> None:

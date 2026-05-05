@@ -1,4 +1,5 @@
 import type { FrontendMessage } from "../../app/api/types";
+import type { ReactNode } from "react";
 import { Button, Card, MessageBubble, Textarea } from "../../components/ui";
 import { cardTitle, renderCardContent, type CardPromptHandler } from "../cards/card-renderers-extended";
 
@@ -33,6 +34,9 @@ const INTERNAL_LINE_PATTERNS = [
   /^\s*\[Router\].*$/gm,
   /^\s*\[Intent\].*$/gm,
   /^\s*\[Planner\].*$/gm,
+  /^\s*\[Decision\].*$/gm,
+  /^\s*(?:\u2705|\u274c)\s*\*\*\u8bca\u65ad\u6d41\u7a0b\u5ba1\u6838.*$/gm,
+  /^\s*\ud83d\udccb\s*\u6cbb\u7597\u65b9\u6848\u5df2\u751f\u6210:.*$/gm,
 ];
 
 function executionStatusLabel(statusNode: string | null, isStreaming: boolean): string {
@@ -86,7 +90,7 @@ function normalizeMessageText(content: unknown): { text: string } {
     }
   }
 
-  return { text: trimmed };
+  return { text: stripLegacyClinicalReportNoise(trimmed) };
 }
 
 function shouldHideInlineMessageText(text: string, message: FrontendMessage): boolean {
@@ -94,6 +98,104 @@ function shouldHideInlineMessageText(text: string, message: FrontendMessage): bo
     return false;
   }
   return !text;
+}
+
+function stripLegacyClinicalReportNoise(text: string): string {
+  if (!text.includes("临床治疗建议")) {
+    return text;
+  }
+
+  return text
+    .replace(/^>\s*\[!WARNING\][\s\S]*?(?=^#\s*.*临床治疗建议)/m, "")
+    .replace(/^\s*\{[\s\S]*?"verdict"[\s\S]*?"feedback"[\s\S]*?\}\s*(?=^#\s*.*临床治疗建议)/m, "")
+    .replace(/\n>\s*\*审核意见:[\s\S]*?(?=\n={10,}|\n#|\n###|$)/g, "")
+    .replace(/\n={10,}[\s\S]*$/m, "")
+    .trim();
+}
+
+function plainInlineMarkdown(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .trim();
+}
+
+function isClinicalReportText(text: string): boolean {
+  return /(^|\n)\s*#\s*.*临床治疗建议/.test(text);
+}
+
+function flushList(nodes: ReactNode[], listItems: string[], key: string) {
+  if (listItems.length === 0) {
+    return;
+  }
+  nodes.push(
+    <ul key={key} className="clinical-report-list">
+      {listItems.map((item, index) => (
+        <li key={`${key}-${index}`}>{plainInlineMarkdown(item)}</li>
+      ))}
+    </ul>,
+  );
+  listItems.length = 0;
+}
+
+function renderClinicalReport(text: string): ReactNode {
+  const nodes: ReactNode[] = [];
+  const listItems: string[] = [];
+
+  for (const [index, rawLine] of text.split("\n").entries()) {
+    const line = rawLine.trim();
+    if (!line) {
+      flushList(nodes, listItems, `list-${index}`);
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,6})\s*(.+)$/);
+    if (heading) {
+      flushList(nodes, listItems, `list-${index}`);
+      const level = heading[1].length;
+      const title = plainInlineMarkdown(heading[2]);
+      if (level <= 1) {
+        nodes.push(<h3 key={`heading-${index}`} className="clinical-report-title">{title}</h3>);
+      } else {
+        nodes.push(<h4 key={`heading-${index}`} className="clinical-report-section-title">{title}</h4>);
+      }
+      continue;
+    }
+
+    if (line.startsWith("- ")) {
+      listItems.push(line.slice(2).trim());
+      continue;
+    }
+
+    flushList(nodes, listItems, `list-${index}`);
+    const labeled = line.match(/^\*\*(.+?)\*\*:?\s*(.*)$/);
+    if (labeled) {
+      nodes.push(
+        <p key={`paragraph-${index}`} className="clinical-report-summary">
+          <strong>{plainInlineMarkdown(labeled[1])}</strong>
+          {labeled[2] ? <span>{plainInlineMarkdown(labeled[2])}</span> : null}
+        </p>,
+      );
+      continue;
+    }
+
+    nodes.push(
+      <p key={`paragraph-${index}`} className="clinical-report-paragraph">
+        {plainInlineMarkdown(line)}
+      </p>,
+    );
+  }
+
+  flushList(nodes, listItems, "list-final");
+
+  return <div className="clinical-report-content">{nodes}</div>;
+}
+
+function renderMessageText(text: string) {
+  if (isClinicalReportText(text)) {
+    return renderClinicalReport(text);
+  }
+  return <div className="clinical-message-text">{text}</div>;
 }
 
 function renderMessageContent(text: string, thinkText?: string) {
@@ -105,7 +207,7 @@ function renderMessageContent(text: string, thinkText?: string) {
           <div>{thinkText}</div>
         </details>
       ) : null}
-      {text ? <div className="clinical-message-text">{text}</div> : null}
+      {text ? renderMessageText(text) : null}
     </>
   );
 }

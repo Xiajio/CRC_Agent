@@ -36,9 +36,11 @@ INTERNAL_MESSAGE_PREFIXES = (
     "[Intent]",
     "[Planner]",
     "[General Chat]",
+    "[Decision]",
     "[Staging Router]",
     "审核:",
     "✅",
+    "❌ **诊断流程审核",
     "[Critic]",
     "[Layered Summary]",
     "**知识检索完成**",
@@ -219,6 +221,10 @@ def _is_internal_ai_message(message: BaseMessage) -> bool:
     if content.startswith("[") and "Result]" in content:
         return True
     if content.startswith("[") and "Skipped]" in content:
+        return True
+    if "\u8bca\u65ad\u6d41\u7a0b\u5ba1\u6838" in content and "Critic:" in content:
+        return True
+    if content.startswith("\U0001f4cb \u6cbb\u7597\u65b9\u6848\u5df2\u751f\u6210:"):
         return True
     if "Agent is thinking" in content:
         return True

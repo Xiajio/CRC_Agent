@@ -44,6 +44,8 @@ from .node_utils import (
     _build_pinned_context,
     _build_summary_memory,
     _latest_user_text,
+    _clean_and_validate_json,
+    _extract_first_json_object,
 )
 from .sub_agent import run_isolated_rag_search
 
@@ -191,6 +193,71 @@ def _sanitize_section_content(content: Any) -> str:
     cleaned_lines = [line for line in lines if line]
     cleaned = "\n".join(cleaned_lines).strip()
     return cleaned or "待补充。"
+
+
+_CRITIC_VERDICTS = {"APPROVED", "REJECTED", "APPROVED_WITH_WARNINGS"}
+
+
+def _critic_payload_from_feedback(feedback: Any) -> dict[str, Any] | None:
+    text = _clean_decision_raw_text(_decision_value_to_text(feedback))
+    if not text:
+        return None
+    parsed = _clean_and_validate_json(text)
+    if parsed is None:
+        parsed = _extract_first_json_object(text)
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _normalize_critic_review(verdict: Any, feedback: Any) -> tuple[str, str]:
+    normalized_verdict = str(verdict or "").strip().upper()
+    payload = _critic_payload_from_feedback(feedback)
+    feedback_value = feedback
+
+    if payload is not None:
+        payload_verdict = str(payload.get("verdict") or "").strip().upper()
+        if payload_verdict in _CRITIC_VERDICTS:
+            normalized_verdict = payload_verdict
+        if payload.get("feedback") not in (None, "", [], {}):
+            feedback_value = payload.get("feedback")
+
+    if normalized_verdict not in _CRITIC_VERDICTS:
+        normalized_verdict = "APPROVED" if not normalized_verdict else normalized_verdict
+
+    cleaned_feedback = _sanitize_section_content(feedback_value)
+    if cleaned_feedback == "待补充。":
+        cleaned_feedback = ""
+    return normalized_verdict, cleaned_feedback
+
+
+def _template_retry_allowed_after_critic(state: CRCAgentState) -> bool:
+    raw_verdict = getattr(state, "critic_verdict", None)
+    if not _requires_human_review_from_verdict(raw_verdict):
+        return True
+
+    normalized_verdict, critic_feedback = _normalize_critic_review(
+        raw_verdict,
+        getattr(state, "critic_feedback", None),
+    )
+    if not _requires_human_review_from_verdict(normalized_verdict):
+        return True
+
+    feedback_text = str(critic_feedback or "")
+    feedback_lower = feedback_text.lower()
+    quality_tokens = (
+        "citation",
+        "citations",
+        "reference",
+        "references",
+        "source",
+        "sources",
+        "coverage",
+        "no_direct_references",
+        "\u5f15\u7528",
+        "\u8bc1\u636e",
+        "\u6765\u6e90",
+        "\u6587\u732e",
+    )
+    return any(token in feedback_lower or token in feedback_text for token in quality_tokens)
 
 
 _ANCHOR_PATTERN = re.compile(r"\[\[Source:(?P<source>[^|\]]+)\|Page:(?P<page>\d+)\]\]")
@@ -1426,7 +1493,7 @@ def _build_fast_queries_v2(state: CRCAgentState) -> List[str]:
 def _should_use_template_decision_v2(state: CRCAgentState) -> bool:
     if os.getenv("DECISION_FAST_TEMPLATE", "true").strip().lower() in {"0", "false", "no"}:
         return False
-    if _requires_human_review_from_verdict(getattr(state, "critic_verdict", None)):
+    if not _template_retry_allowed_after_critic(state):
         return False
     findings = state.findings or {}
     if not bool(findings.get("pathology_confirmed")):
@@ -2577,7 +2644,8 @@ def _fallback_finalize_roadmap(requires_human_review: bool) -> list[dict[str, An
 
 def node_finalize(model=None, streaming: bool = False, show_thinking: bool = True) -> Runnable:
     def _run(state: CRCAgentState):
-        requires_human_review = _requires_human_review_from_verdict(state.critic_verdict)
+        normalized_verdict, _ = _normalize_critic_review(state.critic_verdict, state.critic_feedback)
+        requires_human_review = _requires_human_review_from_verdict(normalized_verdict)
         text = _format_final_response(
             decision=state.decision_json,
             verdict=state.critic_verdict,
@@ -2609,18 +2677,11 @@ def _format_final_response(
     if not decision: return "无法生成方案。"
 
     normalized_references = _dedupe_references(references or [])
-    requires_human_review = _requires_human_review_from_verdict(verdict)
+    normalized_verdict, critic_feedback = _normalize_critic_review(verdict, feedback)
+    requires_human_review = _requires_human_review_from_verdict(normalized_verdict)
 
     # 适配新的 List 结构
     parts = ["# 🏥 临床治疗建议\n"]
-    if requires_human_review:
-        warning = feedback or "Critic did not approve this recommendation."
-        parts = [
-            "> [!WARNING]",
-            f"> HUMAN_REVIEW_REQUIRED: Critic verdict {verdict or 'UNKNOWN'}; {warning}",
-            "",
-            *parts,
-        ]
     plans = decision.get("treatment_plan", [])
     raw_summary = decision.get("summary", "")
     summary = _sanitize_section_content(raw_summary)
@@ -2643,9 +2704,13 @@ def _format_final_response(
         follow_up_items = _coerce_follow_up_items(decision["follow_up"])
         if follow_up_items:
             parts.append("### 📅 随访\n" + "\n".join([f"- {item}" for item in follow_up_items]))
-        
-    if verdict != "APPROVED":
-        parts.append(f"\n> *审核意见: {feedback}*")
+
+    quality_notes: list[str] = []
+    if requires_human_review:
+        note = f"需人工复核：Critic {normalized_verdict}。"
+        if critic_feedback:
+            note += f" {critic_feedback}"
+        quality_notes.append(note)
 
     rendered_body = "\n".join(parts)
     
@@ -2676,30 +2741,27 @@ def _format_final_response(
         elif not isinstance(needs_more, bool):
             needs_more = bool(needs_more)
         if needs_more or (missing and coverage < 60):
-            parts.append("\n" + "=" * 50)
-            parts.append("🧾 **引用覆盖提示**")
-            parts.append(f"- 覆盖评分: {coverage}")
+            note = f"引用依据不足：覆盖评分 {coverage}。"
             if missing:
-                parts.append("- 可能缺少引用的结论：")
-                parts.extend([f"  - {m}" for m in missing])
+                note += " 可能缺少引用的结论：" + "、".join(str(item) for item in missing[:3])
+            quality_notes.append(note)
 
     # [新增] 评估提示（仅当存在风险时展示）
     if evaluation_report:
-        parts.append("\n" + "=" * 50)
-        parts.append("🧪 **自动质量评估 (LLM-Judge Validator)**")
         fa = evaluation_report.get("factual_accuracy", "?")
         ca = evaluation_report.get("citation_accuracy", "?")
         comp = evaluation_report.get("completeness", "?")
         safety = evaluation_report.get("safety", "?")
         v = str(evaluation_report.get("verdict", "PASS")).upper()
         fb = evaluation_report.get("feedback", "")
+        if v != "PASS":
+            note = f"自动质量评估未通过：事实 {fa}/5，引用 {ca}/5，完整性 {comp}/5，安全性 {safety}/5。"
+            if fb:
+                note += f" {fb}"
+            quality_notes.append(note)
 
-        parts.append(f"- 事实正确性: {fa}/5")
-        parts.append(f"- 引用准确性: {ca}/5")
-        parts.append(f"- 完整性: {comp}/5")
-        parts.append(f"- 安全性: {safety}/5")
-        parts.append(f"- 总体结论: {v}")
-        if fb:
-            parts.append(f"- 评估说明: {fb}")
+    if quality_notes:
+        parts.append("\n### 质控提示")
+        parts.extend([f"- {item}" for item in quality_notes])
         
     return "\n".join(parts)

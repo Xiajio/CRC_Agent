@@ -77,6 +77,31 @@ def _find_tool_by_name(tools: List[BaseTool], tool_name: str) -> Optional[BaseTo
     return None
 
 
+def _extract_patient_id(user_text: str) -> Optional[str]:
+    match = re.search(r"(?<!\d)(\d{1,3})(?!\d)", user_text or "")
+    if match:
+        return match.group(1).zfill(3)
+    return None
+
+
+def _resolve_case_database_patient_id(state: CRCAgentState, user_text: str | None = None) -> str | None:
+    findings = state.findings or {}
+    extracted = _extract_patient_id(user_text or "") if user_text else None
+    candidate = (
+        extracted
+        or getattr(state, "case_database_patient_id", None)
+        or findings.get("case_database_patient_id")
+        or getattr(state, "current_patient_id", None)
+        or findings.get("current_patient_id")
+    )
+    if candidate is None:
+        return None
+    text = str(candidate).strip()
+    if not text:
+        return None
+    return text.zfill(3) if text.isdigit() else text
+
+
 def node_rad_agent(tools: List[BaseTool], model, streaming: bool = False, show_thinking: bool = True) -> Runnable:
     """
     影像医生智能体节点（完整版 v2.0）
@@ -142,15 +167,15 @@ def node_rad_agent(tools: List[BaseTool], model, streaming: bool = False, show_t
         
         # === 步骤1：提取患者ID ===
         # 简化实现：从用户输入或 state 中提取患者ID
-        patient_id = state.current_patient_id
+        patient_id = _resolve_case_database_patient_id(state, user_text)
         
-        # 尝试从用户输入中提取数字（如 "093号"、"患者93"、"93号病人"）
+        # 尝试从用户输入中提取数字（如 "<case_id>号"、"患者<case_id>"、"<case_id>号病人"）
         if not patient_id:
             # 使用多种模式匹配中文上下文中的患者ID
-            # 模式1: "93号" 或 "093号" 格式
+            # 模式1: "<case_id>号" 或 "<case_id>号" 格式
             match = re.search(r'(\d{1,3})号', user_text)
             if not match:
-                # 模式2: "患者93" 或 "病人93" 格式
+                # 模式2: "患者<case_id>" 或 "病人<case_id>" 格式
                 match = re.search(r'(?:患者|病人|编号)\s*(\d{1,3})', user_text)
             if not match:
                 # 模式3: 通用数字匹配（1-3位数字，不在其他数字中间）
@@ -166,8 +191,8 @@ def node_rad_agent(tools: List[BaseTool], model, streaming: bool = False, show_t
             error_msg = (
                 "抱歉，我需要知道具体的患者编号才能进行影像分析。\n"
                 "请提供患者编号，例如：\n"
-                "- '请分析093号患者的CT影像'\n"
-                "- '帮我检测93号患者的肿瘤'"
+                "- '请分析<case_id>号患者的CT影像'\n"
+                "- '帮我检测<case_id>号患者的肿瘤'"
             )
             return _finalize_return({
                 "messages": [AIMessage(content=error_msg)],
@@ -434,7 +459,7 @@ def node_rad_agent(tools: List[BaseTool], model, streaming: bool = False, show_t
                 message_kwargs["additional_kwargs"] = {"radiomics_report_card": radiomics_report_card}
 
             # 构建findings
-            findings = {"has_tumor_imaging": has_tumor}
+            findings = {"has_tumor_imaging": has_tumor, "case_database_patient_id": patient_id}
             if radiomics_report_card:
                 findings["radiology_report"] = existing_radiology_report
                 findings["radiomics_report_card"] = radiomics_report_card
@@ -442,7 +467,7 @@ def node_rad_agent(tools: List[BaseTool], model, streaming: bool = False, show_t
             return _finalize_return({
                 "messages": [AIMessage(**message_kwargs)],
                 "findings": findings,
-                "current_patient_id": patient_id,
+                "case_database_patient_id": patient_id,
                 "clinical_stage": "RadiologyAnalysis_Completed",
                 "error": None
             })
@@ -615,9 +640,10 @@ def _run_detection_analysis(state, patient_id, tools, show_thinking, _finalize_r
         "findings": {
             "radiology_report": radiology_report,
             "has_tumor_imaging": has_tumor,
+            "case_database_patient_id": patient_id,
             "tumor_detection_card": tumor_detection_card  # 同时保存到 findings 中
         },
-        "current_patient_id": patient_id,
+        "case_database_patient_id": patient_id,
         "clinical_stage": "RadiologyAnalysis_Completed",
         "error": None
     })
@@ -782,10 +808,11 @@ def _run_segmentation_analysis(state, patient_id, tools, show_thinking, _finaliz
         "findings": {
             "radiology_report": radiology_report,
             "has_tumor_imaging": has_tumor,
+            "case_database_patient_id": patient_id,
             "segmentation_mask_path": seg_result.get("mask_path"),
             "tumor_detection_card": tumor_detection_card
         },
-        "current_patient_id": patient_id,
+        "case_database_patient_id": patient_id,
         "clinical_stage": "RadiologyAnalysis_Completed",
         "error": None
     })
@@ -1007,9 +1034,10 @@ def _run_comprehensive_analysis(state, patient_id, tools, show_thinking, _finali
             "findings": {
                 "radiology_report": radiology_report,
                 "has_tumor_imaging": False,
+                "case_database_patient_id": patient_id,
                 "tumor_detection_card": tumor_detection_card
             },
-            "current_patient_id": patient_id,
+            "case_database_patient_id": patient_id,
             "clinical_stage": "RadiologyAnalysis_Completed",
             "error": None
         })
@@ -1144,10 +1172,11 @@ def _run_comprehensive_analysis(state, patient_id, tools, show_thinking, _finali
         "findings": {
             "radiology_report": radiology_report,
             "has_tumor_imaging": result.get('images_with_tumor', 0) > 0,
+            "case_database_patient_id": patient_id,
             "radiomics_features": sorted_features,
             "radiomics_report_card": radiomics_report_card  # 同时保存到 findings
         },
-        "current_patient_id": patient_id,
+        "case_database_patient_id": patient_id,
         "clinical_stage": "RadiologyAnalysis_Completed",
         "error": None
     })

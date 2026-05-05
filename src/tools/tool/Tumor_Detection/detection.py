@@ -1,7 +1,13 @@
+import argparse
 import os
 import shutil
+from pathlib import Path
+
 from ultralytics import YOLO
 import cv2
+
+DEFAULT_MODEL_PATH = Path(__file__).with_name("best.pt")
+
 
 def screen_images(
     input_dir: str,
@@ -94,12 +100,45 @@ def screen_images(
     print(f"Images without tumors (filtered out): {images_without_tumor}")
     print(f"Filtered images are saved in: {output_dir}")
 
-def main():
-    # Configuration
-    input_directory = r'J:\NAC_POST_PNG'
-    output_directory = r'J:\NAC_POST_PNG_Filter'
-    model_file_path = r'E:\LangG\src\tools\tool\Tumor_Detection\best.pt'  # Update this path if different
-    confidence_thresh = 0.60  # Adjust based on desired sensitivity
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Screen CT image folders with a trained tumor-detection model."
+    )
+    parser.add_argument(
+        "--input-dir",
+        required=True,
+        help="Directory containing source PNG images.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory where images with detections will be copied.",
+    )
+    parser.add_argument(
+        "--model-path",
+        default=str(DEFAULT_MODEL_PATH),
+        help="Path to the trained YOLO model file. Defaults to best.pt beside this script.",
+    )
+    parser.add_argument(
+        "--confidence-threshold",
+        type=float,
+        default=0.60,
+        help="Minimum confidence score required to keep an image.",
+    )
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    return build_arg_parser().parse_args(argv)
+
+
+def main(argv: list[str] | None = None):
+    args = parse_args(argv)
+    input_directory = args.input_dir
+    output_directory = args.output_dir
+    model_file_path = args.model_path
+    confidence_thresh = args.confidence_threshold
 
     # Ensure input directory exists
     if not os.path.exists(input_directory):

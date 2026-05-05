@@ -37,12 +37,12 @@ DATABASE_QUERY_SYSTEM_PROMPT = """
 - "分析影像"
 
 【调用示例】
-用户: "对93号患者进行肿瘤检测" -> 调用 perform_comprehensive_tumor_check(patient_id=93)
-用户: "请对093患者的影像进行癌症筛查" -> 调用 perform_comprehensive_tumor_check(patient_id=93)
+用户: "对<case_id>号患者进行肿瘤检测" -> 调用 perform_comprehensive_tumor_check(patient_id=<case_id>)
+用户: "请对<case_id>患者的影像进行癌症筛查" -> 调用 perform_comprehensive_tumor_check(patient_id=<case_id>)
 用户: "检测该患者的CT影像" -> 调用 perform_comprehensive_tumor_check(patient_id=当前患者ID)
 
 【重要提示】
-- patient_id 是整数，如 93（不要加引号）
+- patient_id 是整数，如 <case_id>（不要加引号）
 - 如果用户没有提供 patient_id，使用当前对话中的患者ID
 - 影像查询和肿瘤检测需要患者ID才能执行
 - 如果用户说"对患者的影像进行肿瘤检测"但没有提供ID，先询问患者ID

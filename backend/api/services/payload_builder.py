@@ -12,7 +12,7 @@ from backend.api.services.session_store import SessionMeta
 CONTEXT_PAYLOAD_ALLOWLIST = {
     "fixture_case",
     "fixture_tick_delay_ms",
-    "current_patient_id",
+    "case_database_patient_id",
 }
 PATIENT_CONTEXT_REQUIRED_KEYS = {
     "patient_version",
@@ -112,9 +112,18 @@ def build_graph_payload(
         "summary_memory_cursor": _context_value(session_meta, state_snapshot, "summary_memory_cursor", 0),
     }
 
-    current_patient_id = _snapshot_value(state_snapshot, "current_patient_id")
-    if current_patient_id is not None:
-        payload["current_patient_id"] = current_patient_id
+    case_database_patient_id = _snapshot_value(state_snapshot, "case_database_patient_id")
+    legacy_current_patient_id = _snapshot_value(state_snapshot, "current_patient_id")
+    if case_database_patient_id is None and legacy_current_patient_id is not None:
+        case_database_patient_id = str(legacy_current_patient_id).zfill(3)
+    if case_database_patient_id is not None:
+        payload["case_database_patient_id"] = case_database_patient_id
+
+    registry_patient_id = _snapshot_value(state_snapshot, "registry_patient_id")
+    if registry_patient_id is None:
+        registry_patient_id = getattr(session_meta, "patient_id", None)
+    if registry_patient_id is not None:
+        payload["registry_patient_id"] = registry_patient_id
 
     if isinstance(chat_request_context, Mapping):
         for key in CONTEXT_PAYLOAD_ALLOWLIST:

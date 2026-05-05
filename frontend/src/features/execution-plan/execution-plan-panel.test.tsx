@@ -30,6 +30,27 @@ describe("ExecutionPlanPanel", () => {
     expect(screen.getByText(/No direct references are attached/)).toBeInTheDocument();
   });
 
+  it("shows readable critic feedback when the backend sends thinking-wrapped JSON", () => {
+    render(
+      <ExecutionPlanPanel
+        plan={[]}
+        references={[]}
+        critic={{
+          verdict: "APPROVED",
+          feedback: [
+            "<think>The critic considered the treatment plan.</think>",
+            '{"verdict":"APPROVED","feedback":"需要补充 MMR/MSI 检测。"}',
+          ].join("\n"),
+          requires_human_review: true,
+        }}
+      />,
+    );
+
+    expect(screen.getByText("需要补充 MMR/MSI 检测。")).toBeInTheDocument();
+    expect(screen.queryByText(/The critic considered/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/<think>/)).not.toBeInTheDocument();
+  });
+
   it("renders provided plan steps and references", () => {
     render(
       <ExecutionPlanPanel

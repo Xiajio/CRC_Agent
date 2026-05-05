@@ -27,11 +27,18 @@ import os
 import re
 import threading
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field, field_validator
+
+RECENT_SOURCE_MAX_AGE_YEARS = 2
+
+
+def _current_year() -> int:
+    return date.today().year
 
 
 # ================= 全局单例管理 =================
@@ -970,11 +977,12 @@ class DeepResearchService(WebSearchService):
             missing.append("核心期刊研究文献")
         
         # 检查年份覆盖
-        years = [s.year for s in sources if s.year != "未知"]
+        years = [int(s.year) for s in sources if str(s.year).isdigit()]
         if years:
-            max_year = max(int(y) for y in years if y.isdigit())
-            if max_year < 2023:
-                missing.append(f"近 {2025 - max_year} 年的最新资料")
+            max_year = max(years)
+            current_year = _current_year()
+            if max_year < current_year - RECENT_SOURCE_MAX_AGE_YEARS:
+                missing.append(f"近 {current_year - max_year} 年的最新资料")
         
         return missing
     

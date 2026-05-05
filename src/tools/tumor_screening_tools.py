@@ -16,6 +16,8 @@ from langchain_core.tools import tool, StructuredTool
 from langchain_core.messages import ToolMessage
 from pydantic import BaseModel, Field
 
+from ..services.virtual_database_service import RADIOGRAPHIC_IMAGING_DIR
+
 # 注意：ultralytics 和 cv2 使用延迟导入
 # 这样即使这些包没安装，智能体也能启动，只是不能使用肿瘤筛选功能
 
@@ -541,13 +543,13 @@ def perform_comprehensive_tumor_check(patient_id: str) -> Dict:
     高级聚合工具：输入患者ID，自动执行完整的肿瘤检测流程
     
     功能说明：
-    - 输入患者ID（如 "93" 或 "093"）
+    - 输入患者ID（如 "<case_id>"）
     - 自动查找对应的影像文件夹
     - 遍历所有CT切片进行肿瘤检测
     - 返回汇总的检测报告
     
     输入参数：
-    - patient_id: 患者编号，可以是数字字符串（如 "93"）或整数
+    - patient_id: 患者编号，可以是病例编号字符串（如 "<case_id>"）或整数
     
     输出说明：
     返回包含以下信息的字典：
@@ -563,8 +565,7 @@ def perform_comprehensive_tumor_check(patient_id: str) -> Dict:
     - error: 如果失败，包含错误信息
     
     使用示例：
-    - perform_comprehensive_tumor_check(patient_id="93")
-    - perform_comprehensive_tumor_check(patient_id="001")
+    - perform_comprehensive_tumor_check(patient_id="<case_id>")
     
     适用场景：
     - 肿瘤检测/癌症筛查请求
@@ -592,8 +593,7 @@ def perform_comprehensive_tumor_check(patient_id: str) -> Dict:
         }
     
     # 构建影像文件夹路径
-    base_path = Path(r"E:/LangG/data/Case Database/Radiographic Imaging")
-    target_folder = base_path / folder_name
+    target_folder = RADIOGRAPHIC_IMAGING_DIR / folder_name
     
     # 检查文件夹是否存在
     if not target_folder.exists():
@@ -734,7 +734,7 @@ class PerformTumorCheckInput(BaseModel):
     """perform_comprehensive_tumor_check 的输入参数"""
     patient_id: str = Field(
         ...,
-        description="患者编号，可以是数字字符串（如 '93'）或整数"
+        description="患者编号，可以是病例编号字符串（如 '<case_id>'）或整数"
     )
 
 def _execute_tumor_check(patient_id: str) -> Dict:

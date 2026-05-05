@@ -551,6 +551,8 @@ class CRCAgentState(BaseModel):
     # --- 6. Current Active Patient Context ---
     # 用于追踪当前对话中关注的患者ID，让 Router 知道"这个患者"指的是谁
     # 使用 str 类型以保留 "093" 这种前导零格式，与 Router 代码和 API 调用中的字符串格式保持一致
+    case_database_patient_id: Optional[str] = None
+    registry_patient_id: Optional[int] = None
     current_patient_id: Optional[str] = None
 
     # --- 6.1 Encounter Track / Triage Context ---

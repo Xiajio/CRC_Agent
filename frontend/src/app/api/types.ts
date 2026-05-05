@@ -212,6 +212,8 @@ export interface RecoverySnapshot {
   patient_identity?: PatientIdentitySnapshot | null;
   stage: string | null;
   assessment_draft: unknown;
+  case_database_patient_id?: string | null;
+  registry_patient_id?: number | null;
   current_patient_id: string | number | null;
   references: JsonObject[];
   plan: JsonObject[];
@@ -551,6 +553,8 @@ export interface SessionState {
   critic: JsonObject | null;
   safetyAlert: SafetyAlertState | null;
   assessmentDraft: unknown;
+  caseDatabasePatientId: string | null;
+  registryPatientId: number | null;
   currentPatientId: string | number | null;
   uploadedAssets: Record<string, unknown>;
   contextMaintenance: ContextMaintenanceState | null;

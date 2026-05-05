@@ -185,8 +185,8 @@ def unet_segmentation_tool(
     
     使用示例：
     - unet_segmentation_tool(image_path="/path/to/ct_image.png")
-    - unet_segmentation_tool(image_path="/data/093/slice_10.png", confidence_threshold=0.6)
-    - unet_segmentation_tool(image_path="/data/093/slice_10.png", use_timestamp=True)
+    - unet_segmentation_tool(image_path="/data/<case_folder>/slice_10.png", confidence_threshold=0.6)
+    - unet_segmentation_tool(image_path="/data/<case_folder>/slice_10.png", use_timestamp=True)
     
     注意事项：
     - 需要预先训练好的 U-Net 模型文件
@@ -701,17 +701,17 @@ def comprehensive_radiomics_analysis(
     - 所有分析结果直接保存在 radiomics_analysis 目录下，不再为每张图像创建子目录
     
     使用示例：
-    - comprehensive_radiomics_analysis(input_path="/data/patient_093/")  # 分析整个目录
+    - comprehensive_radiomics_analysis(input_path="/data/patient_<case_id>/")  # 分析整个目录
     - comprehensive_radiomics_analysis(input_path="/data/ct.png")  # 分析单张图像
-    - comprehensive_radiomics_analysis(input_path="/data/patient_093/", skip_yolo_screening=True)
-    - comprehensive_radiomics_analysis(input_path="/data/patient_093/", clean_output_dir=True)  # 清理旧文件后分析
+    - comprehensive_radiomics_analysis(input_path="/data/patient_<case_id>/", skip_yolo_screening=True)
+    - comprehensive_radiomics_analysis(input_path="/data/patient_<case_id>/", clean_output_dir=True)  # 清理旧文件后分析
     
     重复处理示例：
-    # 第一次处理：生成结果到 /data/patient_093/radiomics_analysis/
-    comprehensive_radiomics_analysis(input_path="/data/patient_093/")
+    # 第一次处理：生成结果到 /data/patient_<case_id>/radiomics_analysis/
+    comprehensive_radiomics_analysis(input_path="/data/patient_<case_id>/")
     
     # 第二次处理：自动覆盖旧结果，不会重复处理 radiomics_analysis 目录中的文件
-    comprehensive_radiomics_analysis(input_path="/data/patient_093/")
+    comprehensive_radiomics_analysis(input_path="/data/patient_<case_id>/")
     
     注意事项：
     - 完整流程耗时较长（约30-60秒/图像）

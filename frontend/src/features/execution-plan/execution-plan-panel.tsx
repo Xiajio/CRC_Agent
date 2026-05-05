@@ -1,4 +1,5 @@
 import type { JsonObject } from "../../app/api/types";
+import { formatCriticFeedback } from "../../app/clinical/critic-feedback";
 import { Card } from "../../components/ui";
 
 type ExecutionPlanPanelProps = {
@@ -96,9 +97,7 @@ function criticRequiresHumanReview(critic: JsonObject | null | undefined): boole
 }
 
 function criticFeedback(critic: JsonObject | null | undefined): string {
-  return typeof critic?.feedback === "string" && critic.feedback.trim()
-    ? critic.feedback
-    : "Critic did not approve this recommendation.";
+  return formatCriticFeedback(critic?.feedback);
 }
 
 export function ExecutionPlanPanel({ plan, references, critic = null }: ExecutionPlanPanelProps) {
@@ -115,8 +114,11 @@ export function ExecutionPlanPanel({ plan, references, critic = null }: Executio
         </div>
         {requiresHumanReview ? (
           <div className="clinical-review-warning" role="status">
-            <strong>HUMAN_REVIEW_REQUIRED</strong>
-            <p>{criticFeedback(critic)}</p>
+            <div className="clinical-review-warning-head">
+              <strong>HUMAN_REVIEW_REQUIRED</strong>
+              {typeof critic?.verdict === "string" ? <span>{critic.verdict}</span> : null}
+            </div>
+            <p className="clinical-review-feedback">{criticFeedback(critic)}</p>
           </div>
         ) : null}
         {visiblePlan.length > 0 ? (

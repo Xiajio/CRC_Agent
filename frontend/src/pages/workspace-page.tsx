@@ -368,7 +368,7 @@ export function WorkspacePage() {
   const activeController = activeScene === "patient" ? patient : doctor;
   const activeSessionState = activeController.state;
   const setActiveSessionState = activeController.setState;
-  const doctorPatientId = readFiniteNumber(doctor.state.currentPatientId);
+  const registryPatientId = readFiniteNumber(doctor.state.registryPatientId);
   const { encounterTrack: patientEncounterTrack, activeInquiry: patientActiveInquiry } =
     triageVisibilityContext(patient.state.findings);
   const activePatientTriageQuestionId = patientActiveInquiry
@@ -377,7 +377,7 @@ export function WorkspacePage() {
 
   const patientRegistry = usePatientRegistry({
     enabled: activeScene === "doctor",
-    currentPatientId: doctorPatientId,
+    registryPatientId,
   });
 
   const registryBrowser = useRegistryBrowser({
@@ -970,7 +970,8 @@ export function WorkspacePage() {
       <DoctorSceneShell
         toolbar={topNavActions}
         onSwitchScene={() => handleSceneSwitch("patient")}
-        currentPatientId={doctorPatientId}
+        registryPatientId={registryPatientId}
+        caseDatabasePatientId={doctor.state.caseDatabasePatientId}
         patientRegistry={patientRegistry}
         databaseWorkbench={databaseWorkbench}
         registryBrowser={registryBrowser}

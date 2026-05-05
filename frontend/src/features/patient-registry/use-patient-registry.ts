@@ -19,8 +19,8 @@ function readErrorMessage(error: unknown): string {
   return "Patient registry request failed.";
 }
 
-export function usePatientRegistry(options: { enabled: boolean; currentPatientId: number | null }) {
-  const { enabled, currentPatientId } = options;
+export function usePatientRegistry(options: { enabled: boolean; registryPatientId: number | null }) {
+  const { enabled, registryPatientId } = options;
   const apiClient = useApiClient();
   const [boundPatientDetail, setBoundPatientDetail] = useState<PatientRegistryDetail | null>(null);
   const [boundPatientRecords, setBoundPatientRecords] = useState<PatientRegistryRecord[]>([]);
@@ -29,6 +29,7 @@ export function usePatientRegistry(options: { enabled: boolean; currentPatientId
   const [isBindingPatient, setIsBindingPatient] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadRequestIdRef = useRef(0);
+  const missingRegistryIdRef = useRef<number | null>(null);
 
   async function loadBoundPatient(patientId: number) {
     const requestId = loadRequestIdRef.current + 1;
@@ -44,12 +45,16 @@ export function usePatientRegistry(options: { enabled: boolean; currentPatientId
       if (loadRequestIdRef.current !== requestId) {
         return;
       }
+      missingRegistryIdRef.current = null;
       setBoundPatientDetail(detailResponse);
       setBoundPatientRecords(recordsResponse.items);
       setBoundPatientAlerts(alertsResponse.items);
     } catch (error) {
       if (loadRequestIdRef.current !== requestId) {
         return;
+      }
+      if (error instanceof ApiClientError && error.status === 404) {
+        missingRegistryIdRef.current = patientId;
       }
       setError(readErrorMessage(error));
     } finally {
@@ -80,19 +85,23 @@ export function usePatientRegistry(options: { enabled: boolean; currentPatientId
       setIsLoadingBoundPatient(false);
       return;
     }
-    if (currentPatientId === null) {
+    if (registryPatientId === null) {
       loadRequestIdRef.current += 1;
+      missingRegistryIdRef.current = null;
       setBoundPatientDetail(null);
       setBoundPatientRecords([]);
       setBoundPatientAlerts([]);
       setIsLoadingBoundPatient(false);
       return;
     }
+    if (missingRegistryIdRef.current === registryPatientId) {
+      return;
+    }
     setBoundPatientDetail(null);
     setBoundPatientRecords([]);
     setBoundPatientAlerts([]);
-    void loadBoundPatient(currentPatientId);
-  }, [enabled, currentPatientId]);
+    void loadBoundPatient(registryPatientId);
+  }, [enabled, registryPatientId]);
 
   return {
     boundPatientDetail,

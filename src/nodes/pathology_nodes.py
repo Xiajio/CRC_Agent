@@ -60,6 +60,24 @@ def _extract_patient_id(user_text: str) -> Optional[str]:
     return None
 
 
+def _resolve_case_database_patient_id(state: CRCAgentState, user_text: str | None = None) -> str | None:
+    findings = state.findings or {}
+    extracted = _extract_patient_id(user_text or "") if user_text else None
+    candidate = (
+        extracted
+        or getattr(state, "case_database_patient_id", None)
+        or findings.get("case_database_patient_id")
+        or getattr(state, "current_patient_id", None)
+        or findings.get("current_patient_id")
+    )
+    if candidate is None:
+        return None
+    text = str(candidate).strip()
+    if not text:
+        return None
+    return text.zfill(3) if text.isdigit() else text
+
+
 def _extract_slide_path(user_text: str) -> Optional[str]:
     """从文本中提取切片文件路径"""
     ext_pattern = r"(?:svs|tif|tiff|ndpi|mrxs|vms|vmu)"
@@ -164,13 +182,13 @@ def node_pathology_agent(
 
         # --- 提取输入 ---
         slide_path = _extract_slide_path(user_text)
-        patient_id = state.current_patient_id or _extract_patient_id(user_text)
+        patient_id = _resolve_case_database_patient_id(state, user_text)
 
         if not slide_path and not patient_id:
             error_msg = (
                 "抱歉，我需要患者编号或切片文件路径才能进行病理分析。\n"
                 "请提供例如：\n"
-                "- '对93号患者进行病理分析'\n"
+                "- '对<case_id>号患者进行病理分析'\n"
                 "- '分析这张切片 E:\\\\slides\\\\sample.svs'"
             )
             return _finalize_return({
@@ -310,9 +328,10 @@ def node_pathology_agent(
                     "overall_diagnosis": result.get("overall_diagnosis"),
                     "raw_result": result,
                 },
+                "case_database_patient_id": patient_id,
                 "pathology_card": pathology_card,
             },
-            "current_patient_id": patient_id,
+            "case_database_patient_id": patient_id,
             "clinical_stage": "PathologyAnalysis_Completed",
             "error": None,
         })

@@ -6,6 +6,7 @@ import {
   type JsonObject,
   type PatientRegistryDetail,
 } from "../../app/api/types";
+import { compactClinicalEventDetail, formatCriticFeedback } from "../../app/clinical/critic-feedback";
 import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
 import { Card } from "../../components/ui";
 import { ClinicalCardsPanel } from "../cards/clinical-cards-panel";
@@ -25,7 +26,8 @@ import { useDoctorViewState, type DoctorTab } from "./use-doctor-view-state";
 type DoctorSceneShellProps = {
   toolbar: ReactNode;
   onSwitchScene?: () => void;
-  currentPatientId: number | null;
+  registryPatientId: number | null;
+  caseDatabasePatientId: string | null;
   patientRegistry: ReturnType<typeof usePatientRegistry>;
   databaseWorkbench: ReturnType<typeof useDatabaseWorkbench>;
   registryBrowser: ReturnType<typeof useRegistryBrowser>;
@@ -273,18 +275,21 @@ function ClinicalPanelHeader({
 }
 
 function ClinicalPatientSummary({
-  currentPatientId,
+  registryPatientId,
+  caseDatabasePatientId,
   detail,
   isLoading,
 }: {
-  currentPatientId: number | null;
+  registryPatientId: number | null;
+  caseDatabasePatientId: string | null;
   detail: DoctorSceneShellProps["patientRegistry"]["boundPatientDetail"];
   isLoading: boolean;
 }) {
-  const hasSummary = currentPatientId !== null || detail !== null;
+  const hasSummary = registryPatientId !== null || caseDatabasePatientId !== null || detail !== null;
   const rows = hasSummary
     ? [
-        ["患者ID:", currentPatientId ? `P-${currentPatientId}` : "暂未提供"],
+        ["Registry patient:", registryPatientId !== null ? `P-${registryPatientId}` : "Unbound"],
+        ["Case sample:", caseDatabasePatientId ?? "None"],
         ["年龄:", detail?.age ?? "暂未提供"],
         ["性别:", detail?.gender ?? "暂未提供"],
         ["肿瘤部位:", detail?.tumor_location ? tumorTypeFromDetail(detail.tumor_location) : "暂未提供"],
@@ -373,30 +378,39 @@ function ClinicalEventStream({
   critic?: JsonObject | null;
 }) {
   const requiresHumanReview = criticRequiresHumanReview(critic);
+  const reviewFeedback = formatCriticFeedback(critic?.feedback);
   return (
     <Card as="section" padding="none" className="clinical-card clinical-event-stream">
       <ClinicalPanelHeader icon={<SmallIcon name="event" />} title="事件流" />
       {requiresHumanReview ? (
         <div className="clinical-review-warning" role="status">
-          <strong>HUMAN_REVIEW_REQUIRED</strong>
-          <p>{typeof critic?.feedback === "string" ? critic.feedback : "Critic did not approve this recommendation."}</p>
+          <div className="clinical-review-warning-head">
+            <strong>HUMAN_REVIEW_REQUIRED</strong>
+            {typeof critic?.verdict === "string" ? <span>{critic.verdict}</span> : null}
+          </div>
+          <p className="clinical-review-feedback">{reviewFeedback}</p>
         </div>
       ) : null}
       {events.length > 0 ? (
         <div className="clinical-event-row">
-          {events.map((event) => (
-            <article
-              key={event.id}
-              className={`clinical-event-chip clinical-event-chip-${event.tone}`}
-            >
-              <div>
-                <strong>{event.title}</strong>
-                <span>{event.kind}</span>
-              </div>
-              {event.detail ? <p>{event.detail}</p> : null}
-              {event.requiresHumanReview ? <p>HUMAN_REVIEW_REQUIRED</p> : null}
-            </article>
-          ))}
+          {events.map((event) => {
+            const detail = event.kind === "critic"
+              ? compactClinicalEventDetail(event.detail)
+              : event.detail;
+            return (
+              <article
+                key={event.id}
+                className={`clinical-event-chip clinical-event-chip-${event.tone}`}
+              >
+                <div>
+                  <strong>{event.title}</strong>
+                  <span>{event.kind}</span>
+                </div>
+                {detail ? <p>{detail}</p> : null}
+                {event.requiresHumanReview ? <p>HUMAN_REVIEW_REQUIRED</p> : null}
+              </article>
+            );
+          })}
         </div>
       ) : (
         <p className="clinical-empty-note">暂无事件。</p>
@@ -407,7 +421,8 @@ function ClinicalEventStream({
 
 export function DoctorSceneShell({
   toolbar,
-  currentPatientId,
+  registryPatientId,
+  caseDatabasePatientId,
   patientRegistry,
   databaseWorkbench,
   registryBrowser,
@@ -486,7 +501,7 @@ export function DoctorSceneShell({
           parentToolbar={null}
           activeSource={activeDatabaseSource}
           onSourceChange={setActiveDatabaseSource}
-          currentPatientId={currentPatientId}
+          registryPatientId={registryPatientId}
           databaseWorkbench={databaseWorkbench}
           registryBrowser={registryBrowser}
           isBindingCurrentPatient={patientRegistry.isBindingPatient}
@@ -497,7 +512,9 @@ export function DoctorSceneShell({
   }
 
   const cardPatientId = patientIdFromCards(cards);
-  const summaryPatientId = currentPatientId ?? cardPatientId;
+  const summaryCaseDatabasePatientId = caseDatabasePatientId ?? (
+    cardPatientId !== null ? String(cardPatientId).padStart(3, "0") : null
+  );
   const summaryPatientDetail = patientRegistry.boundPatientDetail ?? patientDetailFromCards(cards);
   const visibleMessages = messages;
 
@@ -507,7 +524,8 @@ export function DoctorSceneShell({
       <div className="clinical-dashboard">
         <aside className="clinical-left-column">
           <ClinicalPatientSummary
-            currentPatientId={summaryPatientId}
+            registryPatientId={registryPatientId}
+            caseDatabasePatientId={summaryCaseDatabasePatientId}
             detail={summaryPatientDetail}
             isLoading={patientRegistry.isLoadingBoundPatient}
           />
@@ -551,6 +569,3 @@ export function DoctorSceneShell({
     </main>
   );
 }
-
-
-

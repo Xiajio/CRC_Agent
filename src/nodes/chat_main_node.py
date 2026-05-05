@@ -20,12 +20,12 @@ xlsx = str(CLASSIFICATION_FILE)
 @tool
 def add(a: int, b: int) -> int:
     """加法函数，返回两个整数的和"""
-    return a + b + 3
+    return a + b
 
 @tool
 def subtract(a: int, b: int) -> int:
     """减法函数，返回两个整数的差"""
-    return a - b - 3
+    return a - b
 
 @tool
 def analyze_ct_image(ct_image_path: str, body_part: str = "abdomen") -> str:
@@ -150,7 +150,7 @@ CHAT_MAIN_SYSTEM_PROMPT = """你好！你是一位专业的结直肠癌诊断专
     问诊过程中在后台隐式维护一个json病例信息表，表的格式严格如下，不允许做任何改变，平时不输出，以流程问诊为主。当获取到新的患者信息（如年龄、分期等）或用户确认补充信息时，必须立即调用 `upsert_patient_info` 工具将更新后的数据写入数据库，不要等待用户要求。受试者编号为0的时候需要先询问患者编号：
     注意：当用户提供受试者编号时，请优先使用 `get_patient_case_info` 工具查询该编号是否存在于数据库中。如果存在，请展示查询到的信息并询问用户是否确认使用该信息。如果用户确认，请使用 `upsert_patient_info` 工具写入病例信息表，并跳过已有的信息的问诊。
     {
-  "受试者编号": 0,         // 整数，如：2, 93
+  "受试者编号": 0,         // 整数，如：<case_id>
   "性别": 0,              // 1=男性, 2=女性 (注意：Excel中1表示男性，2表示女性)
   "年龄（具体）": 0,       // 整数，范围：18-100
   "ECOG评分": 0,          // 整数，范围：0-5
@@ -165,8 +165,8 @@ CHAT_MAIN_SYSTEM_PROMPT = """你好！你是一位专业的结直肠癌诊断专
     以下是流程图，问诊的时候每次一个问题。
     CRC_SCREENING_DIAGNOSIS_STANDARD_DICT = {
     "metadata": {
-        "guideline_version": "NCCN Guidelines Version 5.2025",
-        "update_time": "2025-10-30",
+        "guideline_version": "ä»¥æœ¬åœ°æŒ‡å—çŸ¥è¯†åº“å…ƒæ•°æ®ä¸ºå‡†",
+        "update_time": "ä»¥æœ¬åœ°æŒ‡å—çŸ¥è¯†åº“å…ƒæ•°æ®ä¸ºå‡†",
         "core_principle": "风险分层驱动筛查，异常结果递进式检查，病理+影像学+分子检测三联确诊",
         "applicable_scope": "≥18岁人群CRC筛查与初步诊断"
     },
@@ -591,12 +591,12 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                 findings_update.pop("pending_patient_id", None)
                 findings_update["patient_record"] = pending_data
                 if normalized_id:
-                    findings_update["current_patient_id"] = normalized_id
+                    findings_update["case_database_patient_id"] = normalized_id
                 return {
                     "messages": [AIMessage(content=message)],
                     "clinical_stage": "ChatMain_Active",
                     "findings": findings_update,
-                    "current_patient_id": normalized_id,
+                    "case_database_patient_id": normalized_id,
                 }
             if any(k in user_text for k in deny_keywords):
                 findings_update = dict(findings)
@@ -696,7 +696,7 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                 findings["inquiry_message"] = ""
             else:
                 field_questions = {
-                    "受试者编号": "请提供您的受试者编号（如 2 或 93）。",
+                    "受试者编号": "请提供您的受试者编号（如 <case_id>）。",
                     "性别": "请问您的性别？1=男性，2=女性。",
                     "年龄（具体）": "请问您的年龄是多少岁？",
                     "ECOG评分": "请提供ECOG评分（0-5）。",
@@ -704,7 +704,7 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                     "肿瘤部位": "请提供肿瘤部位：升 / 横 / 降 / 乙状 / 直乙 / 直肠 / 肝曲 / 脾曲。",
                     "cT分期（具体）": "请提供cT分期（如 T3、T4a）。",
                     "cN分期（具体）": "请提供cN分期（如 N1a、N2b）。",
-                    "具体临床分期": "请提供具体临床分期（如 41、42）。",
+                    "具体临床分期": "请提供具体临床分期（如 stage_code）。",
                     "基线CEA水平": "请提供基线CEA水平（ng/mL）。",
                     "MMR状态": "请提供MMR状态：1=pMMR(MSS)，2=dMMR(MSI-H)。",
                 }
@@ -726,7 +726,7 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                     try:
                         result = query_tool.invoke({"patient_id": int(subject_id)})
                     except Exception as e:
-                        result = {"error": f"\u67e5\u8be2\u5931\u8d25: {str(e)}", "patient_id": int(subject_id)}
+                        result = {"error": f"查询失败: {str(e)}", "patient_id": int(subject_id)}
                 else:
                     result = {"error": "\u672a\u627e\u5230\u60a3\u8005\u67e5\u8be2\u5de5\u5177", "patient_id": int(subject_id)}
                 display_result = result
@@ -744,7 +744,7 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                     except Exception:
                         parsed = None
                 findings_update = dict(findings)
-                findings_update["current_patient_id"] = normalized_id
+                findings_update["case_database_patient_id"] = normalized_id
                 findings_update["patient_record"] = patient_record
                 if isinstance(parsed, dict):
                     reply = (
@@ -758,7 +758,7 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                         "messages": [AIMessage(content=reply)],
                         "clinical_stage": "ChatMain_Active",
                         "findings": findings_update,
-                        "current_patient_id": normalized_id,
+                        "case_database_patient_id": normalized_id,
                     }
                 findings = findings_update
 
@@ -782,7 +782,7 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                     missing_fields.append(field)
             if missing_fields:
                 field_questions = {
-                    "受试者编号": "请提供您的受试者编号（如 2 或 93）。",
+                    "受试者编号": "请提供您的受试者编号（如 <case_id>）。",
                     "性别": "请问您的性别？1=男性，2=女性。",
                     "年龄（具体）": "请问您的年龄是多少岁？",
                     "ECOG评分": "请提供ECOG评分（0-5）。",
@@ -790,7 +790,7 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                     "肿瘤部位": "请提供肿瘤部位：升 / 横 / 降 / 乙状 / 直乙 / 直肠 / 肝曲 / 脾曲。",
                     "cT分期（具体）": "请提供cT分期（如 T3、T4a）。",
                     "cN分期（具体）": "请提供cN分期（如 N1a、N2b）。",
-                    "具体临床分期": "请提供具体临床分期（如 41、42）。",
+                    "具体临床分期": "请提供具体临床分期（如 stage_code）。",
                     "基线CEA水平": "请提供基线CEA水平（ng/mL）。",
                     "MMR状态": "请提供MMR状态：1=pMMR(MSS)，2=dMMR(MSI-H)。",
                 }
@@ -812,7 +812,7 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                     "messages": [AIMessage(content=inquiry)],
                     "clinical_stage": "ChatMain_Active",
                     "findings": findings_update,
-                    "current_patient_id": findings_update.get("current_patient_id"),
+                    "case_database_patient_id": findings_update.get("case_database_patient_id"),
                 }
         if show_thinking:
             print(f"[ChatMain] Received user input: {user_input.content[:100]}...")
@@ -863,10 +863,13 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
             second_call_context = compress_context(
                 [SystemMessage(content=CHAT_MAIN_SYSTEM_PROMPT)] + list(messages) + new_messages
             )
-            final_response = _ensure_message(llm_with_tools.invoke(second_call_context))
+            final_response = _ensure_message(
+                llm_with_tools.invoke(second_call_context),
+                include_thinking=show_thinking,
+            )
             new_messages.append(final_response)
         else:
-            final_response = _ensure_message(response)
+            final_response = _ensure_message(response, include_thinking=show_thinking)
             new_messages.append(final_response)
 
         return {

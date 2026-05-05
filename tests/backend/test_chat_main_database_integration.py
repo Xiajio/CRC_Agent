@@ -58,7 +58,9 @@ def test_chat_main_uses_patient_lookup_tool_and_sets_pending_confirmation(monkey
     )
 
     assert get_patient_case_info.calls == [{"patient_id": 93}]
-    assert result["current_patient_id"] == "093"
+    assert result["case_database_patient_id"] == "093"
+    assert result["findings"]["case_database_patient_id"] == "093"
+    assert "current_patient_id" not in result or result["current_patient_id"] is None
     assert result["findings"]["pending_patient_id"] == "93"
     assert result["findings"]["pending_patient_data"] == existing_case
 
@@ -84,7 +86,9 @@ def test_chat_main_skips_pending_confirmation_when_patient_lookup_is_missing(mon
     )
 
     assert get_patient_case_info.calls == [{"patient_id": 93}]
-    assert result["current_patient_id"] == "093"
+    assert result["case_database_patient_id"] == "093"
+    assert result["findings"]["case_database_patient_id"] == "093"
+    assert "current_patient_id" not in result or result["current_patient_id"] is None
     assert "pending_patient_id" not in result["findings"]
     assert "pending_patient_data" not in result["findings"]
     assert result["findings"]["patient_record"][PATIENT_ID_KEY] == 93

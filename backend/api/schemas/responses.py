@@ -34,6 +34,8 @@ class RecoverySnapshot(BaseModel):
     patient_profile: dict[str, Any] | None = None
     stage: str | None = None
     assessment_draft: Any = None
+    case_database_patient_id: str | None = None
+    registry_patient_id: int | None = None
     current_patient_id: int | str | None = None
     references: list[dict[str, Any]] = Field(default_factory=list)
     plan: list[dict[str, Any]] = Field(default_factory=list)

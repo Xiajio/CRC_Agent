@@ -49,6 +49,7 @@ $pythonExe = Resolve-CommandPath -PreferredPaths $preferredPythonPaths -CommandN
 Set-Location $repoRoot
 
 $env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
 $env:AUTH_MODE = "none"
 $env:GRAPH_RUNNER_MODE = "real"
 $env:RAG_WARMUP = if ($WarmupRag) { "true" } else { "false" }

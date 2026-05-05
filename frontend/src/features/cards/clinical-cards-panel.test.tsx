@@ -53,4 +53,30 @@ describe("ClinicalCardsPanel", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("暂无说明。")).not.toBeInTheDocument();
   });
+  it("renders imaging card previews with embedded mime types", () => {
+    render(
+      <ClinicalCardsPanel
+        cards={{
+          imaging_card: {
+            type: "imaging_card",
+            data: {
+              folder_name: "093",
+              total_images: 1,
+              images: [
+                {
+                  image_name: "slice_002.jpg",
+                  image_base64: "preview-bytes",
+                  image_mime_type: "image/jpeg",
+                },
+              ],
+            },
+          },
+        }}
+        selectedCardType="imaging_card"
+      />,
+    );
+
+    const previewImages = screen.getAllByAltText("slice_002.jpg");
+    expect(previewImages[0]).toHaveAttribute("src", "data:image/jpeg;base64,preview-bytes");
+  });
 });

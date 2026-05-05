@@ -362,6 +362,12 @@ class GraphService:
             node_output=node_output,
         )
 
+    @staticmethod
+    def _filter_scene_event(meta: SessionMeta, event: Any) -> Any:
+        if meta.scene == "patient" and isinstance(event, MessageDoneEvent) and event.thinking:
+            return event.model_copy(update={"thinking": None})
+        return event
+
     async def _invoke_context_finalizer(
         self,
         *,
@@ -663,6 +669,7 @@ class GraphService:
                             for trace_event in self._record_phase1_node_output(phase1_trace, node_name, node_output):
                                 yield encode_sse_event(trace_event)
                         for event in normalize_tick(node_name, node_output):
+                            event = self._filter_scene_event(meta, event)
                             if isinstance(event, MessageDoneEvent):
                                 self._record_visible_message_done(phase0_trace, node_name)
                                 trace_event = self._record_phase1_message_done(

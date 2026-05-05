@@ -232,7 +232,7 @@ def node_knowledge_retrieval(
                 show_thinking,
             )
             return {
-                "messages": [_ensure_message(response)],
+                "messages": [_ensure_message(response, include_thinking=show_thinking)],
                 "clinical_stage": "Knowledge",
                 "error": None,
             }
@@ -443,7 +443,7 @@ def node_knowledge_retrieval(
                         streaming,
                         show_thinking
                     )
-                    final_msg = _ensure_message(response)
+                    final_msg = _ensure_message(response, include_thinking=show_thinking)
                 except Exception as e:
                     # 如果综合生成失败，回退到原始内容
                     print(f"  ⚠️ 综合生成失败，使用原始内容: {e}")
@@ -726,7 +726,7 @@ def node_knowledge_retrieval(
                 streaming,
                 show_thinking
             )
-            final_msg = _ensure_message(response)
+            final_msg = _ensure_message(response, include_thinking=show_thinking)
             
             updates = {
                 "messages": [final_msg],

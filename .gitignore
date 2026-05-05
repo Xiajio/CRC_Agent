@@ -18,6 +18,7 @@ frontend/dist/
 .playwright-cli/
 playwright-report/
 test-results/
+tests/
 coverage/
 htmlcov/
 
@@ -30,6 +31,7 @@ tmp/
 /_tmp/
 /tmp*
 /pytest-cache-files*
+pytest-*
 .worktrees/
 *.log
 /_fix_*.txt
@@ -46,6 +48,7 @@ data_temp.csv
 # Editor and OS files
 .idea/
 .vscode/
+.trae/
 .DS_Store
 Thumbs.db
 

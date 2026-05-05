@@ -41,6 +41,8 @@ def _resolve_index_path(index_path: str) -> Path:
     candidate = Path(index_path).expanduser()
     if candidate.is_absolute():
         return candidate
+    return (PROJECT_ROOT / candidate).resolve()
+
 # BM25 dependency
 
 # BM25 渚濊禆
