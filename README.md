@@ -220,32 +220,6 @@ LangG/
 │       │   ├── layout/           # 布局组件（WorkspaceLayout / ClinicalTopNav）
 │       │   └── motion/           # GSAP 动画钩子
 │       └── styles/               # 全局样式（tokens.css + globals.css）
-├── data/                         # 病例影像数据 / 临床指南 PDF
-├── docs/                         # 文档
-│   ├── current-architecture-map.md   # 架构图谱
-│   ├── build_current_architecture_docx.py  # 架构 DOCX 生成
-│   └── superpowers/              # 超能力文档
-│       ├── plans/                # 实现计划（25+）
-│       ├── specs/                # 设计规格（20+）
-│       └── acceptance/           # 验收报告
-├── tests/                        # 测试
-│   ├── backend/                  # 后端测试（pytest，31 个文件）
-│   │   ├── test_app_*.py         # 应用/路由测试
-│   │   ├── test_graph_*.py       # 图构建/服务/路由/流式测试
-│   │   ├── test_patient_*.py     # 患者注册处/上下文/事件溯源测试
-│   │   ├── test_rag_*.py         # RAG 检索/证据合同测试
-│   │   ├── test_intent_nodes.py  # 意图分类测试
-│   │   ├── test_general_nodes.py # 通用对话测试
-│   │   ├── test_outpatient_*.py  # 门诊分诊测试
-│   │   ├── test_upload_*.py      # 上传管线测试
-│   │   ├── test_database_*.py    # 数据库测试
-│   │   ├── test_imaging_*.py     # 影像卡片测试
-│   │   ├── test_tool_*.py        # 工具/数据路径测试
-│   │   ├── test_review_policy_*.py # 审查策略测试
-│   │   ├── test_chat_latency_*.py  # 延迟追踪测试
-│   │   ├── test_state_*.py       # 状态/工具执行器回归测试
-│   │   └── test_web_search_*.py  # 网络搜索测试
-│   └── test_generate_project_intro_pdf.py
 ├── scripts/                      # 脚本
 │   ├── start_real.ps1            # 一键启动（后端 + 前端）
 │   ├── start_backend_real.ps1    # 后端启动
@@ -255,11 +229,7 @@ LangG/
 │   ├── prepare_acceptance_case_db.py  # 验收测试数据库准备
 │   ├── check_text_encoding.py    # 文本编码检测（防乱码）
 │   └── run_e2e_full_acceptance.ps1   # E2E 验收测试
-├── runtime/                      # 运行时数据（SQLite / 上传文件）
-├── chroma_db/                    # Chroma 向量库
-├── bm25_index/                   # BM25 关键词索引
 ├── pyproject.toml                # Python 项目配置
-├── .env                          # 环境变量
 └── start.txt                     # 快捷启动命令
 ```
 
@@ -517,4 +487,3 @@ Agent 核心由 Planner 生成的 `PlanStep` DAG 动态驱动，而非硬编码�
 - [RAG 模块文档](src/rag/README.md) — 文档解析、摄取、检索、重排
 - [工具模块文档](src/tools/README.md) — 临床工具、RAG 工具、影像工具
 - [服务层文档](src/services/README.md) — LLM 服务、搜索服务、文档转换
-- 设计与验收文档：`docs/superpowers/plans/`、`docs/superpowers/specs/`、`docs/superpowers/acceptance/`
