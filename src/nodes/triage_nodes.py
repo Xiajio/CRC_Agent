@@ -20,6 +20,17 @@ TRIAGE_FIELD_ORDER = [
 ]
 
 TRIAGE_QUESTION_SCHEMAS: dict[str, dict[str, Any]] = {
+    "symptom_focus": {
+        "selection_mode": "single",
+        "allow_other": True,
+        "other_placeholder": "例如：头晕、胸闷、全身乏力",
+        "options": [
+            {"id": "gi_abdominal", "label": "腹部/肠胃不适", "submit_text": "主要是腹部或肠胃不适"},
+            {"id": "bowel_change", "label": "腹泻/便秘/便血", "submit_text": "主要是腹泻、便秘或便血"},
+            {"id": "fever_vomit", "label": "发热/呕吐", "submit_text": "主要是发热或呕吐"},
+            {"id": "unsure", "label": "说不清", "submit_text": "还说不清哪里不舒服"},
+        ],
+    },
     "duration": {
         "selection_mode": "single",
         "allow_other": True,
@@ -85,6 +96,7 @@ TRIAGE_QUESTION_SCHEMAS: dict[str, dict[str, Any]] = {
 }
 
 TRIAGE_QUESTION_MAP: dict[str, str] = {
+    "symptom_focus": "主要是哪里不舒服？是腹部/肠胃、排便变化、发热呕吐，还是其他情况？",
     "duration": "腹痛/腹泻/便秘是从什么时候开始的？大概持续了多久？",
     "bleeding": "最近有没有便血或黑便？如果有，大概是什么颜色？",
     "bowel_change": "最近排便习惯有没有变化，比如腹泻、便秘、次数增多或变细？",
@@ -93,6 +105,7 @@ TRIAGE_QUESTION_MAP: dict[str, str] = {
 }
 
 TRIAGE_CLARIFICATION_MAP: dict[str, str] = {
+    "symptom_focus": "请先说明主要哪里不舒服，例如“腹痛”“腹泻”“便秘”“便血”“发热”或“说不清”。",
     "duration": "我还没识别出持续时间，请直接回答例如“4小时”“3天”“2周”“1个月”。",
     "bleeding": "请直接回答“有/没有便血或黑便”；如果有，也可以补充“鲜红/暗红/发黑”。",
     "bowel_change": "请直接回答最近排便是否有变化，例如“腹泻”“便秘”“没有变化”。",
@@ -118,6 +131,23 @@ OBVIOUS_OFF_TOPIC_INTENTS = {
 OFF_TOPIC_CHAT_KEYWORDS = ("天气", "笑话", "闲聊", "聊天")
 SHORT_DURATION_UNITS = "分钟|小时|天|周|星期|个月|月|年"
 CHINESE_NUMERALS = "零一二两三四五六七八九十半"
+TRIAGE_SPECIFIC_SYMPTOM_KEYWORDS = (
+    "腹痛",
+    "肚子痛",
+    "隐痛",
+    "便血",
+    "黑便",
+    "腹泻",
+    "便秘",
+    "消瘦",
+    "发热",
+    "发烧",
+    "呕吐",
+    "大便变细",
+    "排便变化",
+)
+NON_GI_VAGUE_SCOPE_MARKERS = ("浑身", "全身", "哪里都", "整个人")
+VAGUE_DISCOMFORT_KEYWORDS = ("不舒服", "不适", "难受")
 
 
 def _normalize_text(value: Any) -> str:
@@ -488,6 +518,16 @@ def node_outpatient_triage(
             symptom_snapshot["chief_symptoms"] = user_text
 
         pending_fields, next_field, next_question = _next_triage_question(symptom_snapshot, disposition)
+        needs_symptom_focus = (
+            _looks_like_generic_vague_discomfort(combined_user_text)
+            and not _has_specific_outpatient_symptom(combined_user_text)
+            and not symptom_snapshot.get("symptom_focus")
+        )
+        if needs_symptom_focus:
+            pending_fields = ["symptom_focus", *pending_fields]
+            next_field = "symptom_focus"
+            next_question = TRIAGE_QUESTION_MAP[next_field]
+
         active_inquiry = bool(next_question)
         progress_made = _triage_progress_made(previous_snapshot, symptom_snapshot)
         same_field_stalled = active_inquiry and bool(next_field) and next_field == previous_field and not progress_made
@@ -611,30 +651,31 @@ def _looks_like_gi_vague_discomfort(text: str) -> bool:
     )
 
 
+def _has_specific_outpatient_symptom(text: str) -> bool:
+    compact = _normalize_user_text(text)
+    if not compact:
+        return False
+    return any(keyword in compact for keyword in TRIAGE_SPECIFIC_SYMPTOM_KEYWORDS) or _looks_like_gi_vague_discomfort(compact)
+
+
+def _looks_like_generic_vague_discomfort(text: str) -> bool:
+    compact = _normalize_user_text(text)
+    if not compact:
+        return False
+    if any(marker in compact for marker in NON_GI_VAGUE_SCOPE_MARKERS):
+        return False
+    return any(keyword in compact for keyword in VAGUE_DISCOMFORT_KEYWORDS) and not _has_specific_outpatient_symptom(compact)
+
+
 def _looks_like_outpatient_triage(text: str) -> bool:
     compact = _normalize_user_text(text)
     if not compact:
         return False
 
-    if any(
-        keyword in compact
-        for keyword in (
-            "腹痛",
-            "肚子痛",
-            "隐痛",
-            "便血",
-            "黑便",
-            "腹泻",
-            "便秘",
-            "消瘦",
-            "发热",
-            "大便变细",
-            "排便变化",
-        )
-    ):
+    if _has_specific_outpatient_symptom(compact):
         return True
 
-    return _looks_like_gi_vague_discomfort(compact)
+    return _looks_like_generic_vague_discomfort(compact)
 
 
 def node_clinical_entry_resolver(

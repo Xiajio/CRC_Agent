@@ -185,7 +185,7 @@ uvicorn backend.app:app --host 0.0.0.0 --port 8000
 
 ## 相关文档
 
-- [架构图谱](docs/current-architecture-map.md) — 数据流、API 路由、Graph 装配
+- [架构图谱](current-architecture-map.md) — 数据流、API 路由、Graph 装配
 - [Agent 节点文档](src/nodes/README.md) — 各节点功能说明
 - [RAG 模块文档](src/rag/README.md) — 文档解析、摄取、检索、重排
 - [工具模块文档](src/tools/README.md) — 临床工具、RAG 工具、影像工具
