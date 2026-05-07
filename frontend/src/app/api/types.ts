@@ -214,7 +214,7 @@ export interface RecoverySnapshot {
   assessment_draft: unknown;
   case_database_patient_id?: string | null;
   registry_patient_id?: number | null;
-  current_patient_id: string | number | null;
+  current_patient_id?: string | number | null;
   references: JsonObject[];
   plan: JsonObject[];
   critic: JsonObject | null;

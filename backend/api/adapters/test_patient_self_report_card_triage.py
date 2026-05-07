@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from langchain_core.messages import HumanMessage
 
 from src.nodes.triage_nodes import node_outpatient_triage
@@ -23,13 +24,22 @@ def test_outpatient_triage_emits_self_report_patient_card() -> None:
     assert result["findings"]["encounter_track"] == "outpatient_triage"
 
 
-def test_vague_symptom_focus_answer_projects_to_self_report_patient_card() -> None:
+@pytest.mark.parametrize(
+    ("answer_text", "expected_focus"),
+    [
+        ("我也说不清", "说不清"),
+        ("主要是腹部或肠胃不适", "腹部/肠胃不适"),
+    ],
+)
+def test_vague_symptom_focus_answer_projects_to_self_report_patient_card(
+    answer_text: str, expected_focus: str
+) -> None:
     triage = node_outpatient_triage(show_thinking=False)
     first_result = triage(CRCAgentState(messages=[HumanMessage(content="我有点不舒服")]))
 
     second_result = triage(
         CRCAgentState(
-            messages=[HumanMessage(content="我有点不舒服"), HumanMessage(content="我也说不清")],
+            messages=[HumanMessage(content="我有点不舒服"), HumanMessage(content=answer_text)],
             encounter_track="outpatient_triage",
             symptom_snapshot=first_result["symptom_snapshot"],
             findings=first_result["findings"],
@@ -37,10 +47,10 @@ def test_vague_symptom_focus_answer_projects_to_self_report_patient_card() -> No
     )
 
     assert first_result["findings"]["triage_current_field"] == "symptom_focus"
-    assert second_result["symptom_snapshot"]["symptom_focus"] == "说不清"
+    assert second_result["symptom_snapshot"]["symptom_focus"] == expected_focus
     assert second_result["findings"]["triage_current_field"] == "duration"
-    assert second_result["patient_card"]["data"]["history_block"]["symptom_focus"] == "说不清"
+    assert second_result["patient_card"]["data"]["history_block"]["symptom_focus"] == expected_focus
     assert second_result["patient_card"]["field_meta"]["history_block"]["symptom_focus"] == {
         "status": "confirmed",
-        "display": "说不清",
+        "display": expected_focus,
     }

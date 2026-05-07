@@ -343,7 +343,7 @@ export function hydrateSessionState(state: SessionState, response: SessionRespon
     assessmentDraft: snapshot.assessment_draft,
     caseDatabasePatientId: snapshot.case_database_patient_id ?? null,
     registryPatientId: snapshot.registry_patient_id ?? response.patient_id ?? null,
-    currentPatientId: snapshot.current_patient_id,
+    currentPatientId: snapshot.current_patient_id ?? null,
     uploadedAssets: snapshot.uploaded_assets,
     contextMaintenance: (snapshot.context_maintenance as ContextMaintenanceState | null) ?? null,
     contextState: snapshot.context_state ?? null,

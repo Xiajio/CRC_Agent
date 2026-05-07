@@ -34,6 +34,95 @@ def _normalize_case_database_patient_id(value) -> str | None:
     return text.zfill(3) if text.isdigit() else text
 
 
+def _normalize_registry_patient_id(value) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _first_present(*values):
+    for value in values:
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _resolve_registry_patient_id(state: CRCAgentState, findings: dict | None = None) -> int | None:
+    findings = findings or {}
+    return _normalize_registry_patient_id(
+        _first_present(
+            getattr(state, "registry_patient_id", None),
+            findings.get("registry_patient_id"),
+        )
+    )
+
+
+def _resolve_case_database_patient_id(state: CRCAgentState, findings: dict | None = None) -> str | None:
+    findings = findings or {}
+    return _normalize_case_database_patient_id(
+        _first_present(
+            getattr(state, "case_database_patient_id", None),
+            findings.get("case_database_patient_id"),
+        )
+    )
+
+
+def _resolve_legacy_current_patient_id(state: CRCAgentState, findings: dict | None = None) -> str | None:
+    findings = findings or {}
+    value = _first_present(
+        getattr(state, "current_patient_id", None),
+        findings.get("current_patient_id"),
+    )
+    return str(value) if value is not None else None
+
+
+def _resolve_active_patient_id(
+    state: CRCAgentState,
+    findings: dict | None,
+    extracted_patient_id: str | None = None,
+    inferred_patient_id: str | None = None,
+) -> str | None:
+    registry_patient_id = _resolve_registry_patient_id(state, findings)
+    return _first_present(
+        extracted_patient_id,
+        str(registry_patient_id) if registry_patient_id is not None else None,
+        _resolve_case_database_patient_id(state, findings),
+        _resolve_legacy_current_patient_id(state, findings),
+        inferred_patient_id,
+    )
+
+
+def _apply_split_identity(
+    state: CRCAgentState,
+    return_dict: dict,
+    *,
+    findings: dict | None = None,
+) -> dict:
+    findings_source = findings if findings is not None else return_dict.get("findings")
+    if not isinstance(findings_source, dict):
+        findings_source = state.findings or {}
+
+    registry_patient_id = _resolve_registry_patient_id(state, findings_source)
+    if registry_patient_id is not None:
+        return_dict["registry_patient_id"] = registry_patient_id
+        if isinstance(return_dict.get("findings"), dict):
+            return_dict["findings"]["registry_patient_id"] = registry_patient_id
+
+    case_database_patient_id = _normalize_case_database_patient_id(
+        return_dict.get("case_database_patient_id")
+        or _resolve_case_database_patient_id(state, findings_source)
+    )
+    if case_database_patient_id is not None:
+        return_dict["case_database_patient_id"] = case_database_patient_id
+        if isinstance(return_dict.get("findings"), dict):
+            return_dict["findings"]["case_database_patient_id"] = case_database_patient_id
+
+    return return_dict
+
+
 def _format_case_summary_markdown(case_data: dict) -> str:
     """把数据库病例信息整理成更友好的 Markdown 摘要（用于“总结/目前情况”类请求）。"""
     if not isinstance(case_data, dict) or case_data.get("error"):
@@ -441,7 +530,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                 return_dict["current_plan"] = updated_plan
                 if show_thinking:
                     print(f"[Case Database] 标记步骤完成: [{pending_step.id}] {pending_step.description}")
-            return return_dict
+            return _apply_split_identity(state, return_dict)
 
         # 从统一的 prompts 模块导入 System Prompt
         pinned_context = _build_pinned_context(state)
@@ -559,16 +648,14 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                             return inferred
                 return None
 
-            # 提取 patient_id（优先：本轮文本；其次：state.current_patient_id；再次：历史回溯）
+            # Split identity first; current_patient_id is only a legacy compatibility bridge.
             extracted_patient_id = _extract_patient_id_from_text(user_text or "")
             findings = state.findings or {}
-            active_patient_id = (
-                extracted_patient_id
-                or getattr(state, "case_database_patient_id", None)
-                or findings.get("case_database_patient_id")
-                or (str(state.current_patient_id) if state.current_patient_id else None)
-                or findings.get("current_patient_id")
-                or _infer_patient_id_from_history()
+            active_patient_id = _resolve_active_patient_id(
+                state,
+                findings,
+                extracted_patient_id=extracted_patient_id,
+                inferred_patient_id=_infer_patient_id_from_history(),
             )
             imaging_analysis_support_request = _is_imaging_analysis_support_request(state, user_text)
 
@@ -604,7 +691,7 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
             TUMOR_KEYWORDS = ["肿瘤检测", "癌症筛查", "病灶识别", "影像诊断", "CT检测", "检测肿瘤", "筛查肿瘤", "分析影像"]
             needs_tumor_check = any(kw in user_text for kw in TUMOR_KEYWORDS) and not imaging_analysis_support_request
 
-            # 提取 patient_id（如果有）
+            # Keep this name as the compatibility bridge for existing database tool calls.
             current_patient_id = active_patient_id
             case_database_patient_id = _normalize_case_database_patient_id(active_patient_id)
 
@@ -941,7 +1028,15 @@ def node_case_database(model, tools=None, streaming: bool = False, show_thinking
                     "imaging_card": imaging_card,
                     "pathology_slide_card": pathology_slide_card,
                     "error": None,
-                    "findings": findings_updates if findings_updates else None,
+                    "findings": _merge_database_workbench_findings(
+                        findings_updates if findings_updates else None,
+                        _build_database_workbench_context(
+                            mode="detail",
+                            query_text=user_text,
+                            filters={"patient_id": _safe_int(current_patient_id)},
+                            selected_patient_id=_safe_int(current_patient_id),
+                        ),
+                    ),
                     # [关键] 写入强类型字段，供 Intent Router/后续轮次识别“该患者”
                     "radiomics_report_card": radiomics_report_card if "radiomics_report_card" in locals() else None,
                     "case_database_patient_id": case_database_patient_id,

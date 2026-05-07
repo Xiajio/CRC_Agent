@@ -98,13 +98,7 @@ def _get_profile_summary(state: CRCAgentState) -> str:
         tnm_staging = findings.get("tnm_staging", {})
         
         # 患者 ID
-        patient_id = (
-            findings.get("db_query_patient_id")
-            or findings.get("case_database_patient_id")
-            or getattr(state, "case_database_patient_id", None)
-            or findings.get("current_patient_id")
-            or getattr(state, "current_patient_id", None)
-        )
+        patient_id = _resolve_split_patient_id(state, findings)
         if patient_id:
             summary_parts.append(f"🆔 患者ID: {patient_id}")
         
@@ -218,6 +212,19 @@ def _get_user_intent_summary(state: CRCAgentState) -> str:
         return f"意图类型: {intent}\n用户问题: {user_msg}"
 
 
+def _resolve_split_patient_id(state: CRCAgentState, findings: Dict[str, Any] | None = None) -> Any:
+    findings = findings or {}
+    return (
+        findings.get("db_query_patient_id")
+        or findings.get("registry_patient_id")
+        or getattr(state, "registry_patient_id", None)
+        or findings.get("case_database_patient_id")
+        or getattr(state, "case_database_patient_id", None)
+        or findings.get("current_patient_id")
+        or getattr(state, "current_patient_id", None)
+    )
+
+
 def _safe_format(template: str, **kwargs) -> str:
     """
     Safe formatter to avoid KeyError on literal braces and format specifier errors.
@@ -262,13 +269,7 @@ def _detect_missing_context(state: CRCAgentState) -> Dict[str, str]:
 
     # 2. imaging_query：至少要有 patient_id 或检查号
     if intent == "imaging_query":
-        patient_id = (
-            findings.get("db_query_patient_id")
-            or findings.get("case_database_patient_id")
-            or getattr(state, "case_database_patient_id", None)
-            or findings.get("current_patient_id")
-            or getattr(state, "current_patient_id", None)
-        )
+        patient_id = _resolve_split_patient_id(state, findings)
         if not patient_id:
             missing["patient_id"] = "case_database_query"
 
@@ -288,13 +289,7 @@ def _detect_missing_context(state: CRCAgentState) -> Dict[str, str]:
 
     # 5. 影像分析：需要患者ID和影像检查信息
     if intent == "imaging_analysis":
-        patient_id = (
-            findings.get("db_query_patient_id")
-            or findings.get("case_database_patient_id")
-            or getattr(state, "case_database_patient_id", None)
-            or findings.get("current_patient_id")
-            or getattr(state, "current_patient_id", None)
-        )
+        patient_id = _resolve_split_patient_id(state, findings)
         if not patient_id:
             missing["patient_id"] = "case_database_query"
         imaging_id = findings.get("imaging_id") or findings.get("current_imaging_id")
@@ -303,13 +298,7 @@ def _detect_missing_context(state: CRCAgentState) -> Dict[str, str]:
 
     # 6. 病理分析：需要患者ID和病理检查信息
     if intent == "pathology_analysis":
-        patient_id = (
-            findings.get("db_query_patient_id")
-            or findings.get("case_database_patient_id")
-            or getattr(state, "case_database_patient_id", None)
-            or findings.get("current_patient_id")
-            or getattr(state, "current_patient_id", None)
-        )
+        patient_id = _resolve_split_patient_id(state, findings)
         if not patient_id:
             missing["patient_id"] = "case_database_query"
         pathology_id = findings.get("pathology_id") or findings.get("current_pathology_id")

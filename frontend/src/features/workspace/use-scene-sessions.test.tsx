@@ -31,7 +31,7 @@ describe("useSceneSessions", () => {
           session_id: sessionId,
           scene: "doctor",
           patient_id: 202,
-          snapshot: { current_patient_id: 202 },
+          snapshot: { registry_patient_id: 202 },
         });
       }),
       createSession: vi.fn(async (scene) =>
@@ -39,7 +39,7 @@ describe("useSceneSessions", () => {
           scene,
           session_id: scene === "patient" ? "new-patient-session" : "unexpected-doctor-session",
           patient_id: scene === "patient" ? 101 : null,
-          snapshot: { current_patient_id: scene === "patient" ? 101 : null },
+          snapshot: { registry_patient_id: scene === "patient" ? 101 : null },
         }),
       ),
     });
@@ -53,7 +53,11 @@ describe("useSceneSessions", () => {
     expect(apiClient.createSession).toHaveBeenCalledWith("patient");
     expect(result.current.patient.state.sessionId).toBe("new-patient-session");
     expect(result.current.doctor.state.sessionId).toBe("doctor-session");
-    expect(result.current.doctor.state.currentPatientId).toBe(202);
+    expect(result.current.patient.state.registryPatientId).toBe(101);
+    expect(result.current.patient.state.currentPatientId).toBeNull();
+    expect(result.current.doctor.state.registryPatientId).toBe(202);
+    expect(result.current.doctor.state.caseDatabasePatientId).toBeNull();
+    expect(result.current.doctor.state.currentPatientId).toBeNull();
     expect(window.localStorage.getItem(PATIENT_SESSION_STORAGE_KEY)).toBe("new-patient-session");
     expect(window.localStorage.getItem(DOCTOR_SESSION_STORAGE_KEY)).toBe("doctor-session");
   });

@@ -142,6 +142,36 @@ CHAT_MAIN_TOOLS = [
     get_patient_case_info,
 ]
 
+
+def _normalize_registry_patient_id(value) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _resolve_registry_patient_id(state: CRCAgentState, findings: dict | None = None) -> int | None:
+    findings = findings or {}
+    return _normalize_registry_patient_id(
+        getattr(state, "registry_patient_id", None) or findings.get("registry_patient_id")
+    )
+
+
+def _apply_registry_identity(state: CRCAgentState, return_dict: dict) -> dict:
+    findings = return_dict.get("findings")
+    registry_patient_id = _resolve_registry_patient_id(
+        state,
+        findings if isinstance(findings, dict) else None,
+    )
+    if registry_patient_id is not None:
+        return_dict["registry_patient_id"] = registry_patient_id
+        if isinstance(findings, dict):
+            findings["registry_patient_id"] = registry_patient_id
+    return return_dict
+
+
 # ==============================================================================
 # 2. System Prompt from chat_main.py
 # ==============================================================================
@@ -592,12 +622,12 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                 findings_update["patient_record"] = pending_data
                 if normalized_id:
                     findings_update["case_database_patient_id"] = normalized_id
-                return {
+                return _apply_registry_identity(state, {
                     "messages": [AIMessage(content=message)],
                     "clinical_stage": "ChatMain_Active",
                     "findings": findings_update,
                     "case_database_patient_id": normalized_id,
-                }
+                })
             if any(k in user_text for k in deny_keywords):
                 findings_update = dict(findings)
                 findings_update.pop("pending_patient_data", None)
@@ -754,12 +784,12 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                     )
                     findings_update["pending_patient_data"] = parsed
                     findings_update["pending_patient_id"] = subject_id
-                    return {
+                    return _apply_registry_identity(state, {
                         "messages": [AIMessage(content=reply)],
                         "clinical_stage": "ChatMain_Active",
                         "findings": findings_update,
                         "case_database_patient_id": normalized_id,
-                    }
+                    })
                 findings = findings_update
 
             missing_fields = []
@@ -808,12 +838,12 @@ def node_chat_main(model, tools=None, streaming: bool = True, show_thinking: boo
                 findings_update["active_field"] = next_field
                 findings_update["active_inquiry"] = True
                 findings_update["inquiry_message"] = inquiry
-                return {
+                return _apply_registry_identity(state, {
                     "messages": [AIMessage(content=inquiry)],
                     "clinical_stage": "ChatMain_Active",
                     "findings": findings_update,
                     "case_database_patient_id": findings_update.get("case_database_patient_id"),
-                }
+                })
         if show_thinking:
             print(f"[ChatMain] Received user input: {user_input.content[:100]}...")
             print(f"[ChatMain] Running with {len(tools)} tools...")
