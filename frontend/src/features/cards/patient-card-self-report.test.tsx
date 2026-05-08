@@ -1,17 +1,24 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { JsonObject } from "../../app/api/types";
 import { renderCardContent } from "./card-renderers";
 
-function renderPatientCard(payload: Record<string, unknown>, onPromptRequest = vi.fn()) {
+function renderPatientCard(
+  payload: Record<string, unknown>,
+  onPromptRequest = vi.fn(),
+  patientContext?: Record<string, unknown>,
+) {
   render(
     <div>
-      {renderCardContent({
-        cardType: "patient_card",
-        payload: payload as JsonObject,
-        onPromptRequest,
-      })}
+      {renderCardContent(
+        {
+          cardType: "patient_card",
+          payload: payload as JsonObject,
+          onPromptRequest,
+          patientContext,
+        } as Parameters<typeof renderCardContent>[0] & { patientContext?: Record<string, unknown> },
+      )}
     </div>,
   );
 }
@@ -213,5 +220,80 @@ describe("patient card self-report rendering", () => {
     expect(screen.getByRole("button", { name: "生成治疗方案" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查询影像资料" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "撰写病程记录" })).toBeInTheDocument();
+  });
+
+  it("submits legacy patient quick actions with split patient identity from fallback context", () => {
+    const onPromptRequest = vi.fn();
+    renderPatientCard(
+      {
+        type: "patient_card",
+        patient_id: "DB-2002",
+        data: {
+          patient_info: {
+            gender: "female",
+          },
+        },
+      },
+      onPromptRequest,
+      {
+        registry_patient_id: 7,
+        case_database_patient_id: "093",
+      },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "生成治疗方案" }));
+    expect(onPromptRequest).toHaveBeenLastCalledWith("为病人 DB-2002 生成治疗方案", {
+      registry_patient_id: 7,
+      case_database_patient_id: "093",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "查询影像资料" }));
+    expect(onPromptRequest).toHaveBeenLastCalledWith("查询病人 #DB-2002 的影像资料", {
+      registry_patient_id: 7,
+      case_database_patient_id: "093",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "撰写病程记录" }));
+    expect(onPromptRequest).toHaveBeenLastCalledWith("为病人 DB-2002 撰写当日病程记录", {
+      registry_patient_id: 7,
+      case_database_patient_id: "093",
+    });
+  });
+
+  it("keeps quick actions single-argument when no split patient identity is available", () => {
+    const onPromptRequest = vi.fn();
+    renderPatientCard(
+      {
+        type: "patient_card",
+        patient_id: "DB-2002",
+      },
+      onPromptRequest,
+    );
+
+    expect(() => fireEvent.click(screen.getByRole("button", { name: "查询影像资料" }))).not.toThrow();
+    expect(onPromptRequest).toHaveBeenCalledWith("查询病人 #DB-2002 的影像资料");
+    expect(onPromptRequest.mock.calls[0]).toHaveLength(1);
+  });
+
+  it("omits invalid registry patient identity instead of deriving it from patient_id", () => {
+    const onPromptRequest = vi.fn();
+    renderPatientCard(
+      {
+        type: "patient_card",
+        patient_id: "DB-2002",
+        registry_patient_id: "not-a-number",
+        case_database_patient_id: "093",
+      },
+      onPromptRequest,
+      {
+        registry_patient_id: 7,
+      },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "生成治疗方案" }));
+
+    expect(onPromptRequest).toHaveBeenCalledWith("为病人 DB-2002 生成治疗方案", {
+      case_database_patient_id: "093",
+    });
   });
 });

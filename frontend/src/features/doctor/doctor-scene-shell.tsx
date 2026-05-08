@@ -10,7 +10,7 @@ import { compactClinicalEventDetail, formatCriticFeedback } from "../../app/clin
 import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
 import { Card } from "../../components/ui";
 import { ClinicalCardsPanel } from "../cards/clinical-cards-panel";
-import type { CardPromptHandler } from "../cards/card-renderers-extended";
+import type { CardPatientContext, CardPromptHandler } from "../cards/card-renderers-extended";
 import { useDatabaseWorkbench } from "../database/use-database-workbench";
 import { ExecutionPlanPanel } from "../execution-plan/execution-plan-panel";
 import { usePatientRegistry } from "../patient-registry/use-patient-registry";
@@ -52,6 +52,7 @@ type DoctorSceneShellProps = {
   onSubmit: () => void;
   onSetCurrentPatient: (patientId: number) => Promise<boolean>;
   onCardPromptRequest?: CardPromptHandler;
+  patientContext?: CardPatientContext | null;
 };
 
 type NavItem = {
@@ -448,6 +449,7 @@ export function DoctorSceneShell({
   onSwitchScene,
   onSetCurrentPatient,
   onCardPromptRequest,
+  patientContext: providedPatientContext,
 }: DoctorSceneShellProps) {
   const {
     activeDoctorTab,
@@ -517,6 +519,15 @@ export function DoctorSceneShell({
   );
   const summaryPatientDetail = patientRegistry.boundPatientDetail ?? patientDetailFromCards(cards);
   const visibleMessages = messages;
+  const patientContext: CardPatientContext = {};
+  if (registryPatientId !== null) {
+    patientContext.registry_patient_id = registryPatientId;
+  }
+  if (caseDatabasePatientId !== null) {
+    patientContext.case_database_patient_id = caseDatabasePatientId;
+  }
+  const cardPatientContext =
+    providedPatientContext ?? (Object.keys(patientContext).length > 0 ? patientContext : undefined);
 
   return (
     <main className="clinical-app-shell">
@@ -549,13 +560,15 @@ export function DoctorSceneShell({
             onDraftChange={onDraftChange}
             onSubmit={onSubmit}
             onCardPromptRequest={onCardPromptRequest}
+            patientContext={cardPatientContext}
           />
           <ClinicalCardsPanel
             title="医疗卡片"
             emptyMessage="暂无医疗卡片。"
-             cards={cards}
+            cards={cards}
             selectedCardType={null}
             onPromptRequest={onCardPromptRequest}
+            patientContext={cardPatientContext}
           />
         </section>
         <aside className="clinical-right-column">

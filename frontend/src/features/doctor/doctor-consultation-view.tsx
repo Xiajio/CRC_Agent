@@ -1,5 +1,5 @@
 import type { FrontendMessage } from "../../app/api/types";
-import type { CardPromptHandler } from "../cards/card-renderers-extended";
+import type { CardPatientContext, CardPromptHandler } from "../cards/card-renderers-extended";
 import { ConversationPanel, type ConversationLatencyStatus } from "../chat/conversation-panel";
 
 export type DoctorLatencyStatus = ConversationLatencyStatus;
@@ -18,6 +18,7 @@ export type DoctorConsultationViewProps = {
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
   onCardPromptRequest?: CardPromptHandler;
+  patientContext?: CardPatientContext | null;
 };
 
 export function DoctorConsultationView({
@@ -34,6 +35,7 @@ export function DoctorConsultationView({
   onDraftChange,
   onSubmit,
   onCardPromptRequest,
+  patientContext,
 }: DoctorConsultationViewProps) {
   return (
     <ConversationPanel
@@ -50,6 +52,7 @@ export function DoctorConsultationView({
       onDraftChange={onDraftChange}
       onSubmit={onSubmit}
       onCardPromptRequest={onCardPromptRequest}
+      patientContext={patientContext}
     />
   );
 }

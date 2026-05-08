@@ -108,6 +108,8 @@ vi.mock("../features/doctor/doctor-scene-shell", () => ({
     onDraftChange: (value: string) => void;
     onSubmit: () => void;
     cards?: Record<string, unknown>;
+    patientContext?: Record<string, unknown>;
+    onCardPromptRequest?: (prompt: string, context?: Record<string, unknown>) => void;
     latencyStatus?: { kind: "streaming" } | { kind: "completed"; uiCompleteMs: number } | null;
   }) => {
     lastDoctorSceneProps = props;
@@ -133,6 +135,24 @@ vi.mock("../features/doctor/doctor-scene-shell", () => ({
         <button type="button" onClick={() => props.onSubmit()}>
           submit doctor draft
         </button>
+        <button
+          type="button"
+          onClick={() => props.onCardPromptRequest?.("为病人 093 生成治疗方案", props.patientContext)}
+        >
+          submit doctor treatment card prompt
+        </button>
+        <button
+          type="button"
+          onClick={() => props.onCardPromptRequest?.("查询病人 #093 的影像资料", props.patientContext)}
+        >
+          submit doctor imaging card prompt
+        </button>
+        <button
+          type="button"
+          onClick={() => props.onCardPromptRequest?.("为病人 093 撰写当日病程记录", props.patientContext)}
+        >
+          submit doctor progress card prompt
+        </button>
       </section>
     );
   },
@@ -152,6 +172,7 @@ vi.mock("../features/chat/conversation-panel", () => ({
     onDraftChange,
     onSubmit,
     onCardPromptRequest,
+    patientContext,
     errorMessage,
     latencyStatus,
   }: {
@@ -159,6 +180,7 @@ vi.mock("../features/chat/conversation-panel", () => ({
     onDraftChange: (value: string) => void;
     onSubmit: () => void;
     onCardPromptRequest?: (prompt: string, context?: Record<string, unknown>) => void;
+    patientContext?: Record<string, unknown>;
     errorMessage?: string | null;
     latencyStatus?: { kind: "streaming" } | { kind: "completed"; uiCompleteMs: number } | null;
   }) => (
@@ -193,6 +215,12 @@ vi.mock("../features/chat/conversation-panel", () => ({
         }
       >
         submit triage answer
+      </button>
+      <button
+        type="button"
+        onClick={() => onCardPromptRequest?.("查询病人 #093 的影像资料", patientContext)}
+      >
+        submit patient imaging card prompt
       </button>
     </section>
   ),
@@ -692,6 +720,39 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(screen.getByTestId("composer-draft")).toHaveTextContent("draft for card");
   });
 
+  it("submits patient card prompts with split patient identity from the patient session", async () => {
+    mockSceneSessions.patient.state = makeSessionState({
+      sessionId: "patient-session",
+      registryPatientId: 7,
+      caseDatabasePatientId: "093",
+    });
+    const streamTurn = vi.fn(async () => undefined);
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /submit patient imaging card prompt/i }));
+
+    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledWith(
+      "patient-session",
+      {
+        message: {
+          role: "user",
+          content: "查询病人 #093 的影像资料",
+        },
+        context: {
+          registry_patient_id: 7,
+          case_database_patient_id: "093",
+        },
+        trace_id: "trace-123",
+      },
+      expect.any(Function),
+      expect.any(AbortSignal),
+      expect.any(Function),
+    );
+  });
+
   it("renders patient chrome with profile scene switching instead of standalone scene buttons", () => {
     renderWorkspaceWithSceneSessions(buildApiClientStub());
 
@@ -976,6 +1037,96 @@ describe("WorkspacePage patient triage submission wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: /submit doctor draft/i }));
 
     await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(mockSceneSessions.doctor.state.roadmap).toEqual([]);
+    expect(mockSceneSessions.doctor.state.plan).toEqual([]);
+  });
+
+  it("submits doctor treatment card prompts with split patient identity and primes the workflow scaffold", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    mockSceneSessions.doctor.state = makeSessionState({
+      sessionId: "doctor-session",
+      registryPatientId: 7,
+      caseDatabasePatientId: "093",
+    });
+    const streamTurn = vi.fn(async () => undefined);
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /submit doctor treatment card prompt/i }));
+
+    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledWith(
+      "doctor-session",
+      {
+        message: {
+          role: "user",
+          content: "为病人 093 生成治疗方案",
+        },
+        context: {
+          registry_patient_id: 7,
+          case_database_patient_id: "093",
+        },
+        trace_id: "trace-123",
+      },
+      expect.any(Function),
+      expect.any(AbortSignal),
+      expect.any(Function),
+    );
+    expect(mockSceneSessions.doctor.state.roadmap).toEqual([
+      { id: "intent", title: "intent", status: "completed" },
+      { id: "planner", title: "planner", status: "in_progress" },
+      { id: "assessment", title: "assessment", status: "waiting" },
+      { id: "decision", title: "decision", status: "waiting" },
+      { id: "citation", title: "citation", status: "waiting" },
+      { id: "evaluator", title: "evaluator", status: "waiting" },
+      { id: "finalize", title: "finalize", status: "waiting" },
+    ]);
+    expect(mockSceneSessions.doctor.state.plan).toEqual([
+      { id: "collect-context", title: "collect context", status: "completed" },
+      { id: "retrieve-guidelines", title: "retrieve guidelines", status: "in_progress" },
+      { id: "query-case-database", title: "query case database", status: "pending" },
+      { id: "generate-assessment", title: "generate clinical assessment", status: "pending" },
+      { id: "generate-recommendation", title: "generate treatment recommendation", status: "pending" },
+      { id: "finalize-report", title: "finalize report", status: "pending" },
+    ]);
+  });
+
+  it.each([
+    ["submit doctor imaging card prompt", "查询病人 #093 的影像资料"],
+    ["submit doctor progress card prompt", "为病人 093 撰写当日病程记录"],
+  ])("submits doctor %s with split patient identity without priming treatment scaffolds", async (buttonName, prompt) => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    mockSceneSessions.doctor.state = makeSessionState({
+      sessionId: "doctor-session",
+      registryPatientId: 7,
+      caseDatabasePatientId: "093",
+    });
+    const streamTurn = vi.fn(async () => undefined);
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: new RegExp(buttonName, "i") }));
+
+    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledWith(
+      "doctor-session",
+      {
+        message: {
+          role: "user",
+          content: prompt,
+        },
+        context: {
+          registry_patient_id: 7,
+          case_database_patient_id: "093",
+        },
+        trace_id: "trace-123",
+      },
+      expect.any(Function),
+      expect.any(AbortSignal),
+      expect.any(Function),
+    );
     expect(mockSceneSessions.doctor.state.roadmap).toEqual([]);
     expect(mockSceneSessions.doctor.state.plan).toEqual([]);
   });

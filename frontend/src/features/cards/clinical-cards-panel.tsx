@@ -3,7 +3,7 @@ import { useRef } from "react";
 import type { JsonObject } from "../../app/api/types";
 import { useHighlightFlash } from "../../components/motion/use-highlight-flash";
 import { Card } from "../../components/ui";
-import { renderCardContent, type CardPromptHandler } from "./card-renderers-extended";
+import { renderCardContent, type CardPatientContext, type CardPromptHandler } from "./card-renderers-extended";
 import { toClinicalCardViewModels } from "./clinical-card-view-model";
 
 type ClinicalCardsPanelProps = {
@@ -12,6 +12,7 @@ type ClinicalCardsPanelProps = {
   cards: Record<string, JsonObject>;
   selectedCardType: string | null;
   onPromptRequest?: CardPromptHandler;
+  patientContext?: CardPatientContext | null;
 };
 
 export function ClinicalCardsPanel({
@@ -20,6 +21,7 @@ export function ClinicalCardsPanel({
   cards,
   selectedCardType,
   onPromptRequest,
+  patientContext,
 }: ClinicalCardsPanelProps) {
   const cardViewModels = toClinicalCardViewModels(cards);
   const panelRef = useRef<HTMLElement | null>(null);
@@ -53,6 +55,7 @@ export function ClinicalCardsPanel({
                     cardType: card.cardType,
                     payload: card.payload,
                     onPromptRequest,
+                    patientContext,
                   })}
                 </div>
               </article>

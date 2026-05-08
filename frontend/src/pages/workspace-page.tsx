@@ -11,6 +11,7 @@ import { ConversationPanel, type ConversationLatencyStatus } from "../features/c
 import { ClinicalTopNav } from "../components/layout/clinical-top-nav";
 import { Card } from "../components/ui";
 import { DoctorSceneShell } from "../features/doctor/doctor-scene-shell";
+import type { CardPatientContext } from "../features/cards/card-renderers-extended";
 import { PatientBackgroundPanel } from "../features/cards/patient-background-panel";
 import { PatientIdentityPanel } from "../features/patient-identity/patient-identity-panel";
 import { UploadsPanel } from "../features/uploads/uploads-panel";
@@ -310,6 +311,21 @@ function currentSceneError(
   return bootstrapError;
 }
 
+function sessionPatientContext(state: SessionState): CardPatientContext | undefined {
+  const registryPatientId = readFiniteNumber(state.registryPatientId);
+  const caseDatabasePatientId = readText(state.caseDatabasePatientId);
+  const context: CardPatientContext = {};
+
+  if (registryPatientId !== null) {
+    context.registry_patient_id = registryPatientId;
+  }
+  if (caseDatabasePatientId !== null) {
+    context.case_database_patient_id = caseDatabasePatientId;
+  }
+
+  return Object.keys(context).length > 0 ? context : undefined;
+}
+
 function isProbeIncomplete(probe: TurnLatencyProbe | null): probe is TurnLatencyProbe {
   return probe !== null && probe.status !== "ui_complete" && probe.status !== "aborted" && probe.status !== "error";
 }
@@ -369,6 +385,8 @@ export function WorkspacePage() {
   const activeSessionState = activeController.state;
   const setActiveSessionState = activeController.setState;
   const registryPatientId = readFiniteNumber(doctor.state.registryPatientId);
+  const doctorPatientContext = sessionPatientContext(doctor.state);
+  const patientPatientContext = sessionPatientContext(patient.state);
   const { encounterTrack: patientEncounterTrack, activeInquiry: patientActiveInquiry } =
     triageVisibilityContext(patient.state.findings);
   const activePatientTriageQuestionId = patientActiveInquiry
@@ -972,6 +990,7 @@ export function WorkspacePage() {
         onSwitchScene={() => handleSceneSwitch("patient")}
         registryPatientId={registryPatientId}
         caseDatabasePatientId={doctor.state.caseDatabasePatientId}
+        patientContext={doctorPatientContext}
         patientRegistry={patientRegistry}
         databaseWorkbench={databaseWorkbench}
         registryBrowser={registryBrowser}
@@ -995,6 +1014,9 @@ export function WorkspacePage() {
         onDraftChange={(value) => updateDraft("doctor", value)}
         onSubmit={() => void submitPrompt()}
         onSetCurrentPatient={handleBindDoctorPatient}
+        onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
+          void submitMessage("doctor", prompt, context)
+        }
       />
     );
   }
@@ -1054,6 +1076,7 @@ export function WorkspacePage() {
                 onLoadHistory={() => void loadMessageHistory()}
                 onDraftChange={(value) => updateDraft("patient", value)}
                 onSubmit={() => void submitPrompt()}
+                patientContext={patientPatientContext}
                 onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
                   void submitMessage("patient", prompt, context)
                 }

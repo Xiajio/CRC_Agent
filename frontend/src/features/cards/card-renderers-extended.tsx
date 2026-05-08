@@ -5,6 +5,7 @@ import { Button, Input } from "../../components/ui";
 import {
   cardTitle as baseCardTitle,
   renderCardContent as baseRenderCardContent,
+  type CardPatientContext,
   type CardPromptHandler,
 } from "./card-renderers";
 
@@ -13,6 +14,7 @@ type CardRendererContext = {
   payload: JsonObject;
   onPromptRequest?: CardPromptHandler;
   isInteractive?: boolean;
+  patientContext?: CardPatientContext | null;
 };
 
 type TriageSelectionMode = "single" | "multiple";
@@ -429,7 +431,7 @@ function renderTriageCard(payload: JsonObject) {
   );
 }
 
-export type { CardPromptHandler };
+export type { CardPatientContext, CardPromptHandler };
 
 export function cardTitle(cardType: string, payload: JsonObject): string {
   if (cardType === "triage_card") {
@@ -443,7 +445,13 @@ export function cardTitle(cardType: string, payload: JsonObject): string {
   return baseCardTitle(cardType, payload);
 }
 
-export function renderCardContent({ cardType, payload, onPromptRequest, isInteractive }: CardRendererContext): ReactNode {
+export function renderCardContent({
+  cardType,
+  payload,
+  onPromptRequest,
+  isInteractive,
+  patientContext,
+}: CardRendererContext): ReactNode {
   if (cardType === "triage_question_card") {
     return (
       <TriageQuestionCardView
@@ -458,5 +466,5 @@ export function renderCardContent({ cardType, payload, onPromptRequest, isIntera
     return renderTriageCard(payload);
   }
 
-  return baseRenderCardContent({ cardType, payload, onPromptRequest });
+  return baseRenderCardContent({ cardType, payload, onPromptRequest, patientContext });
 }

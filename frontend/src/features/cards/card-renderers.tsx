@@ -5,11 +5,17 @@ import { Button } from "../../components/ui";
 
 export type CardPromptHandler = (prompt: string, context?: Record<string, unknown>) => void;
 
+export type CardPatientContext = {
+  registry_patient_id?: unknown;
+  case_database_patient_id?: unknown;
+};
+
 type CardRendererContext = {
   cardType: string;
   payload: JsonObject;
   onPromptRequest?: CardPromptHandler;
   isInteractive?: boolean;
+  patientContext?: CardPatientContext | null;
 };
 
 const TRIAGE_RISK_LABELS: Record<string, string> = {
@@ -70,6 +76,44 @@ function asNumber(value: unknown): number | null {
 
 function readValue(source: JsonObject | null, key: string): JsonValue | unknown {
   return source?.[key];
+}
+
+function readPatientContextValue(
+  payload: JsonObject,
+  data: JsonObject | null,
+  key: keyof CardPatientContext,
+  fallback?: CardPatientContext | null,
+): unknown {
+  const payloadValue = readValue(payload, key);
+  if (payloadValue !== null && payloadValue !== undefined) {
+    return payloadValue;
+  }
+
+  const dataValue = readValue(data, key);
+  if (dataValue !== null && dataValue !== undefined) {
+    return dataValue;
+  }
+
+  return fallback?.[key];
+}
+
+function patientPromptContext(
+  payload: JsonObject,
+  fallback?: CardPatientContext | null,
+): Record<string, unknown> | undefined {
+  const data = asObject(payload.data);
+  const registryPatientId = asNumber(readPatientContextValue(payload, data, "registry_patient_id", fallback));
+  const caseDatabasePatientId = asString(readPatientContextValue(payload, data, "case_database_patient_id", fallback));
+  const context: Record<string, unknown> = {};
+
+  if (registryPatientId !== null) {
+    context.registry_patient_id = registryPatientId;
+  }
+  if (caseDatabasePatientId !== null) {
+    context.case_database_patient_id = caseDatabasePatientId;
+  }
+
+  return Object.keys(context).length > 0 ? context : undefined;
 }
 
 function booleanLabel(value: unknown): string | null {
@@ -193,7 +237,12 @@ function renderMetaItems(items: Array<{ label: string; value: string | number | 
   );
 }
 
-function renderPromptButtons(prompts: string[], onPromptRequest?: CardPromptHandler, labels?: string[]) {
+function renderPromptButtons(
+  prompts: string[],
+  onPromptRequest?: CardPromptHandler,
+  labels?: string[],
+  context?: Record<string, unknown>,
+) {
   if (!onPromptRequest || prompts.length === 0) {
     return null;
   }
@@ -206,7 +255,13 @@ function renderPromptButtons(prompts: string[], onPromptRequest?: CardPromptHand
           type="button"
           variant="secondary"
           size="sm"
-          onClick={() => onPromptRequest(prompt)}
+          onClick={() => {
+            if (context) {
+              onPromptRequest(prompt, context);
+              return;
+            }
+            onPromptRequest(prompt);
+          }}
         >
           {labels?.[index] ?? prompt}
         </Button>
@@ -333,7 +388,11 @@ function renderValueList(value: unknown) {
   );
 }
 
-function renderMedicalCard(payload: JsonObject, onPromptRequest?: CardPromptHandler) {
+function renderMedicalCard(
+  payload: JsonObject,
+  onPromptRequest?: CardPromptHandler,
+  patientContext?: CardPatientContext | null,
+) {
   const data = asObject(payload.data);
   const patientSummary = asObject(readValue(data, "patient_summary"));
   const diagnosisBlock = asObject(readValue(data, "diagnosis_block"));
@@ -354,6 +413,7 @@ function renderMedicalCard(payload: JsonObject, onPromptRequest?: CardPromptHand
     quickSuggestions.push("这个分期术后是否需要辅助化疗？");
   }
   quickSuggestions.push("帮我解读报告中的关键异常指标。");
+  const context = patientPromptContext(payload, patientContext);
 
   return (
     <>
@@ -385,13 +445,17 @@ function renderMedicalCard(payload: JsonObject, onPromptRequest?: CardPromptHand
           </ul>
         </div>
       ) : null}
-      {renderPromptButtons(quickSuggestions, onPromptRequest)}
+      {renderPromptButtons(quickSuggestions, onPromptRequest, undefined, context)}
       {renderDisclosure("查看原始数据", payload)}
     </>
   );
 }
 
-function renderPatientCard(payload: JsonObject, onPromptRequest?: CardPromptHandler) {
+function renderPatientCard(
+  payload: JsonObject,
+  onPromptRequest?: CardPromptHandler,
+  patientContext?: CardPatientContext | null,
+) {
   const data = asObject(payload.data);
   const patientInfo = asObject(readValue(data, "patient_info"));
   const diagnosisBlock = asObject(readValue(data, "diagnosis_block"));
@@ -413,6 +477,7 @@ function renderPatientCard(payload: JsonObject, onPromptRequest?: CardPromptHand
     `为病人 ${patientId} 撰写当日病程记录`,
   ];
   const labels = ["生成治疗方案", "查询影像资料", "撰写病程记录"];
+  const context = patientPromptContext(payload, patientContext);
 
   const patientInfoItems = [
     { label: "性别", value: patientCardFieldText(payload, "patient_info", "gender", readValue(patientInfo, "gender"), isSelfReport) },
@@ -459,7 +524,7 @@ function renderPatientCard(payload: JsonObject, onPromptRequest?: CardPromptHand
           {renderMetaItems(historyItems)}
         </div>
       ) : null}
-      {!isSelfReport ? renderPromptButtons(prompts, onPromptRequest, labels) : null}
+      {!isSelfReport ? renderPromptButtons(prompts, onPromptRequest, labels, context) : null}
       {renderDisclosure("查看原始数据", payload)}
     </div>
   );
@@ -519,7 +584,11 @@ function renderPathologySlideVisualCard(payload: JsonObject) {
   );
 }
 
-function renderTumorDetectionVisualCard(payload: JsonObject, onPromptRequest?: CardPromptHandler) {
+function renderTumorDetectionVisualCard(
+  payload: JsonObject,
+  onPromptRequest?: CardPromptHandler,
+  patientContext?: CardPatientContext | null,
+) {
   const data = asObject(payload.data);
   const previewImages = previewImagesFromPayload(payload);
   const patientId =
@@ -533,6 +602,7 @@ function renderTumorDetectionVisualCard(payload: JsonObject, onPromptRequest?: C
     `生成患者 ${patientId} 的肿瘤检测总结`,
   ];
   const labels = ["查看原始数据", "生成检测总结"];
+  const context = patientPromptContext(payload, patientContext);
 
   return (
     <>
@@ -550,7 +620,7 @@ function renderTumorDetectionVisualCard(payload: JsonObject, onPromptRequest?: C
         ])}
       </div>
       {renderPreviewSection(previewImages, EMPTY_TUMOR_PREVIEW_MESSAGE)}
-      {renderPromptButtons(prompts, onPromptRequest, labels)}
+      {renderPromptButtons(prompts, onPromptRequest, labels, context)}
       {renderDisclosure("查看原始数据", payload)}
     </>
   );
@@ -759,17 +829,17 @@ export function cardTitle(cardType: string, payload: JsonObject): string {
   return typeLabels[cardType] ?? cardType.replace(/_/g, " ");
 }
 
-export function renderCardContent({ cardType, payload, onPromptRequest }: CardRendererContext): ReactNode {
+export function renderCardContent({ cardType, payload, onPromptRequest, patientContext }: CardRendererContext): ReactNode {
   switch (cardType) {
     case "medical_card":
-      return renderMedicalCard(payload, onPromptRequest);
+      return renderMedicalCard(payload, onPromptRequest, patientContext);
     case "patient_card":
-      return renderPatientCard(payload, onPromptRequest);
+      return renderPatientCard(payload, onPromptRequest, patientContext);
     case "imaging_card":
       return renderImagingVisualCard(payload);
     case "tumor_detection_card":
     case "tumor_screening_result":
-      return renderTumorDetectionVisualCard(payload, onPromptRequest);
+      return renderTumorDetectionVisualCard(payload, onPromptRequest, patientContext);
     case "pathology_card":
       return renderPathologyCard(payload);
     case "pathology_slide_card":

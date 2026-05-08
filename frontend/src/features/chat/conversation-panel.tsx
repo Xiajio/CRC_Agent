@@ -1,7 +1,12 @@
 import type { FrontendMessage } from "../../app/api/types";
 import type { ReactNode } from "react";
 import { Button, Card, MessageBubble, Textarea } from "../../components/ui";
-import { cardTitle, renderCardContent, type CardPromptHandler } from "../cards/card-renderers-extended";
+import {
+  cardTitle,
+  renderCardContent,
+  type CardPatientContext,
+  type CardPromptHandler,
+} from "../cards/card-renderers-extended";
 
 export type ConversationLatencyStatus =
   | {
@@ -27,6 +32,7 @@ type ConversationPanelProps = {
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
   onCardPromptRequest?: CardPromptHandler;
+  patientContext?: CardPatientContext | null;
   activeTriageQuestionId?: string | null;
 };
 
@@ -227,6 +233,7 @@ export function ConversationPanel({
   onDraftChange,
   onSubmit,
   onCardPromptRequest,
+  patientContext,
   activeTriageQuestionId,
 }: ConversationPanelProps) {
   const executionLabel = executionStatusLabel(statusNode, isStreaming);
@@ -295,6 +302,7 @@ export function ConversationPanel({
                               cardType: card.cardType,
                               payload: card.payload,
                               onPromptRequest: onCardPromptRequest,
+                              patientContext,
                               isInteractive:
                                 card.cardType !== "triage_question_card"
                                 || (typeof card.payload.question_id === "string"
