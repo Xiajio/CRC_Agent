@@ -84,22 +84,96 @@ def _extract_patient_id(user_text: str) -> Optional[str]:
     return None
 
 
-def _resolve_case_database_patient_id(state: CRCAgentState, user_text: str | None = None) -> str | None:
-    findings = state.findings or {}
-    extracted = _extract_patient_id(user_text or "") if user_text else None
-    candidate = (
-        extracted
-        or getattr(state, "case_database_patient_id", None)
-        or findings.get("case_database_patient_id")
-        or getattr(state, "current_patient_id", None)
-        or findings.get("current_patient_id")
-    )
-    if candidate is None:
+def _normalize_case_database_patient_id(value) -> str | None:
+    if value is None:
         return None
-    text = str(candidate).strip()
+    text = str(value).strip()
     if not text:
         return None
     return text.zfill(3) if text.isdigit() else text
+
+
+def _normalize_registry_patient_id(value) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except Exception:
+        return None
+
+
+def _first_present(*values):
+    for value in values:
+        if value is not None and value != "":
+            return value
+    return None
+
+
+def _resolve_registry_patient_id(state: CRCAgentState, findings: dict | None = None) -> int | None:
+    findings = findings or {}
+    return _normalize_registry_patient_id(
+        _first_present(
+            getattr(state, "registry_patient_id", None),
+            findings.get("registry_patient_id"),
+        )
+    )
+
+
+def _resolve_case_sample_patient_id(state: CRCAgentState, findings: dict | None = None) -> str | None:
+    findings = findings or {}
+    return _normalize_case_database_patient_id(
+        _first_present(
+            getattr(state, "case_database_patient_id", None),
+            findings.get("case_database_patient_id"),
+        )
+    )
+
+
+def _resolve_legacy_current_patient_id(state: CRCAgentState, findings: dict | None = None) -> str | None:
+    findings = findings or {}
+    value = _first_present(
+        getattr(state, "current_patient_id", None),
+        findings.get("current_patient_id"),
+    )
+    return str(value) if value is not None else None
+
+
+def _resolve_case_database_patient_id(state: CRCAgentState, user_text: str | None = None) -> str | None:
+    findings = state.findings or {}
+    extracted = _extract_patient_id(user_text or "") if user_text else None
+    registry_patient_id = _resolve_registry_patient_id(state, findings)
+    return _normalize_case_database_patient_id(
+        _first_present(
+            extracted,
+            str(registry_patient_id) if registry_patient_id is not None else None,
+            _resolve_case_sample_patient_id(state, findings),
+            _resolve_legacy_current_patient_id(state, findings),
+        )
+    )
+
+
+def _apply_split_identity(state: CRCAgentState, return_dict: dict) -> dict:
+    findings_source = return_dict.get("findings")
+    if not isinstance(findings_source, dict):
+        findings_source = state.findings or {}
+
+    registry_patient_id = _resolve_registry_patient_id(state, findings_source)
+    if registry_patient_id is not None:
+        return_dict["registry_patient_id"] = registry_patient_id
+        if isinstance(return_dict.get("findings"), dict):
+            return_dict["findings"]["registry_patient_id"] = registry_patient_id
+
+    case_database_patient_id = _normalize_case_database_patient_id(
+        return_dict.get("case_database_patient_id")
+        or _resolve_case_database_patient_id(state)
+    )
+    if case_database_patient_id is not None:
+        return_dict["case_database_patient_id"] = case_database_patient_id
+        if isinstance(return_dict.get("findings"), dict):
+            return_dict["findings"]["case_database_patient_id"] = case_database_patient_id
+
+    return return_dict
+
 
 
 def node_rad_agent(tools: List[BaseTool], model, streaming: bool = False, show_thinking: bool = True) -> Runnable:
@@ -163,7 +237,7 @@ def node_rad_agent(tools: List[BaseTool], model, streaming: bool = False, show_t
                 return_dict["current_plan"] = updated_plan
                 if show_thinking:
                     print(f"[RadAgent] 标记步骤完成: [{pending_step.id}] {pending_step.description}")
-            return return_dict
+            return _apply_split_identity(state, return_dict)
         
         # === 步骤1：提取患者ID ===
         # 简化实现：从用户输入或 state 中提取患者ID

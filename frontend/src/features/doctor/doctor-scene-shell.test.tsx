@@ -343,6 +343,7 @@ describe("DoctorSceneShell", () => {
     expect(mockConversationPanel).toHaveBeenCalledWith(
       expect.objectContaining({
         latencyStatus: { kind: "streaming" },
+        showThinking: true,
       }),
     );
   });

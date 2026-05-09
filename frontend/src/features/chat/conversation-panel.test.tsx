@@ -60,6 +60,25 @@ describe("ConversationPanel latency status", () => {
     expect(screen.queryByText(/\u6cbb\u7597\u65b9\u6848/u)).not.toBeInTheDocument();
   });
 
+  it("hides patient-facing reasoning from thinking fields and inline think tags", () => {
+    renderConversationPanel({
+      messages: [
+        {
+          cursor: "2",
+          type: "ai",
+          content: "<think>hidden inline reasoning</think>Final patient answer",
+          thinking: "hidden field reasoning",
+          assetRefs: [],
+        },
+      ],
+    });
+
+    expect(screen.getByText("Final patient answer")).toBeInTheDocument();
+    expect(screen.queryByText("hidden field reasoning")).not.toBeInTheDocument();
+    expect(screen.queryByText(/hidden inline reasoning/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/<think>/)).not.toBeInTheDocument();
+  });
+
   it("renders clinical recommendation markdown as structured report content", () => {
     renderConversationPanel({
       messages: [

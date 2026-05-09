@@ -34,6 +34,7 @@ type ConversationPanelProps = {
   onCardPromptRequest?: CardPromptHandler;
   patientContext?: CardPatientContext | null;
   activeTriageQuestionId?: string | null;
+  showThinking?: boolean;
 };
 
 const INTERNAL_LINE_PATTERNS = [
@@ -235,6 +236,7 @@ export function ConversationPanel({
   onCardPromptRequest,
   patientContext,
   activeTriageQuestionId,
+  showThinking = false,
 }: ConversationPanelProps) {
   const executionLabel = executionStatusLabel(statusNode, isStreaming);
   const latencyLabel = latencyStatusLabel(latencyStatus ?? undefined);
@@ -269,7 +271,7 @@ export function ConversationPanel({
             {messages.map((message) => {
               const isUser = message.type !== "ai";
               const { text: normalizedText } = normalizeMessageText(message.content);
-              const thinkText = (message.thinking ?? "").trim();
+              const thinkText = showThinking ? (message.thinking ?? "").trim() : "";
               const hideText = shouldHideInlineMessageText(normalizedText, message) || (!normalizedText && !thinkText);
 
               if (hideText && (!message.inlineCards || message.inlineCards.length === 0)) {

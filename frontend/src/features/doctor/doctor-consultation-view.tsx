@@ -53,6 +53,7 @@ export function DoctorConsultationView({
       onSubmit={onSubmit}
       onCardPromptRequest={onCardPromptRequest}
       patientContext={patientContext}
+      showThinking
     />
   );
 }
