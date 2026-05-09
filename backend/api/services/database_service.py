@@ -199,7 +199,7 @@ def get_database_case_detail(patient_id: int) -> dict[str, Any]:
     )
 
     return {
-        "patient_id": str(patient_id).zfill(3),
+        "patient_id": patient_id,
         "case_record": case_record,
         "available_data": available_data.model_dump(),
         "cards": cards,

@@ -19,11 +19,13 @@ export function DatabaseDetailPanel({ detail, onPromptRequest }: DatabaseDetailP
     );
   }
 
+  const patientSampleId = String(detail.patient_id).padStart(3, "0");
+
   return (
     <div className="database-detail-stack">
       <Card>
         <div className="database-section-heading database-section-heading-inline">
-          <h2>{`\u60a3\u8005 #${detail.patient_id}`}</h2>
+          <h2>{`\u60a3\u8005 #${patientSampleId}`}</h2>
           <div className="database-badge-row">
             <span className="database-pill">{detail.available_data.case_info ? "Case" : "No Case"}</span>
             <span className="database-pill">{detail.available_data.imaging ? "Imaging" : "No Imaging"}</span>

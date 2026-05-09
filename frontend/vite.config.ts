@@ -6,6 +6,7 @@ import { defineConfig } from "vite";
 const workspaceRoot = path.resolve(__dirname, "..");
 const testsRoot = path.resolve(workspaceRoot, "tests", "frontend");
 const nodeModulesRoot = path.resolve(__dirname, "node_modules");
+const apiProxyTarget = process.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
 export default defineConfig({
   plugins: [react()],
@@ -24,6 +25,12 @@ export default defineConfig({
     },
   },
   server: {
+    proxy: {
+      "/api": {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
+    },
     fs: {
       allow: [workspaceRoot],
     },

@@ -51,6 +51,43 @@ function asObjectArray(value: unknown): JsonObject[] {
   return value.map((item) => asObject(item)).filter((item): item is JsonObject => item !== null);
 }
 
+function asDecisionFollowUpItems(...values: unknown[]): string[] {
+  for (const value of values) {
+    if (!Array.isArray(value)) {
+      continue;
+    }
+
+    const items = value
+      .map((item) => {
+        const directText = asString(item);
+        if (directText) {
+          return directText;
+        }
+
+        const objectItem = asObject(item);
+        if (!objectItem) {
+          return null;
+        }
+
+        return (
+          asString(objectItem.period) ??
+          asString(objectItem.frequency) ??
+          asString(objectItem.items) ??
+          asString(objectItem.title) ??
+          asString(objectItem.content) ??
+          JSON.stringify(objectItem)
+        );
+      })
+      .filter((item): item is string => Boolean(item));
+
+    if (items.length > 0) {
+      return items;
+    }
+  }
+
+  return [];
+}
+
 function asString(value: unknown): string | null {
   if (typeof value === "string" && value.trim()) {
     return value.trim();
@@ -687,7 +724,7 @@ function renderDecisionCard(payload: JsonObject) {
   const summary =
     asString(data.patient_summary) ?? asString(data.summary) ?? cardSummary(data) ?? "已生成治疗决策摘要。";
   const plans = asObjectArray(data.treatment_plan);
-  const followUp = asObjectArray(data.follow_up_plan);
+  const followUp = asDecisionFollowUpItems(data.follow_up_plan, data.follow_up);
   const goals = Array.isArray(data.treatment_goals) ? data.treatment_goals : [];
   const considerations = Array.isArray(data.key_considerations) ? data.key_considerations : [];
 
@@ -733,7 +770,7 @@ function renderDecisionCard(payload: JsonObject) {
           <ul className="workspace-list">
             {followUp.map((item, index) => (
               <li key={`follow-${index}`} className="workspace-list-item">
-                {asString(item.period) ?? asString(item.frequency) ?? asString(item.items) ?? JSON.stringify(item)}
+                {item}
               </li>
             ))}
           </ul>

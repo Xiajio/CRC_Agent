@@ -1,4 +1,4 @@
-﻿import json
+import json
 import openpyxl
 import os
 import re
@@ -9,6 +9,9 @@ from langchain_core.tools import tool
 from langchain_core.runnables import Runnable
 from ..state import CRCAgentState
 from .node_utils import _ensure_message
+from .patient_identity import (
+    resolve_registry_patient_id as _resolve_registry_patient_id,
+)
 from ..tools.database_tools import get_patient_case_info, upsert_patient_info
 
 xlsx = str(CLASSIFICATION_FILE)
@@ -143,22 +146,6 @@ CHAT_MAIN_TOOLS = [
 ]
 
 
-def _normalize_registry_patient_id(value) -> int | None:
-    if value is None or value == "":
-        return None
-    try:
-        return int(value)
-    except Exception:
-        return None
-
-
-def _resolve_registry_patient_id(state: CRCAgentState, findings: dict | None = None) -> int | None:
-    findings = findings or {}
-    return _normalize_registry_patient_id(
-        getattr(state, "registry_patient_id", None) or findings.get("registry_patient_id")
-    )
-
-
 def _apply_registry_identity(state: CRCAgentState, return_dict: dict) -> dict:
     findings = return_dict.get("findings")
     registry_patient_id = _resolve_registry_patient_id(
@@ -195,8 +182,8 @@ CHAT_MAIN_SYSTEM_PROMPT = """你好！你是一位专业的结直肠癌诊断专
     以下是流程图，问诊的时候每次一个问题。
     CRC_SCREENING_DIAGNOSIS_STANDARD_DICT = {
     "metadata": {
-        "guideline_version": "ä»¥æœ¬åœ°æŒ‡å—çŸ¥è¯†åº“å…ƒæ•°æ®ä¸ºå‡†",
-        "update_time": "ä»¥æœ¬åœ°æŒ‡å—çŸ¥è¯†åº“å…ƒæ•°æ®ä¸ºå‡†",
+        "guideline_version": "local guideline knowledge base",
+        "update_time": "local guideline knowledge base",
         "core_principle": "风险分层驱动筛查，异常结果递进式检查，病理+影像学+分子检测三联确诊",
         "applicable_scope": "≥18岁人群CRC筛查与初步诊断"
     },

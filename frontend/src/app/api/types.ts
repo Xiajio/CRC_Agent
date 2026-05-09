@@ -463,7 +463,7 @@ export interface DatabaseAvailableData {
 }
 
 export interface DatabaseCaseDetailResponse {
-  patient_id: string;
+  patient_id: number;
   case_record: JsonObject | null;
   available_data: DatabaseAvailableData;
   cards: Record<string, JsonObject>;

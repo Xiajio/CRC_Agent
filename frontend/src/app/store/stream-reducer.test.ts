@@ -358,6 +358,48 @@ describe("reduceStreamEvent", () => {
     ]);
   });
 
+  it("keeps tumor_screening_result as an inline card", () => {
+    const delta: MessageDeltaEvent = {
+      type: "message.delta",
+      message_id: "msg-tumor",
+      node: "rad_agent",
+      delta: "Tumor screening complete",
+    };
+    const tumorCard: CardUpsertEvent = {
+      type: "card.upsert",
+      card_type: "tumor_screening_result",
+      payload: { patient_id: "007", summary: "screening complete" },
+      source_channel: "state",
+    };
+    const done: MessageDoneEvent = {
+      type: "message.done",
+      role: "assistant",
+      message_id: "msg-tumor",
+      node: "rad_agent",
+      content: "Tumor screening complete",
+      inline_cards: [
+        { card_type: "tumor_screening_result", payload: { patient_id: "007", summary: "screening complete" } },
+      ],
+    };
+
+    const withDelta = reduceStreamEvent(createInitialSessionState(), delta);
+    const withCard = reduceStreamEvent(withDelta, tumorCard);
+    const finalState = reduceStreamEvent(withCard, done);
+
+    expect(withCard.messages[0]?.inlineCards).toEqual([
+      {
+        cardType: "tumor_screening_result",
+        payload: { patient_id: "007", summary: "screening complete" },
+      },
+    ]);
+    expect(finalState.messages[0]?.inlineCards).toEqual([
+      {
+        cardType: "tumor_screening_result",
+        payload: { patient_id: "007", summary: "screening complete" },
+      },
+    ]);
+  });
+
   it("still supports legacy final-only message.done events", () => {
     const done: MessageDoneEvent = {
       type: "message.done",

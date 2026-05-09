@@ -18,6 +18,7 @@ from ..prompts import (
     PLANNING_USER_PROMPT_TEMPLATE,
     MULTI_TASK_USER_PROMPT_TEMPLATE,
 )
+from .patient_identity import first_present as _first_present
 
 
 def _latest_human_text(state: CRCAgentState) -> str:
@@ -214,14 +215,14 @@ def _get_user_intent_summary(state: CRCAgentState) -> str:
 
 def _resolve_split_patient_id(state: CRCAgentState, findings: Dict[str, Any] | None = None) -> Any:
     findings = findings or {}
-    return (
-        findings.get("db_query_patient_id")
-        or findings.get("registry_patient_id")
-        or getattr(state, "registry_patient_id", None)
-        or findings.get("case_database_patient_id")
-        or getattr(state, "case_database_patient_id", None)
-        or findings.get("current_patient_id")
-        or getattr(state, "current_patient_id", None)
+    return _first_present(
+        findings.get("db_query_patient_id"),
+        findings.get("registry_patient_id"),
+        getattr(state, "registry_patient_id", None),
+        findings.get("case_database_patient_id"),
+        getattr(state, "case_database_patient_id", None),
+        findings.get("current_patient_id"),
+        getattr(state, "current_patient_id", None),
     )
 
 

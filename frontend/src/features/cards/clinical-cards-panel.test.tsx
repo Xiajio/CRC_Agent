@@ -53,6 +53,24 @@ describe("ClinicalCardsPanel", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText("暂无说明。")).not.toBeInTheDocument();
   });
+
+  it("renders decision card follow_up string items from the backend payload", () => {
+    render(
+      <ClinicalCardsPanel
+        cards={{
+          decision_card: {
+            summary: "Treatment decision summary.",
+            follow_up: ["Repeat CEA every 3 months.", "Schedule surveillance CT."],
+          },
+        }}
+        selectedCardType="decision_card"
+      />,
+    );
+
+    expect(screen.getByText("Repeat CEA every 3 months.")).toBeInTheDocument();
+    expect(screen.getByText("Schedule surveillance CT.")).toBeInTheDocument();
+  });
+
   it("renders imaging card previews with embedded mime types", () => {
     render(
       <ClinicalCardsPanel

@@ -145,6 +145,41 @@ def test_card_extraction_and_snapshot_restore_keep_triage_question_card_inline()
     assert any(card.card_type == "triage_card" for card in snapshot.cards)
 
 
+def test_tumor_screening_result_is_extracted_and_kept_inline() -> None:
+    tumor_screening_result = {
+        "type": "tumor_screening_result",
+        "patient_id": "007",
+        "summary": "screening complete",
+        "data": {"total_images": 2, "images_with_tumor": 1},
+    }
+    message = AIMessage(
+        content="screening complete",
+        additional_kwargs={"tumor_screening_result": tumor_screening_result},
+    )
+
+    extracted = extract_cards("message", {}, messages=[message])
+    normalized = normalize_tick("message", {}, messages=[message])
+    session_meta = SessionMeta(session_id="sess_tumor", thread_id="thread_tumor", scene="doctor")
+    snapshot = build_recovery_snapshot(
+        session_meta,
+        {"messages": [message]},
+        message_limit=10,
+    )
+
+    assert any(
+        isinstance(event, CardUpsertEvent) and event.card_type == "tumor_screening_result"
+        for event in extracted
+    )
+
+    message_done = next(event for event in normalized if isinstance(event, MessageDoneEvent))
+    assert message_done.inline_cards is not None
+    assert any(card["card_type"] == "tumor_screening_result" for card in message_done.inline_cards)
+
+    assert snapshot.messages[0].inline_cards
+    assert any(card["card_type"] == "tumor_screening_result" for card in snapshot.messages[0].inline_cards)
+    assert any(card.card_type == "tumor_screening_result" for card in snapshot.cards)
+
+
 def test_normalize_tick_deduplicates_ai_messages_with_same_nonempty_id() -> None:
     first = AIMessage(content="first answer", id="msg-123")
     second = AIMessage(content="second answer", id="msg-123")

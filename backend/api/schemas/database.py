@@ -97,7 +97,7 @@ class DatabaseAvailableData(BaseModel):
 
 
 class DatabaseCaseDetailResponse(BaseModel):
-    patient_id: str
+    patient_id: int
     case_record: dict[str, Any] | None = None
     available_data: DatabaseAvailableData
     cards: dict[str, dict[str, Any]] = Field(default_factory=dict)

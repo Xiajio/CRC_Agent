@@ -22,61 +22,20 @@ from .node_utils import (
 from ..tools.database_tools import ATOMIC_DATABASE_TOOLS
 from ..tools.card_formatter import CardFormatter
 from .planner import get_current_pending_step, mark_step_completed
-
-
-# === UI-friendly summarization helpers ===
-def _normalize_case_database_patient_id(value) -> str | None:
-    if value is None:
-        return None
-    text = str(value).strip()
-    if not text:
-        return None
-    return text.zfill(3) if text.isdigit() else text
-
-
-def _normalize_registry_patient_id(value) -> int | None:
-    if value is None or value == "":
-        return None
-    try:
-        return int(value)
-    except Exception:
-        return None
-
-
-def _first_present(*values):
-    for value in values:
-        if value is not None and value != "":
-            return value
-    return None
-
-
-def _resolve_registry_patient_id(state: CRCAgentState, findings: dict | None = None) -> int | None:
-    findings = findings or {}
-    return _normalize_registry_patient_id(
-        _first_present(
-            getattr(state, "registry_patient_id", None),
-            findings.get("registry_patient_id"),
-        )
-    )
+from .patient_identity import (
+    apply_split_identity as _shared_apply_split_identity,
+    normalize_case_database_patient_id as _normalize_case_database_patient_id,
+    resolve_case_database_patient_id as _shared_resolve_case_database_patient_id,
+)
 
 
 def _resolve_case_database_patient_id(state: CRCAgentState, findings: dict | None = None) -> str | None:
-    findings = findings or {}
-    return _normalize_case_database_patient_id(
-        _first_present(
-            getattr(state, "case_database_patient_id", None),
-            findings.get("case_database_patient_id"),
-        )
+    return _shared_resolve_case_database_patient_id(
+        state,
+        findings or {},
+        include_registry=False,
+        include_current=False,
     )
-
-
-def _resolve_legacy_current_patient_id(state: CRCAgentState, findings: dict | None = None) -> str | None:
-    findings = findings or {}
-    value = _first_present(
-        getattr(state, "current_patient_id", None),
-        findings.get("current_patient_id"),
-    )
-    return str(value) if value is not None else None
 
 
 def _resolve_active_patient_id(
@@ -85,13 +44,11 @@ def _resolve_active_patient_id(
     extracted_patient_id: str | None = None,
     inferred_patient_id: str | None = None,
 ) -> str | None:
-    registry_patient_id = _resolve_registry_patient_id(state, findings)
-    return _first_present(
-        extracted_patient_id,
-        str(registry_patient_id) if registry_patient_id is not None else None,
-        _resolve_case_database_patient_id(state, findings),
-        _resolve_legacy_current_patient_id(state, findings),
-        inferred_patient_id,
+    return _shared_resolve_case_database_patient_id(
+        state,
+        findings or {},
+        candidate_values=(extracted_patient_id,),
+        trailing_candidates=(inferred_patient_id,),
     )
 
 
@@ -101,26 +58,13 @@ def _apply_split_identity(
     *,
     findings: dict | None = None,
 ) -> dict:
-    findings_source = findings if findings is not None else return_dict.get("findings")
-    if not isinstance(findings_source, dict):
-        findings_source = state.findings or {}
-
-    registry_patient_id = _resolve_registry_patient_id(state, findings_source)
-    if registry_patient_id is not None:
-        return_dict["registry_patient_id"] = registry_patient_id
-        if isinstance(return_dict.get("findings"), dict):
-            return_dict["findings"]["registry_patient_id"] = registry_patient_id
-
-    case_database_patient_id = _normalize_case_database_patient_id(
-        return_dict.get("case_database_patient_id")
-        or _resolve_case_database_patient_id(state, findings_source)
+    return _shared_apply_split_identity(
+        state,
+        return_dict,
+        findings=findings,
+        include_registry_for_case=False,
+        include_current=False,
     )
-    if case_database_patient_id is not None:
-        return_dict["case_database_patient_id"] = case_database_patient_id
-        if isinstance(return_dict.get("findings"), dict):
-            return_dict["findings"]["case_database_patient_id"] = case_database_patient_id
-
-    return return_dict
 
 
 def _format_case_summary_markdown(case_data: dict) -> str:

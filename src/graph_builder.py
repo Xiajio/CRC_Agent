@@ -193,34 +193,18 @@ def _plan_driven_router(state: CRCAgentState) -> str:
         print(f"  step: [{pending_step.id}] {pending_step.description}")
         print(f"  tool: {pending_step.tool_needed}")
         
-        # Route directly by tool_needed.
-        tool_type = pending_step.tool_needed.lower()
         target = classify_pending_step_target(
             pending_step.tool_needed,
             getattr(pending_step, "assignee", "") or "",
         )
 
-        if target == "tool_executor":
-            return target
-
-        if any(kw in tool_type for kw in ["toc", "目录", "chapter", "章节", "search"]):
-            return "knowledge"
-        elif any(kw in tool_type for kw in ["database", "db", "case"]):
-            return "case_database"
-        elif any(kw in tool_type for kw in ["imaging", "影像", "tumor", "肿瘤", "ct", "mri"]):
-            return "rad_agent"
-        elif any(kw in tool_type for kw in ["pathology", "病理", "clam", "切片"]):
-            return "path_agent"
-        elif any(kw in tool_type for kw in ["ask_user", "询问"]):
-            # [Fix v2] Only non-chat intents should continue to assessment.
-            # Prevent casual/off-topic ask_user plans from entering clinical assessment.
+        if target == "assessment":
             if user_intent in ["general_chat", "off_topic_redirect", "greeting", "thanks"]:
                 print(f"[Graph Router] ask_user detected chat intent ({user_intent}); redirect -> general_chat")
                 return "general_chat"
-            return "assessment"
-        else:
-            # 兜底：默认去 knowledge 节点
-            return "knowledge"
+
+        return target or "knowledge"
+
     
     # === 3. Plan complete, route by intent ===
     completed_count = sum(1 for s in plan if s.status == 'completed')
@@ -244,25 +228,6 @@ def _plan_driven_router(state: CRCAgentState) -> str:
     else:
         print("[Graph Router] non-clinical data/query task; route -> chat_main")
         return "chat_main"
-
-
-def route_after_knowledge(state: CRCAgentState) -> str:
-    """
-    Route after Knowledge node execution.
-    
-    Use _plan_driven_router directly instead of returning to Planner.
-    """
-    return _plan_driven_router(state)
-
-
-def route_after_case_database(state: CRCAgentState) -> str:
-    """
-    Route after Case Database node execution.
-    
-    Use _plan_driven_router directly instead of returning to Planner.
-    """
-    return _plan_driven_router(state)
-
 
 def route_after_rad_agent(state: CRCAgentState) -> str:
     """
@@ -364,8 +329,6 @@ def route_after_doctor_intent(state: CRCAgentState) -> str:
     target = route_after_intent(state)
     if target == "clinical_entry_resolver":
         return "assessment"
-    if target == "chat_main":
-        return "general_chat"
     return target
 
 
@@ -378,37 +341,23 @@ def route_after_doctor_planner(state: CRCAgentState) -> str:
     target = dynamic_router(state)
     if target == "clinical_entry_resolver":
         return "assessment"
-    if target == "chat_main":
-        return "general_chat"
     return target
 
 
 def route_after_doctor_followup(state: CRCAgentState) -> str:
-    target = _plan_driven_router(state)
-    if target == "chat_main":
-        return "general_chat"
-    return target
+    return _plan_driven_router(state)
 
 
 def route_after_doctor_post_assessment(state: CRCAgentState) -> str:
-    target = route_after_assessment(state)
-    if target == "chat_main":
-        return "general_chat"
-    return target
+    return route_after_assessment(state)
 
 
 def route_after_doctor_rad_agent(state: CRCAgentState) -> str:
-    target = route_after_rad_agent(state)
-    if target == "chat_main":
-        return "general_chat"
-    return target
+    return route_after_rad_agent(state)
 
 
 def route_after_doctor_path_agent(state: CRCAgentState) -> str:
-    target = route_after_path_agent(state)
-    if target == "chat_main":
-        return "general_chat"
-    return target
+    return route_after_path_agent(state)
 
 
 def route_after_patient_planner(state: CRCAgentState) -> str:
@@ -439,6 +388,20 @@ def route_after_patient_assessment(state: CRCAgentState) -> str:
     if target == "end_turn":
         return "end"
     return "chat_main"
+
+
+def route_after_patient_chat_main(state: CRCAgentState) -> str:
+    findings = state.findings or {}
+    if findings.get("active_inquiry") or findings.get("active_field") or state.missing_critical_data:
+        return "end"
+
+    clinical_intents = {"clinical_assessment", "treatment_decision"}
+    user_intent = findings.get("user_intent", "")
+    sub_tasks = findings.get("sub_tasks", [])
+    if user_intent in clinical_intents or bool(set(sub_tasks) & clinical_intents):
+        return "assessment"
+
+    return "end"
 # === 3. 工具加载辅助函数 (Modularity) ===
 def _load_agent_tools(settings: Settings) -> List[BaseTool]:
     """
@@ -511,6 +474,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
     builder.add_node(NodeName.CITATION, _instrument_node(NodeName.CITATION, node_citation_agent(**common_config)))
     builder.add_node(NodeName.EVALUATOR, _instrument_node(NodeName.EVALUATOR, node_llm_judge(**common_config)))
     builder.add_node(NodeName.FINALIZE, node_finalize(**common_config))
+    builder.add_node(NodeName.CHAT_MAIN, node_chat_main(**common_config))
     builder.add_node(NodeName.GENERAL_CHAT, node_general_chat(**common_config))
 
     # --- Edges Definition ---
@@ -525,6 +489,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
         {
             "planner": NodeName.PLANNER,
             "general_chat": NodeName.GENERAL_CHAT,
+            "chat_main": NodeName.CHAT_MAIN,
             "knowledge": NodeName.KNOWLEDGE,
             "case_database": NodeName.CASE_DATABASE,
             "assessment": NodeName.ASSESSMENT,
@@ -548,6 +513,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
         {
             "end_turn": END,  # Missing data question interrupts the turn.
             "general_chat": NodeName.GENERAL_CHAT,
+            "chat_main": NodeName.CHAT_MAIN,
             "knowledge": NodeName.KNOWLEDGE,
             "case_database": NodeName.CASE_DATABASE,  # Case database query
             "rad_agent": NodeName.RAD_AGENT,  # Radiology route
@@ -573,6 +539,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "path_agent": NodeName.PATH_AGENT, # Direct route to pathology analysis.
             "assessment": NodeName.ASSESSMENT, # Plan complete; enter clinical decision flow.
             "general_chat": NodeName.GENERAL_CHAT,
+            "chat_main": NodeName.CHAT_MAIN,
             "parallel_subagents": NodeName.PARALLEL_SUBAGENTS,
             "end": END,
         },
@@ -590,6 +557,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "path_agent": NodeName.PATH_AGENT, # Direct route to pathology analysis.
             "assessment": NodeName.ASSESSMENT, # Plan complete; enter clinical decision flow.
             "general_chat": NodeName.GENERAL_CHAT,
+            "chat_main": NodeName.CHAT_MAIN,
             "parallel_subagents": NodeName.PARALLEL_SUBAGENTS,
             "end": END,
         },
@@ -603,6 +571,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "decision": NodeName.DECISION,  # Fast Pass route.
             "diagnosis": NodeName.DIAGNOSIS,
             "general_chat": NodeName.GENERAL_CHAT,
+            "chat_main": NodeName.CHAT_MAIN,
             "end_turn": END,  # Active inquiry interrupts the turn.
         },
     )
@@ -651,9 +620,9 @@ def build_doctor_graph(settings: Settings) -> Runnable:
 
     # Finalize -> End
     builder.add_edge(NodeName.FINALIZE, END)
+    builder.add_edge(NodeName.CHAT_MAIN, END)
     builder.add_edge(NodeName.GENERAL_CHAT, END)
-    # Removed direct KNOWLEDGE -> END edge; route via route_after_knowledge.
-    # Removed direct CASE_DATABASE -> END edge; route via route_after_case_database.
+    # Removed direct KNOWLEDGE/CASE_DATABASE -> END edges; follow-up routing handles pending plan steps.
     
     # [Optimization v4.2] Smart routing after RadAgent.
     # 使用 _plan_driven_router 直接分发，无绕回 Planner
@@ -667,6 +636,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "rad_agent": NodeName.RAD_AGENT,   # Direct route to the next radiology step.
             "assessment": NodeName.ASSESSMENT, # Includes treatment decision; enter clinical flow.
             "general_chat": NodeName.GENERAL_CHAT,
+            "chat_main": NodeName.CHAT_MAIN,
             "parallel_subagents": NodeName.PARALLEL_SUBAGENTS,
             "end": END,
         },
@@ -683,6 +653,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "path_agent": NodeName.PATH_AGENT, # Direct route to the next pathology step.
             "assessment": NodeName.ASSESSMENT, # Includes treatment decision; enter clinical flow.
             "general_chat": NodeName.GENERAL_CHAT,
+            "chat_main": NodeName.CHAT_MAIN,
             "parallel_subagents": NodeName.PARALLEL_SUBAGENTS,
             "end": END,
         },
@@ -700,6 +671,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "path_agent": NodeName.PATH_AGENT,
             "assessment": NodeName.ASSESSMENT,
             "general_chat": NodeName.GENERAL_CHAT,
+            "chat_main": NodeName.CHAT_MAIN,
             "parallel_subagents": NodeName.PARALLEL_SUBAGENTS,
             "end": END,
         },
@@ -781,7 +753,14 @@ def build_patient_graph(settings: Settings) -> Runnable:
             "end": END,
         },
     )
-    builder.add_edge(NodeName.CHAT_MAIN, END)
+    builder.add_conditional_edges(
+        NodeName.CHAT_MAIN,
+        route_after_patient_chat_main,
+        {
+            "assessment": NodeName.ASSESSMENT,
+            "end": END,
+        },
+    )
     builder.add_edge(NodeName.GENERAL_CHAT, END)
 
     return builder.compile(checkpointer=get_checkpointer(settings.checkpoint))
@@ -808,4 +787,3 @@ def simple_run(message: str):
 
     result = asyncio.run(_run())
     return ensure_agent_state(result)
-

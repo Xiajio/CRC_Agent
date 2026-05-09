@@ -69,9 +69,9 @@ def _load_patient_identity(meta) -> dict[str, Any] | None:
         return None
 
 
-def _build_session_response(session_id: str) -> SessionResponse:
+def _build_session_response(session_id: str, *, message_limit: int = 50) -> SessionResponse:
     meta = _get_session_meta_or_404(session_id)
-    snapshot = build_session_snapshot(load_agent_state(session_id), meta)
+    snapshot = build_session_snapshot(load_agent_state(session_id), meta, message_limit=message_limit)
     snapshot.patient_identity = _load_patient_identity(meta)
     return SessionResponse(
         session_id=meta.session_id,
@@ -103,8 +103,11 @@ async def create_session(request: CreateSessionRequest) -> SessionResponse:
 
 
 @router.get("/{session_id}")
-async def get_session(session_id: str) -> SessionResponse:
-    return _build_session_response(session_id)
+async def get_session(
+    session_id: str,
+    message_limit: int = Query(default=50, ge=1, le=100),
+) -> SessionResponse:
+    return _build_session_response(session_id, message_limit=message_limit)
 
 
 @router.get("/{session_id}/messages")

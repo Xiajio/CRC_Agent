@@ -21,7 +21,7 @@ function createDeferred<T>() {
 
 function makeDetailResponse(patientId: number): DatabaseCaseDetailResponse {
   return {
-    patient_id: String(patientId),
+    patient_id: patientId,
     case_record: {
       patient_id: patientId,
       clinical_stage: `cT${patientId}N0M0`,
@@ -66,7 +66,7 @@ describe("useDatabaseWorkbench", () => {
     });
 
     await waitFor(() => expect(result.current.selectedPatientId).toBe(2));
-    expect(result.current.detail?.patient_id).toBe("2");
+    expect(result.current.detail?.patient_id).toBe(2);
     expect(result.current.editRecord?.patient_id).toBe(2);
 
     await act(async () => {
@@ -75,7 +75,7 @@ describe("useDatabaseWorkbench", () => {
     });
 
     expect(result.current.selectedPatientId).toBe(2);
-    expect(result.current.detail?.patient_id).toBe("2");
+    expect(result.current.detail?.patient_id).toBe(2);
     expect(result.current.editRecord?.patient_id).toBe(2);
     await waitFor(() => expect(result.current.isLoadingDetail).toBe(false));
   });

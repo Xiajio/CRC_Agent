@@ -202,13 +202,13 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
   const getDatabaseStats = vi.fn(async () => makeDatabaseStatsResponse());
   const searchDatabaseCases = vi.fn(async () => makeDatabaseSearchResponse());
   const getDatabaseCaseDetail = vi.fn(async (patientId: number): Promise<DatabaseCaseDetailResponse> => ({
-    patient_id: String(patientId),
+    patient_id: patientId,
     case_record: { patient_id: patientId, clinical_stage: "cT3N1M0" },
     available_data: { case_info: true, imaging: false, pathology_slides: false },
     cards: {},
   }));
   const upsertDatabaseCase = vi.fn(async () => ({
-    patient_id: "33",
+    patient_id: 33,
     case_record: { patient_id: 33 },
     available_data: { case_info: true, imaging: false, pathology_slides: false },
     cards: {},

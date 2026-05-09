@@ -21,6 +21,7 @@ _PREVIEW_IMAGE_FIELDS = {
 _CARD_PREVIEW_COLLECTIONS = {
     "imaging_card": "images",
     "tumor_detection_card": "sample_images_with_tumor",
+    "tumor_screening_result": "sample_images_with_tumor",
     "pathology_slide_card": "images",
     "radiomics_report_card": "analyzed_images",
 }

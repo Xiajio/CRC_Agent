@@ -7,10 +7,23 @@ from typing import Iterable
 
 _TARGET_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("assessment", ("ask_user",)),
-    ("case_database", ("database", "case_database", "case")),
+    ("case_database", ("database_query", "case_database_query", "case_database", "database", "case")),
     ("tool_executor", ("calculator", "tool_executor")),
-    ("rad_agent", ("imaging", "ct", "mri", "tumor", "radiology")),
-    ("path_agent", ("pathology", "clam", "biopsy")),
+    (
+        "rad_agent",
+        (
+            "imaging_analysis",
+            "tumor_detection",
+            "tumor_screening",
+            "ct_analysis",
+            "imaging",
+            "ct",
+            "mri",
+            "tumor",
+            "radiology",
+        ),
+    ),
+    ("path_agent", ("pathology_analysis", "pathology", "clam", "biopsy")),
 )
 
 _DEFAULT_TARGET = "knowledge"
@@ -21,11 +34,20 @@ _ASSIGNEE_ALIASES: dict[str, str] = {
     "web_search": "knowledge",
     "web": "knowledge",
     "case_database": "case_database",
+    "database_query": "case_database",
+    "case_database_query": "case_database",
     "database": "case_database",
     "rad_agent": "rad_agent",
+    "imaging_analysis": "rad_agent",
+    "tumor_detection": "rad_agent",
+    "tumor_screening": "rad_agent",
+    "ct_analysis": "rad_agent",
     "imaging": "rad_agent",
+    "radiology": "rad_agent",
     "path_agent": "path_agent",
+    "pathology_analysis": "path_agent",
     "pathology": "path_agent",
+    "clam": "path_agent",
     "tool_executor": "tool_executor",
     "calculator": "tool_executor",
 }

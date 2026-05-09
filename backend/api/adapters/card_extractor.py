@@ -21,6 +21,7 @@ CARD_REGISTRY: tuple[tuple[str, str], ...] = (
     ("patient_card", "patient_card"),
     ("imaging_card", "imaging_card"),
     ("tumor_detection_card", "tumor_detection_card"),
+    ("tumor_screening_result", "tumor_screening_result"),
 )
 
 
