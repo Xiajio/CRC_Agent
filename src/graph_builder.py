@@ -57,7 +57,7 @@ from .observability import init_observability
 # [Optimization] Global Retriever warmup
 from .rag import warmup_retriever
 from .services.llm_service import LLMService
-from .state import CRCAgentState, ensure_agent_state
+from .state import CRCAgentState, ensure_agent_state, merge_node_timings
 from .tools import list_tools, list_tools_with_web_search
 
 
@@ -90,7 +90,6 @@ class NodeName(str, Enum):
 
 
 _TIMED_NODE_NAMES = {
-    NodeName.PLANNER,
     NodeName.ASSESSMENT,
     NodeName.DECISION,
     NodeName.CITATION,
@@ -108,10 +107,32 @@ def _append_node_timing(output: Any, node_name: str, started_at: float) -> Dict[
     if isinstance(output, dict):
         merged = dict(output)
         existing = list(merged.get("node_timings") or [])
-        existing.append(record)
-        merged["node_timings"] = existing
+        merged["node_timings"] = merge_node_timings(existing, [record])
         return merged
     return {"node_timings": [record]}
+
+
+def _reset_node_timings_at_turn_start(node_fn: Callable[..., Any]) -> Callable[..., Any]:
+    if inspect.iscoroutinefunction(node_fn):
+        async def _async_wrapped(state: CRCAgentState):
+            output = await node_fn(state)
+            if isinstance(output, dict):
+                merged = dict(output)
+                merged["node_timings"] = []
+                return merged
+            return {"node_timings": []}
+
+        return _async_wrapped
+
+    def _sync_wrapped(state: CRCAgentState):
+        output = node_fn(state)
+        if isinstance(output, dict):
+            merged = dict(output)
+            merged["node_timings"] = []
+            return merged
+        return {"node_timings": []}
+
+    return _sync_wrapped
 
 
 def _instrument_node(node_name: NodeName, node_fn: Callable[..., Any]) -> Callable[..., Any]:
@@ -449,7 +470,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
     builder.add_node(NodeName.OUTPATIENT_TRIAGE, node_outpatient_triage(**common_config))
 
     # --- Nodes Registration ---
-    builder.add_node(NodeName.INTENT, node_intent_classifier(**common_config))
+    builder.add_node(NodeName.INTENT, _reset_node_timings_at_turn_start(node_intent_classifier(**common_config)))
     builder.add_node(NodeName.PLANNER, node_planner(**common_config))  # Planner node
     builder.add_node(NodeName.KNOWLEDGE, node_knowledge_retrieval(tools=tools, **common_config, use_sub_agent=False))
     builder.add_node(NodeName.CASE_DATABASE, node_case_database(tools=tools, **common_config))
@@ -702,7 +723,7 @@ def build_patient_graph(settings: Settings) -> Runnable:
     }
 
     builder = StateGraph(CRCAgentState)
-    builder.add_node(NodeName.INTENT, node_intent_classifier(**common_config))
+    builder.add_node(NodeName.INTENT, _reset_node_timings_at_turn_start(node_intent_classifier(**common_config)))
     builder.add_node(NodeName.PLANNER, node_planner(**common_config))
     builder.add_node(NodeName.CLINICAL_ENTRY_RESOLVER, node_clinical_entry_resolver(**common_config))
     builder.add_node(NodeName.OUTPATIENT_TRIAGE, node_outpatient_triage(**common_config))

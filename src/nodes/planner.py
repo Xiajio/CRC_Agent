@@ -11,7 +11,7 @@ from typing import List, Dict, Any, Callable
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.language_models import BaseChatModel
 
-from ..state import CRCAgentState, PlanStep
+from ..state import CRCAgentState, PlanStep, merge_node_timings
 from ..prompts import (
     PLANNER_SYSTEM_PROMPT,
     SELF_CORRECTION_PROMPT_TEMPLATE,
@@ -503,12 +503,11 @@ def node_planner(
 
         def _with_timing(payload: Dict[str, Any] | None) -> Dict[str, Any]:
             result = dict(payload or {})
-            timings = list(result.get("node_timings") or [])
-            timings.append({
+            timing_record = {
                 "node": "planner",
                 "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
-            })
-            result["node_timings"] = timings
+            }
+            result["node_timings"] = merge_node_timings(result.get("node_timings"), [timing_record])
             return result
         """
         规划节点主逻辑（主动上下文规划版）

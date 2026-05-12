@@ -400,6 +400,40 @@ def append_list(left: List[Dict[str, Any]] | None, right: List[Dict[str, Any]] |
     return left
 
 
+def merge_node_timings(
+    left: List[Dict[str, Any]] | None,
+    right: List[Dict[str, Any]] | None,
+) -> List[Dict[str, Any]]:
+    """
+    Per-turn node timing reducer.
+
+    - [] is an explicit turn-start reset.
+    - Non-empty updates are merged by node name so a node has one timing record.
+    """
+    if right is None:
+        return left or []
+    if right == []:
+        return []
+
+    merged: List[Dict[str, Any]] = []
+    node_index: Dict[str, int] = {}
+    for record in (left or []) + right:
+        if not isinstance(record, dict):
+            continue
+        node_name = record.get("node")
+        if node_name is None:
+            merged.append(record)
+            continue
+
+        key = str(node_name)
+        if key in node_index:
+            merged[node_index[key]] = record
+        else:
+            node_index[key] = len(merged)
+            merged.append(record)
+    return merged
+
+
 def merge_evidence_by_id(
     left: List[Dict[str, Any]] | None,
     right: List[Dict[str, Any]] | None,
@@ -503,7 +537,7 @@ class CRCAgentState(BaseModel):
     retrieved_references: List[RetrievedReference] = Field(default_factory=list)
     rag_trace: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
     subagent_reports: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
-    node_timings: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
+    node_timings: Annotated[List[Dict[str, Any]], merge_node_timings] = Field(default_factory=list)
     stage_timings: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
     retrieval_timings: Annotated[List[Dict[str, Any]], append_list] = Field(default_factory=list)
     
