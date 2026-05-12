@@ -392,7 +392,7 @@ def route_after_patient_assessment(state: CRCAgentState) -> str:
 
 def route_after_patient_chat_main(state: CRCAgentState) -> str:
     findings = state.findings or {}
-    if findings.get("active_inquiry") or findings.get("active_field") or state.missing_critical_data:
+    if findings.get("active_inquiry") or findings.get("active_field"):
         return "end"
 
     clinical_intents = {"clinical_assessment", "treatment_decision"}
