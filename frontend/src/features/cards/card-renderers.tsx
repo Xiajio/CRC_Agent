@@ -111,6 +111,58 @@ function asNumber(value: unknown): number | null {
   return null;
 }
 
+function confidenceRatio(value: unknown): number | null {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || value < 0) {
+      return null;
+    }
+    return value <= 1 ? value : value / 100;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const hasPercentSuffix = trimmed.endsWith("%");
+  const numericText = hasPercentSuffix ? trimmed.slice(0, -1).trim() : trimmed;
+  const parsed = Number(numericText);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return null;
+  }
+
+  return hasPercentSuffix || parsed > 1 ? parsed / 100 : parsed;
+}
+
+function formatRatioAsPercent(ratio: number): string {
+  const rounded = Math.round((ratio * 100 + Number.EPSILON) * 10) / 10;
+  const formatted = Number.isInteger(rounded) ? rounded.toFixed(0) : rounded.toFixed(1);
+  return `${formatted}%`;
+}
+
+function confidenceDisplay(value: unknown): string | null {
+  const ratio = confidenceRatio(value);
+  if (ratio !== null) {
+    return formatRatioAsPercent(ratio);
+  }
+
+  return asString(value);
+}
+
+function needsManualReview(value: unknown): boolean {
+  return value === true || (typeof value === "string" && value.trim().toLowerCase() === "true");
+}
+
+function isBelowConfidenceThreshold(confidenceValue: unknown, thresholdValue: unknown): boolean {
+  const confidence = confidenceRatio(confidenceValue);
+  const threshold = confidenceRatio(thresholdValue);
+  return confidence !== null && threshold !== null && confidence < threshold;
+}
+
 function readValue(source: JsonObject | null, key: string): JsonValue | unknown {
   return source?.[key];
 }
@@ -271,6 +323,19 @@ function renderMetaItems(items: Array<{ label: string; value: string | number | 
         </div>
       ))}
     </dl>
+  );
+}
+
+function renderConfidenceReviewNotice(show: boolean) {
+  if (!show) {
+    return null;
+  }
+
+  return (
+    <div className="workspace-confidence-alert" role="status">
+      <span className="workspace-confidence-badge">需人工复核</span>
+      <span>模型置信度低于阈值或已被系统标记，请复核原始影像、切片与模型输出。</span>
+    </div>
   );
 }
 
@@ -633,6 +698,11 @@ function renderTumorDetectionVisualCard(
     asString(readValue(data, "patient_id")) ??
     asString(readValue(data, "folder_name")) ??
     "N/A";
+  const maxConfidenceValue = readValue(data, "max_confidence");
+  const confidenceThresholdValue = readValue(data, "confidence_threshold");
+  const showReviewNotice =
+    needsManualReview(readValue(data, "needs_review")) ||
+    isBelowConfidenceThreshold(maxConfidenceValue, confidenceThresholdValue);
 
   const prompts = [
     `查看患者 ${patientId} 的肿瘤检测原始数据`,
@@ -653,8 +723,10 @@ function renderTumorDetectionVisualCard(
           { label: "影像总数", value: asNumber(readValue(data, "total_images")) },
           { label: "检出阳性", value: asNumber(readValue(data, "images_with_tumor")) },
           { label: "阳性比例", value: asString(readValue(data, "tumor_detection_rate")) },
-          { label: "最高置信度", value: asString(readValue(data, "max_confidence")) ?? asNumber(readValue(data, "max_confidence")) },
+          { label: "最高置信度", value: confidenceDisplay(maxConfidenceValue) },
+          { label: "置信度阈值", value: confidenceDisplay(confidenceThresholdValue) },
         ])}
+        {renderConfidenceReviewNotice(showReviewNotice)}
       </div>
       {renderPreviewSection(previewImages, EMPTY_TUMOR_PREVIEW_MESSAGE)}
       {renderPromptButtons(prompts, onPromptRequest, labels, context)}
@@ -668,6 +740,12 @@ function renderPathologyCard(payload: JsonObject) {
   const analysisMode = asString(readValue(data, "analysis_mode"));
   const patientId = asString(readValue(data, "patient_id")) ?? "N/A";
   const results = asObjectArray(readValue(data, "results"));
+  const tumorProbabilityValue = readValue(data, "tumor_probability");
+  const confidenceValue = readValue(data, "confidence");
+  const confidenceThresholdValue = readValue(data, "confidence_threshold");
+  const showReviewNotice =
+    needsManualReview(readValue(data, "needs_review")) ||
+    isBelowConfidenceThreshold(confidenceValue, confidenceThresholdValue);
 
   return (
     <>
@@ -680,10 +758,12 @@ function renderPathologyCard(payload: JsonObject) {
         {renderMetaItems([
           { label: "分析模式", value: analysisMode },
           { label: "预测结果", value: asString(readValue(data, "prediction")) ?? asString(readValue(data, "overall_diagnosis")) },
-          { label: "肿瘤概率", value: asString(readValue(data, "tumor_probability")) ?? asNumber(readValue(data, "tumor_probability")) },
-          { label: "置信度", value: asString(readValue(data, "confidence")) ?? asNumber(readValue(data, "confidence")) },
+          { label: "肿瘤概率", value: confidenceDisplay(tumorProbabilityValue) },
+          { label: "模型置信度", value: confidenceDisplay(confidenceValue) },
+          { label: "置信度阈值", value: confidenceDisplay(confidenceThresholdValue) },
           { label: "已分析切片", value: results.length > 0 ? `${results.length} 张` : asNumber(readValue(data, "slides_analyzed")) },
         ])}
+        {renderConfidenceReviewNotice(showReviewNotice)}
       </div>
       {renderDisclosure("查看原始数据", payload)}
     </>

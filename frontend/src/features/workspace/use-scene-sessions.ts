@@ -9,6 +9,7 @@ export type SceneBootstrapStatus = "loading" | "ready" | "error";
 
 export const PATIENT_SESSION_STORAGE_KEY = "langg.workspace.patient-session-id";
 export const DOCTOR_SESSION_STORAGE_KEY = "langg.workspace.doctor-session-id";
+const ACTIVE_SCENE_STORAGE_KEY = "langg.workspace.active-scene";
 
 export interface SceneSessionController {
   scene: Scene;
@@ -52,6 +53,23 @@ function clearPersistedSessionId(storageKey: string): void {
   }
 }
 
+function isScene(value: string | null): value is Scene {
+  return value === "patient" || value === "doctor";
+}
+
+function readPersistedActiveScene(): Scene {
+  if (typeof window === "undefined") {
+    return "patient";
+  }
+
+  try {
+    const persistedScene = window.localStorage.getItem(ACTIVE_SCENE_STORAGE_KEY);
+    return isScene(persistedScene) ? persistedScene : "patient";
+  } catch {
+    return "patient";
+  }
+}
+
 function readErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -71,11 +89,16 @@ type LoadedSessionResult = {
 
 export function useSceneSessions() {
   const apiClient = useApiClient();
-  const [activeScene, setActiveScene] = useState<Scene>("doctor");
+  const [activeScene, setActiveSceneState] = useState<Scene>(() => readPersistedActiveScene());
   const [bootstrapStatus, setBootstrapStatus] = useState<SceneBootstrapStatus>("loading");
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [patientState, setPatientState] = useState<SessionState>(() => createInitialSessionState());
   const [doctorState, setDoctorState] = useState<SessionState>(() => createInitialSessionState());
+
+  const setActiveScene = useCallback((scene: Scene) => {
+    setActiveSceneState(scene);
+    persistSessionId(ACTIVE_SCENE_STORAGE_KEY, scene);
+  }, []);
 
   const applyResponseToScene = useCallback((scene: Scene, response: SessionResponse) => {
     persistSessionId(sceneStorageKey(scene), response.session_id);

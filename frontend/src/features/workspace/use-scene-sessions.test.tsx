@@ -1,10 +1,12 @@
 import "@testing-library/jest-dom/vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PATIENT_SESSION_STORAGE_KEY, DOCTOR_SESSION_STORAGE_KEY, useSceneSessions } from "./use-scene-sessions";
 import { AppProviders } from "../../app/providers";
 import { buildApiClientStub, makeNotFoundError, makeSessionResponse } from "../../test/test-utils";
+
+const ACTIVE_SCENE_STORAGE_KEY = "langg.workspace.active-scene";
 
 function renderSceneSessions(apiClient = buildApiClientStub()) {
   return renderHook(() => useSceneSessions(), {
@@ -16,6 +18,48 @@ describe("useSceneSessions", () => {
   afterEach(() => {
     window.localStorage.clear();
     vi.clearAllMocks();
+  });
+
+  it("defaults to the patient scene when no active scene is persisted", async () => {
+    const { result } = renderSceneSessions();
+
+    await waitFor(() => expect(result.current.bootstrapStatus).toBe("ready"));
+    expect(result.current.activeScene).toBe("patient");
+  });
+
+  it("restores the persisted doctor scene", async () => {
+    window.localStorage.setItem(ACTIVE_SCENE_STORAGE_KEY, "doctor");
+
+    const { result } = renderSceneSessions();
+
+    await waitFor(() => expect(result.current.bootstrapStatus).toBe("ready"));
+    expect(result.current.activeScene).toBe("doctor");
+  });
+
+  it("ignores invalid persisted active scene values", async () => {
+    window.localStorage.setItem(ACTIVE_SCENE_STORAGE_KEY, "database");
+
+    const { result } = renderSceneSessions();
+
+    await waitFor(() => expect(result.current.bootstrapStatus).toBe("ready"));
+    expect(result.current.activeScene).toBe("patient");
+  });
+
+  it("persists active scene switches", async () => {
+    const { result } = renderSceneSessions();
+
+    await waitFor(() => expect(result.current.bootstrapStatus).toBe("ready"));
+    act(() => {
+      result.current.setActiveScene("doctor");
+    });
+    expect(result.current.activeScene).toBe("doctor");
+    expect(window.localStorage.getItem(ACTIVE_SCENE_STORAGE_KEY)).toBe("doctor");
+
+    act(() => {
+      result.current.setActiveScene("patient");
+    });
+    expect(result.current.activeScene).toBe("patient");
+    expect(window.localStorage.getItem(ACTIVE_SCENE_STORAGE_KEY)).toBe("patient");
   });
 
   it("recreates only the expired scene session while preserving the other restored scene", async () => {
