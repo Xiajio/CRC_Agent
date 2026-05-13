@@ -284,6 +284,50 @@ function installRequestAnimationFrameStub() {
   );
 }
 
+type ControlledStreamCall = {
+  sessionId: string;
+  request: unknown;
+  callback: (event: StreamEvent) => void;
+  signal?: AbortSignal;
+  tap?: (event: StreamEvent, receivedAt: number) => void;
+  resolve: () => void;
+};
+
+function createControlledStreamTurn(onCall?: (call: ControlledStreamCall) => void) {
+  const calls: ControlledStreamCall[] = [];
+  const streamTurn = vi.fn(async (
+    sessionId: string,
+    request: unknown,
+    callback: (event: StreamEvent) => void,
+    signal?: AbortSignal,
+    tap?: (event: StreamEvent, receivedAt: number) => void,
+  ) => {
+    let resolve!: () => void;
+    const done = new Promise<void>((doneResolve) => {
+      resolve = doneResolve;
+    });
+    const call: ControlledStreamCall = {
+      sessionId,
+      request,
+      callback,
+      signal,
+      tap,
+      resolve,
+    };
+    calls.push(call);
+    onCall?.(call);
+
+    if (signal?.aborted) {
+      resolve();
+      return;
+    }
+    signal?.addEventListener("abort", () => resolve(), { once: true });
+    await done;
+  });
+
+  return { calls, streamTurn };
+}
+
 function makeSceneSessions(overrides: Partial<typeof mockSceneSessions> = {}) {
   const patient = makeSceneController(
     makeSessionState({
@@ -353,7 +397,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
   });
 
   it("keeps normal composer submissions text-only and clears the draft", async () => {
-    const streamTurn = vi.fn(async () => undefined);
+    const { streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
 
     renderWorkspaceWithSceneSessions(apiClient);
@@ -361,7 +405,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
     expect(screen.getByTestId("composer-draft")).toHaveTextContent("typed composer");
 
-    fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
+      await Promise.resolve();
+    });
 
     expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(streamTurn).toHaveBeenCalledWith(
@@ -378,6 +425,46 @@ describe("WorkspacePage patient triage submission wiring", () => {
       expect.any(Function),
     );
     expect(screen.getByTestId("composer-draft")).toHaveTextContent("");
+  });
+
+  it("ignores late stream events from a superseded patient turn", async () => {
+    mockGenerateTraceId
+      .mockImplementationOnce(() => "trace-1")
+      .mockImplementationOnce(() => "trace-2");
+    const { calls, streamTurn } = createControlledStreamTurn();
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
+    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
+    await waitFor(() => expect(calls).toHaveLength(2));
+
+    act(() => {
+      calls[0]?.callback({
+        type: "message.delta",
+        message_id: "old-assistant",
+        delta: "stale answer",
+      });
+      calls[1]?.callback({
+        type: "message.delta",
+        message_id: "fresh-assistant",
+        delta: "fresh answer",
+      });
+    });
+
+    const contents = mockSceneSessions.patient.state.messages.map((message: { content: string }) => message.content);
+    expect(contents).toContain("fresh answer");
+    expect(contents).not.toContain("stale answer");
+
+    calls[1]?.resolve();
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   it("refreshes the patient session after upload and propagates refreshed cards", async () => {
@@ -490,16 +577,14 @@ describe("WorkspacePage patient triage submission wiring", () => {
     vi.spyOn(performance, "now").mockImplementation(() => now);
     const consoleDebugSpy = vi.spyOn(console, "debug").mockImplementation(() => undefined);
 
-    let onEvent: ((event: StreamEvent) => void) | undefined;
     const callOrder: string[] = [];
     mockGenerateTraceId.mockImplementation(() => {
       callOrder.push("generate");
       return "trace-123";
     });
-    const streamTurn = vi.fn(async (_sessionId: string, request: any, callback: (event: StreamEvent) => void) => {
+    const { calls, streamTurn } = createControlledStreamTurn((call) => {
       callOrder.push("stream");
-      expect(request.trace_id).toBe("trace-123");
-      onEvent = callback;
+      expect((call.request as { trace_id?: string }).trace_id).toBe("trace-123");
     });
     const apiClient = buildApiClientStub({ streamTurn });
 
@@ -512,11 +597,13 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(callOrder).toEqual(["generate", "stream"]);
 
     now = 2500;
-    onEvent?.({
-      type: "message.done",
-      role: "assistant",
-      message_id: "msg-1",
-      content: "answer",
+    act(() => {
+      calls[0]?.callback({
+        type: "message.done",
+        role: "assistant",
+        message_id: "msg-1",
+        content: "answer",
+      });
     });
     view.rerenderWorkspace();
 
@@ -532,6 +619,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
         uiCompleteMs: 3200,
       }),
     );
+    calls[0]?.resolve();
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   it("bridges stream observations and probe milestones into window.__chatLatency", async () => {
@@ -541,18 +632,9 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);
+    vi.spyOn(console, "debug").mockImplementation(() => undefined);
 
-    let onEvent: ((event: StreamEvent) => void) | undefined;
-    let traceTap: ((event: StreamEvent, receivedAt: number) => void) | undefined;
-    const streamTurn = vi.fn(async (
-      _sessionId: string,
-      _request: unknown,
-      callback: (event: StreamEvent) => void,
-      _signal?: AbortSignal,
-      tap?: (event: StreamEvent, receivedAt: number) => void,
-    ) => {
-      onEvent = callback;
-      traceTap = tap;
+    const { calls, streamTurn } = createControlledStreamTurn((call) => {
       expect(window.__chatLatency?.latestTrace).toEqual(
         expect.objectContaining({
           traceId: "trace-123",
@@ -569,6 +651,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
     expect(streamTurn).toHaveBeenCalledTimes(1);
+    const traceTap = calls[0]?.tap;
     expect(typeof traceTap).toBe("function");
 
     traceTap?.({
@@ -642,11 +725,13 @@ describe("WorkspacePage patient triage submission wiring", () => {
     }, 2360);
 
     now = 2500;
-    onEvent?.({
-      type: "message.done",
-      role: "assistant",
-      message_id: "msg-1",
-      content: "answer",
+    act(() => {
+      calls[0]?.callback({
+        type: "message.done",
+        role: "assistant",
+        message_id: "msg-1",
+        content: "answer",
+      });
     });
     view.rerenderWorkspace();
 
@@ -678,10 +763,14 @@ describe("WorkspacePage patient triage submission wiring", () => {
         traceId: "trace-123",
       }),
     );
+    calls[0]?.resolve();
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   it("submits triage card prompts with context and keeps them out of the inspector", async () => {
-    const streamTurn = vi.fn(async () => undefined);
+    const { streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
 
     renderWorkspaceWithSceneSessions(apiClient);
@@ -692,7 +781,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: /set card draft/i }));
     expect(screen.getByTestId("composer-draft")).toHaveTextContent("draft for card");
 
-    fireEvent.click(screen.getByRole("button", { name: /submit triage answer/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /submit triage answer/i }));
+      await Promise.resolve();
+    });
 
     expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(streamTurn).toHaveBeenCalledWith(
@@ -726,7 +818,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
       registryPatientId: 7,
       caseDatabasePatientId: "093",
     });
-    const streamTurn = vi.fn(async () => undefined);
+    const { streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
 
     renderWorkspaceWithSceneSessions(apiClient);
@@ -971,7 +1063,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
   it("primes doctor workflow panels for clinical planning prompts before stream events arrive", async () => {
     mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
-    const streamTurn = vi.fn(async () => undefined);
+    const { streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
 
     renderWorkspaceWithSceneSessions(apiClient);
@@ -1028,7 +1120,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
   it("does not prime doctor workflow panels for simple patient lookup prompts", async () => {
     mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
-    const streamTurn = vi.fn(async () => undefined);
+    const { streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
 
     renderWorkspaceWithSceneSessions(apiClient);
@@ -1048,7 +1140,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
       registryPatientId: 7,
       caseDatabasePatientId: "093",
     });
-    const streamTurn = vi.fn(async () => undefined);
+    const { streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
 
     renderWorkspaceWithSceneSessions(apiClient);
@@ -1102,7 +1194,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
       registryPatientId: 7,
       caseDatabasePatientId: "093",
     });
-    const streamTurn = vi.fn(async () => undefined);
+    const { streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
 
     renderWorkspaceWithSceneSessions(apiClient);
@@ -1137,10 +1229,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);
 
-    let onEvent: ((event: StreamEvent) => void) | undefined;
-    const streamTurn = vi.fn(async (_sessionId: string, _request: unknown, callback: (event: StreamEvent) => void) => {
-      onEvent = callback;
-    });
+    const { calls, streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
     const view = renderWorkspace(apiClient);
 
@@ -1151,11 +1240,13 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
 
     now = 2500;
-    onEvent?.({
-      type: "message.done",
-      role: "assistant",
-      message_id: "msg-1",
-      content: "answer",
+    act(() => {
+      calls[0]?.callback({
+        type: "message.done",
+        role: "assistant",
+        message_id: "msg-1",
+        content: "answer",
+      });
     });
     view.rerenderWorkspace();
 
@@ -1166,6 +1257,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
     expect(screen.getByTestId("latency-ms")).toHaveTextContent("3200");
+    calls[0]?.resolve();
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   it("measures patient chat when message.done omits the message id", async () => {
@@ -1174,10 +1269,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);
 
-    let onEvent: ((event: StreamEvent) => void) | undefined;
-    const streamTurn = vi.fn(async (_sessionId: string, _request: unknown, callback: (event: StreamEvent) => void) => {
-      onEvent = callback;
-    });
+    const { calls, streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
     const view = renderWorkspace(apiClient);
 
@@ -1188,11 +1280,13 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
 
     now = 1800;
-    onEvent?.({
-      type: "message.done",
-      role: "assistant",
-      message_id: null,
-      content: "fallback answer",
+    act(() => {
+      calls[0]?.callback({
+        type: "message.done",
+        role: "assistant",
+        message_id: null,
+        content: "fallback answer",
+      });
     });
     view.rerenderWorkspace();
 
@@ -1203,6 +1297,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
     expect(screen.getByTestId("latency-ms")).toHaveTextContent("1600");
+    calls[0]?.resolve();
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   it("preserves completed latency per scene after another scene finishes a turn", async () => {
@@ -1211,9 +1309,9 @@ describe("WorkspacePage patient triage submission wiring", () => {
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);
 
-    const callbacks = new Map<string, (event: StreamEvent) => void>();
-    const streamTurn = vi.fn(async (sessionId: string, _request: unknown, callback: (event: StreamEvent) => void) => {
-      callbacks.set(sessionId, callback);
+    const callsBySession = new Map<string, ControlledStreamCall>();
+    const { streamTurn } = createControlledStreamTurn((call) => {
+      callsBySession.set(call.sessionId, call);
     });
     const apiClient = buildApiClientStub({ streamTurn });
     const view = renderWorkspace(apiClient);
@@ -1223,11 +1321,13 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     expect(streamTurn).toHaveBeenCalledTimes(1);
     now = 2000;
-    callbacks.get("patient-session")?.({
-      type: "message.done",
-      role: "assistant",
-      message_id: "patient-msg",
-      content: "patient answer",
+    act(() => {
+      callsBySession.get("patient-session")?.callback({
+        type: "message.done",
+        role: "assistant",
+        message_id: "patient-msg",
+        content: "patient answer",
+      });
     });
     view.rerenderWorkspace();
 
@@ -1250,11 +1350,13 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     expect(streamTurn).toHaveBeenCalledTimes(2);
     now = 3600;
-    callbacks.get("doctor-session")?.({
-      type: "message.done",
-      role: "assistant",
-      message_id: "doctor-msg",
-      content: "doctor answer",
+    act(() => {
+      callsBySession.get("doctor-session")?.callback({
+        type: "message.done",
+        role: "assistant",
+        message_id: "doctor-msg",
+        content: "doctor answer",
+      });
     });
     view.rerenderWorkspace();
 
@@ -1271,6 +1373,11 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
     expect(screen.getByTestId("latency-ms")).toHaveTextContent("2100");
+    callsBySession.get("patient-session")?.resolve();
+    callsBySession.get("doctor-session")?.resolve();
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   it("keeps a superseded trace even if a late backend completion arrives for the older turn", async () => {
@@ -1283,16 +1390,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
       .mockImplementationOnce(() => "trace-1")
       .mockImplementationOnce(() => "trace-2");
 
-    const taps: Array<((event: StreamEvent, receivedAt: number) => void) | undefined> = [];
-    const streamTurn = vi.fn(async (
-      _sessionId: string,
-      _request: unknown,
-      _callback: (event: StreamEvent) => void,
-      _signal?: AbortSignal,
-      tap?: (event: StreamEvent, receivedAt: number) => void,
-    ) => {
-      taps.push(tap);
-    });
+    const { calls, streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
 
     renderWorkspaceWithSceneSessions(apiClient);
@@ -1306,7 +1404,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
     expect(streamTurn).toHaveBeenCalledTimes(2);
 
-    taps[0]?.({
+    calls[0]?.tap?.({
       type: "trace.summary",
       trace_id: "trace-1",
       session_id: "patient-session",
@@ -1334,6 +1432,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
         expect.objectContaining({ traceId: "trace-2" }),
       ]),
     );
+    calls[1]?.resolve();
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   it("clears completed latency after resetting the active scene", async () => {
@@ -1342,10 +1444,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);
 
-    let onEvent: ((event: StreamEvent) => void) | undefined;
-    const streamTurn = vi.fn(async (_sessionId: string, _request: unknown, callback: (event: StreamEvent) => void) => {
-      onEvent = callback;
-    });
+    const { calls, streamTurn } = createControlledStreamTurn();
     const resetSession = vi.fn(async () => makeSessionResponse({ session_id: "patient-session", scene: "patient" }));
     const apiClient = buildApiClientStub({ streamTurn, resetSession });
     const view = renderWorkspace(apiClient);
@@ -1354,11 +1453,13 @@ describe("WorkspacePage patient triage submission wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
 
     now = 2000;
-    onEvent?.({
-      type: "message.done",
-      role: "assistant",
-      message_id: "msg-1",
-      content: "answer",
+    act(() => {
+      calls[0]?.callback({
+        type: "message.done",
+        role: "assistant",
+        message_id: "msg-1",
+        content: "answer",
+      });
     });
     view.rerenderWorkspace();
 
@@ -1456,7 +1557,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);
 
-    const streamTurn = vi.fn(async () => undefined);
+    const { streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
 
     const view = renderWorkspace(apiClient);
@@ -1480,7 +1581,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     let now = 1000;
     vi.spyOn(performance, "now").mockImplementation(() => now);
 
-    const streamTurn = vi.fn(async () => undefined);
+    const { calls, streamTurn } = createControlledStreamTurn();
     const apiClient = buildApiClientStub({ streamTurn });
     const view = renderWorkspace(apiClient);
 
@@ -1502,6 +1603,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
     view.rerenderWorkspace();
 
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("idle");
+    calls[0]?.resolve();
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   it("renders the patient identity panel in the patient scene and hydrates it from state", async () => {
