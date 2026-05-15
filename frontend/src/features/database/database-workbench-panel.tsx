@@ -28,6 +28,7 @@ interface DatabaseWorkbenchPanelProps {
   onNaturalQueryChange: (value: string) => void;
   onNaturalQuerySubmit: () => void;
   onSelectPatient: (patientId: number) => void;
+  onSetCurrentCaseDatabasePatient?: (patientId: number) => void;
   onSortChange: (field: DatabaseSortField) => void;
   onPageChange: (page: number) => void;
   onClose?: () => void;
@@ -175,6 +176,7 @@ export function DatabaseWorkbenchPanel({
   onNaturalQueryChange,
   onNaturalQuerySubmit,
   onSelectPatient,
+  onSetCurrentCaseDatabasePatient,
   onSortChange,
   onPageChange,
   onClose,
@@ -196,6 +198,17 @@ export function DatabaseWorkbenchPanel({
           </div>
           <div className="database-badge-row">
             <span className="workspace-stage-badge">{MODE_LABELS[mode]}</span>
+            {mode === "detail" && selectedPatientId !== null && onSetCurrentCaseDatabasePatient ? (
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                aria-label={`set current case database patient ${selectedPatientId}`}
+                onClick={() => onSetCurrentCaseDatabasePatient(selectedPatientId)}
+              >
+                {"带入会诊"}
+              </Button>
+            ) : null}
             {onClose ? (
               <Button
                 type="button"

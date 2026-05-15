@@ -18,7 +18,17 @@ frontend/dist/
 .playwright-cli/
 playwright-report/
 test-results/
-tests/
+tests/*
+!tests/e2e/
+tests/e2e/*
+!tests/e2e/acceptance/
+tests/e2e/acceptance/*
+!tests/e2e/acceptance/*.ts
+!tests/fixtures/
+tests/fixtures/*
+!tests/fixtures/acceptance_case_db/
+tests/fixtures/acceptance_case_db/*
+!tests/fixtures/acceptance_case_db/seed.json
 coverage/
 htmlcov/
 

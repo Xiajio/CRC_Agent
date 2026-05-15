@@ -1,4 +1,16 @@
 import { defineConfig } from "@playwright/test";
+import Module from "node:module";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const configDir = path.dirname(fileURLToPath(import.meta.url));
+const frontendNodeModules = path.join(configDir, "node_modules");
+const nodePathEntries = (process.env.NODE_PATH ?? "").split(path.delimiter).filter(Boolean);
+
+if (!nodePathEntries.includes(frontendNodeModules)) {
+  process.env.NODE_PATH = [frontendNodeModules, ...nodePathEntries].join(path.delimiter);
+  (Module as unknown as { _initPaths: () => void })._initPaths();
+}
 
 export default defineConfig({
   testDir: "../tests/e2e/acceptance",

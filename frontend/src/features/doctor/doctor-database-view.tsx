@@ -18,6 +18,7 @@ type DoctorDatabaseViewProps = {
   registryBrowser: ReturnType<typeof useRegistryBrowser>;
   isBindingCurrentPatient: boolean;
   onSetCurrentPatient: (patientId: number) => void | Promise<void>;
+  onSetCurrentCaseDatabasePatient: (patientId: number) => void;
 };
 
 function DatabaseSourceToolbar({
@@ -58,6 +59,7 @@ export function DoctorDatabaseView({
   registryBrowser,
   isBindingCurrentPatient,
   onSetCurrentPatient,
+  onSetCurrentCaseDatabasePatient,
 }: DoctorDatabaseViewProps) {
   const toolbar = (
     <div className="workspace-toolbar-row" style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
@@ -91,6 +93,7 @@ export function DoctorDatabaseView({
             onNaturalQueryChange={databaseWorkbench.setNaturalQuery}
             onNaturalQuerySubmit={() => void databaseWorkbench.handleNaturalQuerySubmit()}
             onSelectPatient={(patientId) => void databaseWorkbench.loadCaseDetail(patientId)}
+            onSetCurrentCaseDatabasePatient={onSetCurrentCaseDatabasePatient}
             onSortChange={databaseWorkbench.handleSortChange}
             onPageChange={databaseWorkbench.handlePageChange}
           />

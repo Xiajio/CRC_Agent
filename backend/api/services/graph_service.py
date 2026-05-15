@@ -10,8 +10,10 @@ from uuid import uuid4
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
 
+from backend.api.adapters.card_payload_sanitizer import sanitize_card_payload
 from backend.api.adapters.event_normalizer import normalize_tick
 from backend.api.schemas.events import (
+    CardUpsertEvent,
     ContextMaintenanceEvent,
     DoneEvent,
     ErrorEvent,
@@ -25,6 +27,7 @@ from backend.api.services.context_maintenance import (
     CONTEXT_MAINTENANCE_FAILED_MESSAGE,
     CONTEXT_MAINTENANCE_RUNNING_MESSAGE,
 )
+from backend.api.services.database_service import DatabaseCaseNotFoundError, get_database_case_detail
 from backend.api.services.patient_context_resolver import PatientContextStaleError
 from backend.api.services.payload_builder import build_graph_payload, restore_pending_context_messages
 from backend.api.services.session_store import InMemorySessionStore, SessionMeta
@@ -72,6 +75,65 @@ def encode_sse_event(event: Any) -> str:
     event_type = str(payload["type"])
     data = json.dumps(payload, ensure_ascii=False, default=str)
     return f"event: {event_type}\ndata: {data}\n\n"
+
+
+CASE_DATABASE_CARD_TYPES = ("patient_card", "imaging_card", "pathology_slide_card")
+
+
+def _normalize_case_database_patient_id(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text.zfill(3) if text.isdigit() else text
+
+
+def _case_database_patient_id_int(value: Any) -> int | None:
+    normalized = _normalize_case_database_patient_id(value)
+    if normalized is None or not normalized.isdigit():
+        return None
+    try:
+        return int(normalized)
+    except ValueError:
+        return None
+
+
+def _prefixed_stage(prefix: str, value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if text.lower().startswith(prefix.lower()):
+        return text
+    suffix = prefix[-1].lower()
+    if text.lower().startswith(suffix):
+        return f"c{text}"
+    return f"{prefix}{text}"
+
+
+def _case_database_findings(patient_id: str, case_record: Mapping[str, Any]) -> dict[str, Any]:
+    cm_stage = case_record.get("cm_stage") or "0"
+    pathology_confirmed = bool(case_record.get("biopsy_confirmed") or case_record.get("histology_type"))
+    return {
+        "data_source": "database_query",
+        "db_query_patient_id": patient_id,
+        "case_database_patient_id": patient_id,
+        "age": case_record.get("age"),
+        "gender": case_record.get("gender"),
+        "ecog_score": case_record.get("ecog_score"),
+        "tumor_location": case_record.get("tumor_location"),
+        "histology_type": case_record.get("histology_type"),
+        "mmr_status": case_record.get("mmr_status"),
+        "cea_level": case_record.get("cea_level"),
+        "pathology_confirmed": pathology_confirmed,
+        "biopsy_confirmed": pathology_confirmed,
+        "tnm_staging": {
+            "cT": _prefixed_stage("cT", case_record.get("ct_stage")),
+            "cN": _prefixed_stage("cN", case_record.get("cn_stage")),
+            "cM": _prefixed_stage("cM", cm_stage),
+        },
+        "clinical_stage_summary": case_record.get("clinical_stage") or case_record.get("tnm_stage"),
+    }
 
 
 class GraphService:
@@ -192,6 +254,51 @@ class GraphService:
         if meta is None:
             return None
         return self._load_agent_state_for_thread(meta.thread_id) or {}
+
+    def _prime_case_database_context(self, payload: dict[str, Any]) -> list[CardUpsertEvent]:
+        patient_id_text = _normalize_case_database_patient_id(payload.get("case_database_patient_id"))
+        patient_id_int = _case_database_patient_id_int(patient_id_text)
+        if patient_id_text is None or patient_id_int is None:
+            return []
+
+        payload["case_database_patient_id"] = patient_id_text
+        findings = payload.get("findings")
+        next_findings = dict(findings) if isinstance(findings, Mapping) else {}
+        next_findings["case_database_patient_id"] = patient_id_text
+
+        try:
+            detail = get_database_case_detail(patient_id_int)
+        except DatabaseCaseNotFoundError:
+            payload["findings"] = next_findings
+            return []
+        except Exception:
+            payload["findings"] = next_findings
+            return []
+
+        case_record = detail.get("case_record")
+        if isinstance(case_record, Mapping):
+            next_findings.update(_case_database_findings(patient_id_text, case_record))
+
+        card_events: list[CardUpsertEvent] = []
+        cards = detail.get("cards")
+        if isinstance(cards, Mapping):
+            for card_type in CASE_DATABASE_CARD_TYPES:
+                raw_card = cards.get(card_type)
+                if not isinstance(raw_card, Mapping) or raw_card.get("error"):
+                    continue
+                card_payload = sanitize_card_payload(card_type, raw_card)
+                payload[card_type] = card_payload
+                next_findings[card_type] = card_payload
+                card_events.append(
+                    CardUpsertEvent(
+                        card_type=card_type,
+                        payload=card_payload,
+                        source_channel="state",
+                    )
+                )
+
+        payload["findings"] = next_findings
+        return card_events
 
     def _prepare_session_meta(
         self,
@@ -607,6 +714,7 @@ class GraphService:
                 trace_id = chat_request.get("trace_id")
                 if isinstance(trace_id, str) and trace_id.strip():
                     prepared.payload["trace_id"] = trace_id
+            case_database_card_events = self._prime_case_database_context(prepared.payload)
         except Exception:
             self._session_store.release_run_lock(session_id, run_id)
             raise
@@ -618,6 +726,8 @@ class GraphService:
             run_lock_released = False
             stream_callback_token = None
             terminal_status = "error"
+            pending_case_database_card_events = list(case_database_card_events)
+            emitted_card_types: set[str] = set()
 
             def release_run_lock() -> None:
                 nonlocal run_lock_released
@@ -681,6 +791,15 @@ class GraphService:
                                 if trace_event is not None:
                                     yield encode_sse_event(trace_event)
                             yield encode_sse_event(event)
+                            if isinstance(event, CardUpsertEvent):
+                                emitted_card_types.add(event.card_type)
+                            if isinstance(event, MessageDoneEvent) and pending_case_database_card_events:
+                                for card_event in pending_case_database_card_events:
+                                    if card_event.card_type in emitted_card_types:
+                                        continue
+                                    emitted_card_types.add(card_event.card_type)
+                                    yield encode_sse_event(card_event)
+                                pending_case_database_card_events = []
 
                 success = True
                 terminal_status = "completed"
@@ -713,6 +832,12 @@ class GraphService:
                 )
                 self._schedule_context_maintenance(session_id, run_id)
                 release_run_lock()
+                for card_event in pending_case_database_card_events:
+                    if card_event.card_type in emitted_card_types:
+                        continue
+                    emitted_card_types.add(card_event.card_type)
+                    yield encode_sse_event(card_event)
+                pending_case_database_card_events = []
                 yield encode_sse_event(done_event)
                 if phase1_trace is not None:
                     yield encode_sse_event(phase1_trace.build_summary(status=terminal_status))

@@ -51,6 +51,7 @@ type DoctorSceneShellProps = {
   onDraftChange: (value: string) => void;
   onSubmit: () => void;
   onSetCurrentPatient: (patientId: number) => Promise<boolean>;
+  onSetCurrentCaseDatabasePatient: (patientId: number) => void;
   onCardPromptRequest?: CardPromptHandler;
   patientContext?: CardPatientContext | null;
 };
@@ -448,6 +449,7 @@ export function DoctorSceneShell({
   onSubmit,
   onSwitchScene,
   onSetCurrentPatient,
+  onSetCurrentCaseDatabasePatient,
   onCardPromptRequest,
   patientContext: providedPatientContext,
 }: DoctorSceneShellProps) {
@@ -463,6 +465,11 @@ export function DoctorSceneShell({
     if (didBind) {
       setActiveDoctorTab("consultation");
     }
+  }
+
+  function handleSetCurrentCaseDatabasePatient(patientId: number) {
+    onSetCurrentCaseDatabasePatient(patientId);
+    setActiveDoctorTab("consultation");
   }
 
   function handleTabChange(tab: string) {
@@ -508,6 +515,7 @@ export function DoctorSceneShell({
           registryBrowser={registryBrowser}
           isBindingCurrentPatient={patientRegistry.isBindingPatient}
           onSetCurrentPatient={handleSetCurrentPatient}
+          onSetCurrentCaseDatabasePatient={handleSetCurrentCaseDatabasePatient}
         />
       </div>
     );

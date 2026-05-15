@@ -76,6 +76,31 @@ function sessionPatientContext(state: SessionState): CardPatientContext | undefi
   return Object.keys(context).length > 0 ? context : undefined;
 }
 
+function formatCaseDatabasePatientId(patientId: number | string): string {
+  return String(patientId).trim().padStart(3, "0");
+}
+
+function caseDatabasePatientIdFromPrompt(prompt: string): string | null {
+  const match = prompt.match(/(?:患者|病人|patient|case)\s*#?\s*0*(\d{1,4})/i);
+  if (!match) {
+    return null;
+  }
+  return formatCaseDatabasePatientId(match[1]);
+}
+
+function promptPatientContext(scene: Scene, state: SessionState, prompt: string): CardPatientContext | undefined {
+  const context = { ...(sessionPatientContext(state) ?? {}) };
+
+  if (scene === "doctor" && context.case_database_patient_id == null) {
+    const caseDatabasePatientId = caseDatabasePatientIdFromPrompt(prompt);
+    if (caseDatabasePatientId !== null) {
+      context.case_database_patient_id = caseDatabasePatientId;
+    }
+  }
+
+  return Object.keys(context).length > 0 ? context : undefined;
+}
+
 export function WorkspacePage() {
   const apiClient = useApiClient();
   const traceStoreRef = useRef(createChatLatencyTraceStore());
@@ -389,7 +414,7 @@ export function WorkspacePage() {
     }
 
     updateDraft(activeScene, "");
-    await activeTurn.submitPrompt(prompt);
+    await activeTurn.submitPrompt(prompt, promptPatientContext(activeScene, activeSessionState, prompt));
   }
 
   async function handleResetActiveScene() {
@@ -423,6 +448,16 @@ export function WorkspacePage() {
       setSceneError(readWorkspaceErrorMessage(error));
       return false;
     }
+  }
+
+  function handleSetCurrentCaseDatabasePatient(patientId: number) {
+    const caseDatabasePatientId = formatCaseDatabasePatientId(patientId);
+    setSceneError(null);
+    doctor.setState((current) => ({
+      ...current,
+      caseDatabasePatientId,
+      currentPatientId: caseDatabasePatientId,
+    }));
   }
 
   if (bootstrapStatus === "loading") {
@@ -501,6 +536,7 @@ export function WorkspacePage() {
         onDraftChange={(value) => updateDraft("doctor", value)}
         onSubmit={() => void submitPrompt()}
         onSetCurrentPatient={handleBindDoctorPatient}
+        onSetCurrentCaseDatabasePatient={handleSetCurrentCaseDatabasePatient}
         onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
           void doctorTurn.submitPrompt(prompt, context)
         }

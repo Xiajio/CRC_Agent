@@ -109,6 +109,7 @@ vi.mock("../features/doctor/doctor-scene-shell", () => ({
     onSubmit: () => void;
     cards?: Record<string, unknown>;
     patientContext?: Record<string, unknown>;
+    onSetCurrentCaseDatabasePatient?: (patientId: number) => void;
     onCardPromptRequest?: (prompt: string, context?: Record<string, unknown>) => void;
     latencyStatus?: { kind: "streaming" } | { kind: "completed"; uiCompleteMs: number } | null;
   }) => {
@@ -126,6 +127,9 @@ vi.mock("../features/doctor/doctor-scene-shell", () => ({
         <button type="button" onClick={() => props.onDraftChange("doctor draft")}>
           set doctor draft
         </button>
+        <button type="button" onClick={() => props.onDraftChange("请查询患者093")}>
+          set doctor explicit patient 093 draft
+        </button>
         <button type="button" onClick={() => props.onDraftChange("查询患者093")}>
           set doctor query draft
         </button>
@@ -134,6 +138,9 @@ vi.mock("../features/doctor/doctor-scene-shell", () => ({
         </button>
         <button type="button" onClick={() => props.onSubmit()}>
           submit doctor draft
+        </button>
+        <button type="button" onClick={() => props.onSetCurrentCaseDatabasePatient?.(93)}>
+          set historical case patient 93
         </button>
         <button
           type="button"
@@ -1131,6 +1138,68 @@ describe("WorkspacePage patient triage submission wiring", () => {
     await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
     expect(mockSceneSessions.doctor.state.roadmap).toEqual([]);
     expect(mockSceneSessions.doctor.state.plan).toEqual([]);
+  });
+
+  it("submits doctor prompts with the active case database patient context", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    mockSceneSessions.doctor.state = makeSessionState({
+      sessionId: "doctor-session",
+      caseDatabasePatientId: "093",
+    });
+    const { streamTurn } = createControlledStreamTurn();
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /set doctor draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /submit doctor draft/i }));
+
+    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledWith(
+      "doctor-session",
+      expect.objectContaining({
+        context: {
+          case_database_patient_id: "093",
+        },
+      }),
+      expect.any(Function),
+      expect.any(AbortSignal),
+      expect.any(Function),
+    );
+  });
+
+  it("derives case database context from an explicit doctor patient lookup prompt", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    const { streamTurn } = createControlledStreamTurn();
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /set doctor explicit patient 093 draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /submit doctor draft/i }));
+
+    await waitFor(() => expect(streamTurn).toHaveBeenCalledTimes(1));
+    expect(streamTurn).toHaveBeenCalledWith(
+      "doctor-session",
+      expect.objectContaining({
+        context: {
+          case_database_patient_id: "093",
+        },
+      }),
+      expect.any(Function),
+      expect.any(AbortSignal),
+      expect.any(Function),
+    );
+  });
+
+  it("stores a selected historical case as doctor case context", () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    fireEvent.click(screen.getByRole("button", { name: /set historical case patient 93/i }));
+
+    expect(mockSceneSessions.doctor.state.caseDatabasePatientId).toBe("093");
+    expect(mockSceneSessions.doctor.state.currentPatientId).toBe("093");
   });
 
   it("submits doctor treatment card prompts with split patient identity and primes the workflow scaffold", async () => {

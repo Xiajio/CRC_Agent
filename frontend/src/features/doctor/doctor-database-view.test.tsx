@@ -38,6 +38,7 @@ function renderView(overrides: Partial<Parameters<typeof DoctorDatabaseView>[0]>
     } as never,
     isBindingCurrentPatient: false,
     onSetCurrentPatient: vi.fn(),
+    onSetCurrentCaseDatabasePatient: vi.fn(),
     ...overrides,
   };
 
@@ -60,5 +61,47 @@ describe("DoctorDatabaseView", () => {
 
     expect(onSourceChange).toHaveBeenNthCalledWith(1, "historical_case_base");
     expect(onSourceChange).toHaveBeenNthCalledWith(2, "patient_registry");
+  });
+
+  it("lets doctors carry a selected historical case into the consultation context", () => {
+    const onSetCurrentCaseDatabasePatient = vi.fn();
+
+    renderView({
+      activeSource: "historical_case_base",
+      onSetCurrentCaseDatabasePatient,
+      databaseWorkbench: {
+        detail: {
+          patient_id: 93,
+          case_record: { patient_id: 93 },
+          available_data: { case_info: true, imaging: true, pathology_slides: true },
+          cards: {},
+        },
+        naturalQuery: "",
+        stats: null,
+        searchRequest: {
+          filters: {},
+          pagination: { page: 1, page_size: 20 },
+          sort: { field: "patient_id", direction: "asc" },
+        },
+        searchResponse: { items: [], total: 0, page: 1, page_size: 20, applied_filters: {}, warnings: [] },
+        selectedPatientId: 93,
+        isParsing: false,
+        isSearching: false,
+        isLoadingDetail: false,
+        isBootstrapping: false,
+        intentWarnings: [],
+        unsupportedTerms: [],
+        pageError: null,
+        setNaturalQuery: vi.fn(),
+        handleNaturalQuerySubmit: vi.fn(),
+        loadCaseDetail: vi.fn(),
+        handleSortChange: vi.fn(),
+        handlePageChange: vi.fn(),
+      } as never,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "set current case database patient 93" }));
+
+    expect(onSetCurrentCaseDatabasePatient).toHaveBeenCalledWith(93);
   });
 });

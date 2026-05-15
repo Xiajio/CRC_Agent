@@ -116,6 +116,7 @@ describe("DoctorSceneShell", () => {
         onDraftChange={vi.fn()}
         onSubmit={vi.fn()}
         onSetCurrentPatient={vi.fn(async () => true)}
+        onSetCurrentCaseDatabasePatient={vi.fn()}
         {...overrides}
       />,
     );
@@ -169,6 +170,7 @@ describe("DoctorSceneShell", () => {
         onDraftChange={vi.fn()}
         onSubmit={vi.fn()}
         onSetCurrentPatient={vi.fn(async () => true)}
+        onSetCurrentCaseDatabasePatient={vi.fn()}
       />,
     );
 
@@ -223,6 +225,7 @@ describe("DoctorSceneShell", () => {
         onDraftChange={vi.fn()}
         onSubmit={vi.fn()}
         onSetCurrentPatient={vi.fn(async () => true)}
+        onSetCurrentCaseDatabasePatient={vi.fn()}
       />,
     );
 
@@ -289,6 +292,7 @@ describe("DoctorSceneShell", () => {
         onDraftChange={vi.fn()}
         onSubmit={vi.fn()}
         onSetCurrentPatient={vi.fn(async () => true)}
+        onSetCurrentCaseDatabasePatient={vi.fn()}
       />,
     );
 
@@ -336,6 +340,7 @@ describe("DoctorSceneShell", () => {
         onDraftChange={vi.fn()}
         onSubmit={vi.fn()}
         onSetCurrentPatient={vi.fn(async () => true)}
+        onSetCurrentCaseDatabasePatient={vi.fn()}
       />,
     );
 
