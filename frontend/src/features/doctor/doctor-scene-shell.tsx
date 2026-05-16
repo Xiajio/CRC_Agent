@@ -473,7 +473,7 @@ export function DoctorSceneShell({
     setActiveDoctorTab("consultation");
   }
 
-  function handleTabChange(tab: DoctorTab) {
+  function handleTabChange(tab: string) {
     if (tab !== "consultation" && tab !== "database" && tab !== "multimodal") {
       return;
     }
