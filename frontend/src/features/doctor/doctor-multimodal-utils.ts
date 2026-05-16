@@ -58,6 +58,7 @@ const MULTIMODAL_CARD_GROUPS: Record<
 const MULTIMODAL_CARD_TYPES: Record<string, MultimodalCardGroupKey> = {
   imaging_card: "imaging",
   tumor_detection_card: "imaging",
+  tumor_screening_result: "imaging",
   pathology_card: "pathology",
   pathology_slide_card: "pathology",
   radiomics_report_card: "radiomics",

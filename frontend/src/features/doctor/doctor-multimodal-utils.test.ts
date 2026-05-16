@@ -15,6 +15,7 @@ describe("doctor multimodal utilities", () => {
     const cards = [
       { cardType: "imaging_card", payload: { id: 1 } as JsonObject },
       { cardType: "tumor_detection_card", payload: { id: 2 } as JsonObject },
+      { cardType: "tumor_screening_result", payload: { id: 7 } as JsonObject },
       { cardType: "pathology_card", payload: { id: 3 } as JsonObject },
       { cardType: "pathology_slide_card", payload: { id: 4 } as JsonObject },
       { cardType: "radiomics_report_card", payload: { id: 5 } as JsonObject },
@@ -29,6 +30,7 @@ describe("doctor multimodal utilities", () => {
         cards: [
           { cardType: "imaging_card", payload: { id: 1 } },
           { cardType: "tumor_detection_card", payload: { id: 2 } },
+          { cardType: "tumor_screening_result", payload: { id: 7 } },
         ],
       },
       {
