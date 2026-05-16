@@ -110,6 +110,47 @@ describe("DoctorMultimodalView", () => {
     expect(onCardPromptRequest).toHaveBeenNthCalledWith(2, MULTIMODAL_ACTIONS[3].prompt, buildMultimodalPromptContext({ registry_patient_id: 42 }));
   });
 
+  it("merges explicit case database ids into the prompt context when patientContext only has registry data", () => {
+    const onCardPromptRequest = vi.fn();
+
+    renderView({
+      registryPatientId: 42,
+      caseDatabasePatientId: "007",
+      patientContext: { registry_patient_id: 42 },
+      onCardPromptRequest,
+    });
+
+    const buttons = findActionButtons();
+    expect(buttons[0]).toBeEnabled();
+    fireEvent.click(buttons[0]);
+
+    expect(onCardPromptRequest).toHaveBeenCalledWith(
+      MULTIMODAL_ACTIONS[0].prompt,
+      buildMultimodalPromptContext({ registry_patient_id: 42, case_database_patient_id: "007" }),
+    );
+  });
+
+  it("uses explicit registry ids even when patientContext is empty", () => {
+    const onCardPromptRequest = vi.fn();
+
+    renderView({
+      registryPatientId: 42,
+      patientContext: {},
+      onCardPromptRequest,
+    });
+
+    const buttons = findActionButtons();
+    expect(buttons[2]).toBeEnabled();
+    expect(buttons[3]).toBeEnabled();
+
+    fireEvent.click(buttons[2]);
+
+    expect(onCardPromptRequest).toHaveBeenCalledWith(
+      MULTIMODAL_ACTIONS[2].prompt,
+      buildMultimodalPromptContext({ registry_patient_id: 42 }),
+    );
+  });
+
   it("enables imaging actions when the case database patient id is present", () => {
     const onCardPromptRequest = vi.fn();
 

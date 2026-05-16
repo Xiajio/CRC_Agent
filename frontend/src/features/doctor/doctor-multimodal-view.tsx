@@ -142,21 +142,21 @@ function resolveMultimodalPatientContext({
   patientRegistry,
   patientContext,
 }: DoctorMultimodalViewProps): CardPatientContext | null {
-  if (patientContext) {
-    return patientContext;
-  }
+  const mergedContext: CardPatientContext = {
+    ...(patientContext ?? {}),
+  };
 
-  const context: CardPatientContext = {};
   const registryId = registryPatientId ?? patientRegistry.boundPatientDetail?.patient_id ?? null;
   if (registryId !== null) {
-    context.registry_patient_id = registryId;
+    mergedContext.registry_patient_id = registryId;
   }
 
   if (caseDatabasePatientId !== null) {
-    context.case_database_patient_id = caseDatabasePatientId;
+    mergedContext.case_database_patient_id = caseDatabasePatientId;
   }
 
-  return Object.keys(context).length > 0 ? context : null;
+  const resolvedContext = buildMultimodalPromptContext(mergedContext);
+  return Object.keys(resolvedContext).length > 0 ? resolvedContext : null;
 }
 
 function renderDefinitionList(items: Array<{ label: string; value: ReactNode }>) {
