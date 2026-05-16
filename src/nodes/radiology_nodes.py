@@ -33,6 +33,34 @@ from .patient_identity import (
 AnalysisMode = Literal["detection", "segmentation", "radiomics", "comprehensive"]
 
 
+def _coerce_confidence_value(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text.lower() in {"n/a", "na", "none", "null", "unknown"}:
+            return None
+        try:
+            if text.endswith("%"):
+                return float(text[:-1].strip()) / 100
+            return float(text)
+        except ValueError:
+            return None
+    return None
+
+
+def _needs_review_for_confidence(confidence: object, threshold: object) -> bool:
+    confidence_value = _coerce_confidence_value(confidence)
+    threshold_value = _coerce_confidence_value(threshold)
+    return (
+        confidence_value is not None
+        and threshold_value is not None
+        and confidence_value < threshold_value
+    )
+
+
 def _detect_analysis_mode(user_text: str) -> AnalysisMode:
     """
     根据用户输入检测所需的分析模式
@@ -613,6 +641,7 @@ def _run_detection_analysis(state, patient_id, tools, show_thinking, _finalize_r
         print(f"\n📄 [RadAgent] 影像报告已生成")
         print(f"{'='*60}\n")
     
+    confidence_threshold = 0.5
     # [修复] 构造肿瘤检测卡片数据，供前端渲染
     tumor_detection_card = {
         "type": "tumor_detection_card",
@@ -627,7 +656,8 @@ def _run_detection_analysis(state, patient_id, tools, show_thinking, _finalize_r
             "total_detections": detection_result.get("total_detections", 0),  # 从结果中获取检测数
             "sample_images_with_tumor": detection_result.get("sample_images_with_tumor", []),  # 从结果中获取样本图片
             "all_results": detection_result.get("all_results", []),  # 从结果中获取详细结果
-            "confidence_threshold": 0.5,  # 默认阈值
+            "confidence_threshold": confidence_threshold,  # 默认阈值
+            "needs_review": _needs_review_for_confidence(max_confidence, confidence_threshold),
             "analysis_mode": "YOLO快速筛查",
             "timestamp": detection_result.get("processing_timestamp", "")
         }
@@ -774,6 +804,8 @@ def _run_segmentation_analysis(state, patient_id, tools, show_thinking, _finaliz
         print(f"\n📄 [RadAgent] 分割报告已生成")
         print(f"{'='*60}\n")
     
+    segmentation_confidence = 1.0 if has_tumor else 0.0
+    confidence_threshold = 0.5
     # [修复] 构造肿瘤检测卡片数据（虽然这是分割结果，但使用统一的卡片格式）
     tumor_detection_card = {
         "type": "tumor_detection_card",
@@ -784,18 +816,19 @@ def _run_segmentation_analysis(state, patient_id, tools, show_thinking, _finaliz
             "images_without_tumor": 0 if has_tumor else 1,
             "tumor_detection_rate": "100%" if has_tumor else "0%",
             "has_tumor": has_tumor,
-            "max_confidence": 1.0 if has_tumor else 0.0,
+            "max_confidence": segmentation_confidence,
             "total_detections": 1 if has_tumor else 0,
             "sample_images_with_tumor": [seg_result.get("image_path")] if has_tumor else [],
             "all_results": [{
                 "image_name": os.path.basename(image_path),
                 "image_path": image_path,
                 "has_tumor": has_tumor,
-                "confidence": 1.0 if has_tumor else 0.0,
+                "confidence": segmentation_confidence,
                 "total_detections": 1 if has_tumor else 0,
                 "bounding_boxes": [seg_result.get("bounding_box")] if has_tumor else []
             }],
-            "confidence_threshold": 0.5,
+            "confidence_threshold": confidence_threshold,
+            "needs_review": _needs_review_for_confidence(segmentation_confidence, confidence_threshold),
             "analysis_mode": "U-Net精确分割",
             "timestamp": seg_result.get("timestamp", "")
         }
@@ -963,6 +996,7 @@ def _run_comprehensive_analysis(state, patient_id, tools, show_thinking, _finali
     # 处理跳过的情况（所有图像均未检测到肿瘤）
     if result.get("skipped"):
         summary = result.get("summary", {})
+        yolo_screening = result.get("yolo_screening") or {}
         report_text = f"""
 📊 **完整影像组学分析报告**
 
@@ -1006,6 +1040,7 @@ def _run_comprehensive_analysis(state, patient_id, tools, show_thinking, _finali
             print(f"\n📄 [RadAgent] 完整影像组学分析报告已生成（无肿瘤）")
             print(f"{'='*60}\n")
         
+        confidence_threshold = yolo_screening.get('threshold', 0.5)
         # [修复] 构造肿瘤检测卡片数据
         tumor_detection_card = {
             "type": "tumor_detection_card",
@@ -1020,7 +1055,8 @@ def _run_comprehensive_analysis(state, patient_id, tools, show_thinking, _finali
                 "total_detections": 0,
                 "sample_images_with_tumor": [],
                 "all_results": [],
-                "confidence_threshold": yolo_screening.get('threshold', 0.5),
+                "confidence_threshold": confidence_threshold,
+                "needs_review": _needs_review_for_confidence(0.0, confidence_threshold),
                 "analysis_mode": "完整影像组学分析",
                 "timestamp": summary.get("analysis_timestamp", ""),
                 "skip_reason": result.get('skip_reason', 'YOLO未检测到肿瘤')

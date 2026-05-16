@@ -27,6 +27,25 @@ from ..tools.pathology_clam_tools import CLAM_TOOL_DIR
 
 
 PathologyMode = Literal["full", "quick", "status"]
+PATHOLOGY_CONFIDENCE_THRESHOLD = 0.8
+
+
+def _coerce_confidence_value(value: object) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text.lower() in {"n/a", "na", "none", "null", "unknown"}:
+            return None
+        try:
+            if text.endswith("%"):
+                return float(text[:-1].strip()) / 100
+            return float(text)
+        except ValueError:
+            return None
+    return None
 
 
 def _detect_pathology_mode(user_text: str) -> PathologyMode:
@@ -229,6 +248,12 @@ def node_pathology_agent(
             prediction = result.get("prediction", "UNKNOWN")
             tumor_prob = result.get("tumor_probability", "N/A")
             confidence = result.get("confidence", "N/A")
+            confidence_threshold = PATHOLOGY_CONFIDENCE_THRESHOLD
+            confidence_value = _coerce_confidence_value(confidence)
+            needs_review = (
+                confidence_value is not None
+                and confidence_value < confidence_threshold
+            )
 
             report_text = (
                 "🧪 **病理切片AI分析报告**\n\n"
@@ -245,6 +270,8 @@ def node_pathology_agent(
                 "prediction": prediction,
                 "tumor_probability": tumor_prob,
                 "confidence": confidence,
+                "confidence_threshold": confidence_threshold,
+                "needs_review": needs_review,
                 "heatmap_path": result.get("heatmap_path"),
                 "topk_patches_dir": result.get("topk_patches_dir"),
                 "report_path": result.get("report_path"),
@@ -263,6 +290,8 @@ def node_pathology_agent(
                         "prediction": prediction,
                         "tumor_probability": tumor_prob,
                         "confidence": confidence,
+                        "confidence_threshold": confidence_threshold,
+                        "needs_review": needs_review,
                         "raw_result": result,
                     },
                     "pathology_card": pathology_card,
