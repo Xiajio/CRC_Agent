@@ -33,6 +33,7 @@ coverage/
 htmlcov/
 
 # Local runtime and temporary files
+.superpowers/
 output/
 runtime/
 tmp/
