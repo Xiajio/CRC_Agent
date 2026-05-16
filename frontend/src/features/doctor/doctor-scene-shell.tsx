@@ -21,6 +21,7 @@ import {
   type DoctorLatencyStatus,
 } from "./doctor-consultation-view";
 import { DoctorDatabaseView } from "./doctor-database-view";
+import { DoctorMultimodalView } from "./doctor-multimodal-view";
 import { useDoctorViewState, type DoctorTab } from "./use-doctor-view-state";
 
 type DoctorSceneShellProps = {
@@ -65,7 +66,7 @@ type NavItem = {
 const DOCTOR_NAV_ITEMS: NavItem[] = [
   { key: "consultation", label: "会诊" },
   { key: "database", label: "患者数据库" },
-  { key: "multimodal", label: "多模态", disabled: true },
+  { key: "multimodal", label: "多模态" },
   { key: "reports", label: "报表", disabled: true },
 ];
 
@@ -472,14 +473,12 @@ export function DoctorSceneShell({
     setActiveDoctorTab("consultation");
   }
 
-  function handleTabChange(tab: string) {
-    if (tab !== "consultation" && tab !== "database") {
+  function handleTabChange(tab: DoctorTab) {
+    if (tab !== "consultation" && tab !== "database" && tab !== "multimodal") {
       return;
     }
 
-    const nextTab = tab as DoctorTab;
-
-    setActiveDoctorTab(nextTab);
+    setActiveDoctorTab(tab);
     if (tab === "database") {
       setActiveDatabaseSource("patient_registry");
     }
@@ -521,6 +520,40 @@ export function DoctorSceneShell({
     );
   }
 
+  if (activeDoctorTab === "multimodal") {
+    const patientContext: CardPatientContext = {};
+    if (registryPatientId !== null) {
+      patientContext.registry_patient_id = registryPatientId;
+    }
+    if (caseDatabasePatientId !== null) {
+      patientContext.case_database_patient_id = caseDatabasePatientId;
+    }
+    const cardPatientContext =
+      providedPatientContext && Object.keys(providedPatientContext).length > 0
+        ? { ...patientContext, ...providedPatientContext }
+        : Object.keys(patientContext).length > 0
+          ? patientContext
+          : undefined;
+
+    return (
+      <div className="clinical-app-shell clinical-app-shell-multimodal">
+        {topNav}
+        <DoctorMultimodalView
+          registryPatientId={registryPatientId}
+          caseDatabasePatientId={caseDatabasePatientId}
+          patientRegistry={patientRegistry}
+          cards={cards}
+          critic={critic}
+          eventLog={eventLog}
+          isStreaming={isStreaming}
+          disabled={disabled}
+          onCardPromptRequest={onCardPromptRequest}
+          patientContext={cardPatientContext}
+        />
+      </div>
+    );
+  }
+
   const cardPatientId = patientIdFromCards(cards);
   const summaryCaseDatabasePatientId = caseDatabasePatientId ?? (
     cardPatientId !== null ? String(cardPatientId).padStart(3, "0") : null
@@ -535,7 +568,11 @@ export function DoctorSceneShell({
     patientContext.case_database_patient_id = caseDatabasePatientId;
   }
   const cardPatientContext =
-    providedPatientContext ?? (Object.keys(patientContext).length > 0 ? patientContext : undefined);
+    providedPatientContext && Object.keys(providedPatientContext).length > 0
+      ? { ...patientContext, ...providedPatientContext }
+      : Object.keys(patientContext).length > 0
+        ? patientContext
+        : undefined;
 
   return (
     <main className="clinical-app-shell">

@@ -1,8 +1,25 @@
-import type { ReactNode } from "react";
+import type { ReactNode, SetStateAction } from "react";
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockConversationPanel = vi.hoisted(() => vi.fn());
+const mockDoctorMultimodalView = vi.hoisted(() => vi.fn());
+const mockDoctorViewState = vi.hoisted(() => {
+  const state = {
+    activeDoctorTab: "consultation" as "consultation" | "database" | "multimodal",
+    activeDatabaseSource: "patient_registry" as "historical_case_base" | "patient_registry",
+  };
+
+  const setActiveDoctorTab = vi.fn((next: SetStateAction<typeof state.activeDoctorTab>) => {
+    state.activeDoctorTab = typeof next === "function" ? next(state.activeDoctorTab) : next;
+  });
+  const setActiveDatabaseSource = vi.fn((next: SetStateAction<typeof state.activeDatabaseSource>) => {
+    state.activeDatabaseSource =
+      typeof next === "function" ? next(state.activeDatabaseSource) : next;
+  });
+
+  return { state, setActiveDoctorTab, setActiveDatabaseSource };
+});
 
 vi.mock("../chat/conversation-panel", () => ({
   ConversationPanel: (props: Record<string, unknown>) => {
@@ -13,10 +30,10 @@ vi.mock("../chat/conversation-panel", () => ({
 
 vi.mock("./use-doctor-view-state", () => ({
   useDoctorViewState: () => ({
-    activeDoctorTab: "consultation",
-    setActiveDoctorTab: vi.fn(),
-    activeDatabaseSource: "patient_registry",
-    setActiveDatabaseSource: vi.fn(),
+    activeDoctorTab: mockDoctorViewState.state.activeDoctorTab,
+    setActiveDoctorTab: mockDoctorViewState.setActiveDoctorTab,
+    activeDatabaseSource: mockDoctorViewState.state.activeDatabaseSource,
+    setActiveDatabaseSource: mockDoctorViewState.setActiveDatabaseSource,
   }),
 }));
 
@@ -67,11 +84,23 @@ vi.mock("./doctor-database-view", () => ({
   DoctorDatabaseView: () => null,
 }));
 
+vi.mock("./doctor-multimodal-view", () => ({
+  DoctorMultimodalView: (props: Record<string, unknown>) => {
+    mockDoctorMultimodalView(props);
+    return <div data-testid="doctor-multimodal-view" />;
+  },
+}));
+
 import { DoctorSceneShell } from "./doctor-scene-shell";
 
 describe("DoctorSceneShell", () => {
   beforeEach(() => {
     mockConversationPanel.mockClear();
+    mockDoctorMultimodalView.mockClear();
+    mockDoctorViewState.state.activeDoctorTab = "consultation";
+    mockDoctorViewState.state.activeDatabaseSource = "patient_registry";
+    mockDoctorViewState.setActiveDoctorTab.mockClear();
+    mockDoctorViewState.setActiveDatabaseSource.mockClear();
   });
 
   function getDoctorProfileSwitch() {
@@ -79,7 +108,12 @@ describe("DoctorSceneShell", () => {
     return profileText.closest("button");
   }
 
-  function renderDoctorSceneShell(overrides: Partial<Parameters<typeof DoctorSceneShell>[0]> = {}) {
+  function renderDoctorSceneShell(
+    overrides: Partial<Parameters<typeof DoctorSceneShell>[0]> = {},
+    viewStateOverrides: Partial<typeof mockDoctorViewState.state> = {},
+  ) {
+    Object.assign(mockDoctorViewState.state, viewStateOverrides);
+
     return render(
       <DoctorSceneShell
         toolbar={null}
@@ -122,17 +156,28 @@ describe("DoctorSceneShell", () => {
     );
   }
 
-  it("omits placeholder-only doctor top nav items in production", () => {
+  it("renders production doctor top nav items and hides reports", () => {
     renderDoctorSceneShell();
 
     const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
-    expect(navButtons.map((navButton) => navButton.textContent)).toEqual(["会诊", "患者数据库"]);
-    expect(navButtons).toHaveLength(2);
+    expect(navButtons.map((navButton) => navButton.textContent)).toEqual([
+      "会诊",
+      "患者数据库",
+      "多模态",
+    ]);
+    expect(navButtons).toHaveLength(3);
     for (const navButton of navButtons) {
       expect(navButton).not.toBeDisabled();
     }
-    expect(screen.queryByRole("button", { name: "多模态" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "报表" })).not.toBeInTheDocument();
+  });
+
+  it("calls setActiveDoctorTab with multimodal when the multimodal nav item is clicked", () => {
+    renderDoctorSceneShell();
+
+    screen.getByRole("button", { name: "多模态" }).click();
+
+    expect(mockDoctorViewState.setActiveDoctorTab).toHaveBeenCalledWith("multimodal");
   });
 
   it("renders the clinical assistant dashboard chrome for consultation mode", () => {
@@ -188,6 +233,51 @@ describe("DoctorSceneShell", () => {
     const profileSwitch = getDoctorProfileSwitch();
     expect(profileSwitch).toHaveClass("clinical-profile-switch");
     expect(profileSwitch).toHaveTextContent("医生");
+  });
+
+  it("renders the multimodal shell route with the derived patient context", () => {
+    renderDoctorSceneShell(
+      {
+        patientContext: {},
+      },
+      {
+        activeDoctorTab: "multimodal",
+      },
+    );
+
+    expect(screen.getByTestId("doctor-multimodal-view")).toBeInTheDocument();
+    expect(mockDoctorMultimodalView).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registryPatientId: null,
+        caseDatabasePatientId: null,
+        patientContext: undefined,
+      }),
+    );
+  });
+
+  it("passes shell-derived registry and case ids to the multimodal view when patientContext is empty", () => {
+    renderDoctorSceneShell(
+      {
+        registryPatientId: 1024,
+        caseDatabasePatientId: "093",
+        patientContext: {},
+      },
+      {
+        activeDoctorTab: "multimodal",
+      },
+    );
+
+    expect(screen.getByTestId("doctor-multimodal-view")).toBeInTheDocument();
+    expect(mockDoctorMultimodalView).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registryPatientId: 1024,
+        caseDatabasePatientId: "093",
+        patientContext: {
+          registry_patient_id: 1024,
+          case_database_patient_id: "093",
+        },
+      }),
+    );
   });
 
   it("renders a true initial state when no doctor session data is present", () => {
