@@ -2772,9 +2772,19 @@ body {
   }
 
   .clinical-nav-tabs {
-    justify-content: flex-start;
-    height: 44px;
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+    justify-content: stretch;
+    width: 100%;
+    height: auto;
+    min-height: 44px;
+    overflow-x: visible;
+  }
+
+  .clinical-nav-tab {
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 12px;
   }
 
   .clinical-user-area {
