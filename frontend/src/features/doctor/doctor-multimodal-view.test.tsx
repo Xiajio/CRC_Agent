@@ -72,7 +72,7 @@ describe("DoctorMultimodalView", () => {
   it("renders empty states and disables actions when there is no patient context", () => {
     renderView();
 
-    expect(screen.getByTestId("doctor-multimodal-view")).toBeInTheDocument();
+    expect(screen.getByTestId("doctor-multimodal-view")).toHaveClass("clinical-multimodal-dashboard");
     expect(screen.getByText("未绑定注册患者")).toBeInTheDocument();
     expect(screen.getByText("未绑定病例样本")).toBeInTheDocument();
     expect(screen.getByText("暂无患者资料")).toBeInTheDocument();
