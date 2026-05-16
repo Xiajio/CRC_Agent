@@ -15,6 +15,7 @@ import {
   buildMultimodalActionState,
   buildMultimodalPrompt,
   buildMultimodalPromptContext,
+  type MultimodalPromptContext,
   groupMultimodalCards,
   MULTIMODAL_ACTIONS,
 } from "./doctor-multimodal-utils";
@@ -75,6 +76,10 @@ function formatCaseDatabasePatientLabel(value: string | number | null | undefine
   }
   const numeric = Number(text);
   return Number.isFinite(numeric) && text === String(numeric) ? String(numeric).padStart(3, "0") : text;
+}
+
+function displayCaseDatabasePatientId(context: MultimodalPromptContext | null): string {
+  return context?.case_database_patient_id ?? "未绑定";
 }
 
 function formatStage(detail: PatientRegistryDetail | null): string {
@@ -141,7 +146,7 @@ function resolveMultimodalPatientContext({
   caseDatabasePatientId,
   patientRegistry,
   patientContext,
-}: DoctorMultimodalViewProps): CardPatientContext | null {
+}: DoctorMultimodalViewProps): MultimodalPromptContext | null {
   const mergedContext: CardPatientContext = {
     ...(patientContext ?? {}),
   };
@@ -173,12 +178,11 @@ function renderDefinitionList(items: Array<{ label: string; value: ReactNode }>)
 }
 
 function renderPatientContextCard(
-  registryPatientId: number | null,
-  caseDatabasePatientId: string | null,
+  resolvedContext: MultimodalPromptContext | null,
   patientDetail: PatientRegistryDetail | null,
   isLoadingBoundPatient: boolean,
 ) {
-  const hasContext = registryPatientId !== null || caseDatabasePatientId !== null || patientDetail !== null;
+  const hasContext = Boolean(resolvedContext || patientDetail);
 
   return (
     <Card as="section" padding="none" className="clinical-card clinical-multimodal-card clinical-multimodal-patient-context">
@@ -189,10 +193,10 @@ function renderPatientContextCard(
       {hasContext ? (
         <div className="clinical-multimodal-card-body">
           {renderDefinitionList([
-            { label: "登记号", value: formatRegistryPatientLabel(registryPatientId ?? patientDetail?.patient_id ?? null) },
+            { label: "登记号", value: formatRegistryPatientLabel(resolvedContext?.registry_patient_id ?? patientDetail?.patient_id ?? null) },
             {
               label: "病例样本",
-              value: formatCaseDatabasePatientLabel(caseDatabasePatientId),
+              value: displayCaseDatabasePatientId(resolvedContext),
             },
             { label: "年龄", value: formatPatientDetailValue(patientDetail?.age) },
             { label: "性别", value: formatPatientDetailValue(patientDetail?.gender) },
@@ -282,7 +286,7 @@ function renderEmptyMultimodalPanel(title: string, emptyMessage: string) {
 
 function renderMultimodalGroups(
   cards: Record<string, JsonObject>,
-  patientContext: CardPatientContext | null,
+  patientContext: MultimodalPromptContext | null,
   onCardPromptRequest?: CardPromptHandler,
 ) {
   const grouped = groupMultimodalCards(cards);
@@ -315,7 +319,7 @@ function renderMultimodalGroups(
 
 function actionDisableReason(
   actionKey: string,
-  context: CardPatientContext | null,
+  context: MultimodalPromptContext | null,
 ): string | null {
   if (actionKey === "imaging_review" || actionKey === "pathology_review") {
     return context?.case_database_patient_id ? null : "需要病例样本编号";
@@ -326,7 +330,7 @@ function actionDisableReason(
 
 function renderActionPanel(
   props: DoctorMultimodalViewProps,
-  resolvedPatientContext: CardPatientContext | null,
+  resolvedPatientContext: MultimodalPromptContext | null,
 ) {
   const promptContext = buildMultimodalPromptContext(resolvedPatientContext);
   const anyContext = Object.keys(promptContext).length > 0;
@@ -436,8 +440,7 @@ export function DoctorMultimodalView(props: DoctorMultimodalViewProps) {
     <main data-testid="doctor-multimodal-view" className="clinical-multimodal-dashboard">
       <section className="clinical-multimodal-left-column">
         {renderPatientContextCard(
-          props.registryPatientId ?? props.patientRegistry.boundPatientDetail?.patient_id ?? null,
-          props.caseDatabasePatientId,
+          resolvedPatientContext,
           props.patientRegistry.boundPatientDetail,
           props.patientRegistry.isLoadingBoundPatient,
         )}

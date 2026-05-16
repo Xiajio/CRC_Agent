@@ -6,12 +6,32 @@ import type { ClinicalEventLogEntry, JsonObject } from "../../app/api/types";
 import type { CardPatientContext } from "../cards/card-renderers-extended";
 import { buildMultimodalPromptContext, groupMultimodalCards, MULTIMODAL_ACTIONS } from "./doctor-multimodal-utils";
 
-const clinicalCardsPanelMock = vi.fn(({ title, cards, emptyMessage }: { title?: string; cards: Record<string, JsonObject>; emptyMessage?: string }) => (
+const clinicalCardsPanelMock = vi.fn(
+  ({
+    title,
+    cards,
+    emptyMessage,
+  }: {
+    title?: string;
+    cards: Record<string, JsonObject>;
+    emptyMessage?: string;
+    selectedCardType: string | null;
+    patientContext?: CardPatientContext | null;
+    onPromptRequest?: unknown;
+  }) => (
   <section data-testid={`panel-${title ?? "untitled"}`} data-empty-message={emptyMessage ?? ""} data-cards={Object.keys(cards).join(",")} />
-));
+  ),
+);
 
 vi.mock("../cards/clinical-cards-panel", () => ({
-  ClinicalCardsPanel: (props: { title?: string; cards: Record<string, JsonObject>; emptyMessage?: string }) => clinicalCardsPanelMock(props),
+  ClinicalCardsPanel: (props: {
+    title?: string;
+    cards: Record<string, JsonObject>;
+    emptyMessage?: string;
+    selectedCardType: string | null;
+    patientContext?: CardPatientContext | null;
+    onPromptRequest?: unknown;
+  }) => clinicalCardsPanelMock(props),
 }));
 
 import { DoctorMultimodalView } from "./doctor-multimodal-view";
@@ -21,7 +41,7 @@ beforeEach(() => {
 });
 
 function renderView(overrides: Partial<Parameters<typeof DoctorMultimodalView>[0]> = {}) {
-  const patientContext: CardPatientContext = overrides.patientContext ?? null;
+  const patientContext = overrides.patientContext ?? null;
   const props: Parameters<typeof DoctorMultimodalView>[0] = {
     registryPatientId: null,
     caseDatabasePatientId: null,
@@ -74,6 +94,9 @@ describe("DoctorMultimodalView", () => {
     ]);
 
     renderView({
+      registryPatientId: 42,
+      caseDatabasePatientId: "007",
+      patientContext: { registry_patient_id: 42 },
       cards: {
         imaging_card: { summary: "Imaging summary" },
         pathology_card: { summary: "Pathology summary" },
@@ -83,6 +106,11 @@ describe("DoctorMultimodalView", () => {
 
     expect(clinicalCardsPanelMock).toHaveBeenCalledTimes(grouped.length);
     expect(clinicalCardsPanelMock.mock.calls.map(([props]) => props.title)).toEqual(grouped.map((group) => group.title));
+    expect(clinicalCardsPanelMock.mock.calls[0]?.[0]).toMatchObject({
+      selectedCardType: null,
+      patientContext: { registry_patient_id: 42, case_database_patient_id: "007" },
+      onPromptRequest: expect.any(Function),
+    });
     const flattenedCards = clinicalCardsPanelMock.mock.calls.flatMap(([props]) => Object.keys(props.cards));
     expect(flattenedCards).toEqual(["imaging_card", "pathology_card"]);
     expect(screen.queryByText("Not multimodal")).not.toBeInTheDocument();
