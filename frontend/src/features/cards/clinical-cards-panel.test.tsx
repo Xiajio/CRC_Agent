@@ -7,7 +7,8 @@ describe("ClinicalCardsPanel", () => {
   it("renders an empty state by default when no cards exist", () => {
     render(<ClinicalCardsPanel cards={{}} selectedCardType={null} emptyMessage="No medical cards." />);
 
-    expect(screen.getByTestId("clinical-card-empty-state")).toHaveTextContent("No medical cards.");
+    expect(screen.getByTestId("clinical-empty-state")).toHaveTextContent("No medical cards.");
+    expect(screen.getByTestId("clinical-empty-state")).toHaveTextContent("医疗卡片待生成");
     expect(screen.queryByText("cT3N1M0")).not.toBeInTheDocument();
     expect(screen.queryByText("FOLFOX")).not.toBeInTheDocument();
   });
@@ -23,7 +24,7 @@ describe("ClinicalCardsPanel", () => {
       />,
     );
 
-    expect(screen.queryByTestId("clinical-card-empty-state")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("clinical-empty-state")).not.toBeInTheDocument();
     expect(screen.getByText("Evidence")).toBeInTheDocument();
     expect(screen.getByText("Recommendation")).toBeInTheDocument();
     expect(container.querySelector(".clinical-medical-card-selected")).toHaveAttribute("aria-current", "true");

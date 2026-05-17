@@ -24,6 +24,12 @@ function renderConversationPanel(overrides: Partial<ComponentProps<typeof Conver
 }
 
 describe("ConversationPanel latency status", () => {
+  it("renders the shared clinical empty state when no messages exist", () => {
+    renderConversationPanel();
+
+    expect(screen.getByTestId("clinical-empty-state")).toHaveTextContent("暂无对话");
+  });
+
   it("renders messages and composer with shared UI classes", () => {
     renderConversationPanel({
       messages: [

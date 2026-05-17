@@ -7,6 +7,7 @@ import {
   type PatientRegistryDetail,
 } from "../../app/api/types";
 import { compactClinicalEventDetail, formatCriticFeedback } from "../../app/clinical/critic-feedback";
+import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
 import { Card } from "../../components/ui";
 import { ClinicalCardsPanel } from "../cards/clinical-cards-panel";
@@ -316,7 +317,12 @@ function ClinicalPatientSummary({
           ))}
         </dl>
       ) : (
-        <p className="clinical-empty-note">暂无患者摘要。</p>
+        <ClinicalEmptyState
+          compact
+          icon="summary"
+          title="患者摘要待绑定"
+          message="暂无患者摘要。"
+        />
       )}
       {isLoading ? <p className="clinical-loading-copy">正在加载患者摘要...</p> : null}
     </Card>
@@ -354,7 +360,12 @@ function ClinicalUploads({
             </div>
           ))
         ) : (
-          <p className="clinical-empty-note">暂无上传资料。</p>
+          <ClinicalEmptyState
+            compact
+            icon="uploads"
+            title="资料待上传"
+            message="暂无上传资料。"
+          />
         )}
       </div>
       {isLoading ? <p className="clinical-loading-copy">正在加载上传资料...</p> : null}
@@ -416,7 +427,12 @@ function ClinicalEventStream({
           })}
         </div>
       ) : (
-        <p className="clinical-empty-note">暂无事件。</p>
+        <ClinicalEmptyState
+          compact
+          icon="events"
+          title="事件流待启动"
+          message="暂无事件。"
+        />
       )}
     </Card>
   );

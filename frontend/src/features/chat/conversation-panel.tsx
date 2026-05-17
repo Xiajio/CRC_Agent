@@ -1,5 +1,6 @@
 import type { FrontendMessage } from "../../app/api/types";
 import type { ReactNode } from "react";
+import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { Button, Card, MessageBubble, Textarea } from "../../components/ui";
 import {
   cardTitle,
@@ -320,7 +321,12 @@ export function ConversationPanel({
             })}
           </ol>
         ) : (
-          <p className="workspace-copy clinical-empty-conversation">暂无对话。</p>
+          <ClinicalEmptyState
+            icon="chat"
+            title="暂无对话"
+            message="输入问题后，会诊过程和助手回复会显示在这里。"
+            className="clinical-empty-conversation"
+          />
         )}
       </div>
 

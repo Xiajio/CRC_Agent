@@ -32,6 +32,12 @@ function mediaBlockFor(query: string) {
   return "";
 }
 
+function cssBetween(startSelector: string, endSelector: string) {
+  const start = css.indexOf(startSelector);
+  const end = css.indexOf(endSelector);
+  return start >= 0 && end > start ? css.slice(start, end) : "";
+}
+
 describe("consultation cockpit layout CSS", () => {
   it("gives the base desktop cockpit a dominant consultation center and compact support rails", () => {
     const dashboard = blockFor(".clinical-dashboard");
@@ -70,5 +76,23 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-event-stream")).toContain("min-height: 0");
     expect(blockFor(".clinical-event-row")).toContain("repeat(4, minmax(0, 1fr))");
     expect(blockFor(".clinical-event-chip p")).toContain("max-height: 3.2em");
+  });
+
+  it("defines the polished clinical visual system hooks", () => {
+    expect(css).toContain("0 10px 30px");
+    expect(blockFor(".clinical-nav-tab-active")).toContain("box-shadow");
+    expect(blockFor(".clinical-empty-state")).toContain("grid-template-columns");
+    expect(blockFor(".clinical-empty-state-icon")).toContain("border-radius: 8px");
+    expect(blockFor(".clinical-empty-state-icon::before")).toContain("position: absolute");
+    expect(blockFor(".clinical-empty-state-icon::before")).toContain("transform: translate(-50%, -50%)");
+    expect(blockFor(".clinical-empty-state-icon-chat::before")).not.toContain("box-shadow");
+    expect(
+      cssBetween(".clinical-empty-state-icon-events::before", ".clinical-empty-state-icon-plan::before"),
+    ).toContain("radial-gradient");
+    expect(
+      cssBetween(".clinical-empty-state-icon-plan::before", ".clinical-empty-state-icon-summary::before"),
+    ).toContain("linear-gradient");
+    expect(blockFor(".clinical-empty-state-compact")).toContain("padding");
+    expect(blockFor(".clinical-conversation-card .clinical-composer-textarea")).toContain("box-shadow");
   });
 });

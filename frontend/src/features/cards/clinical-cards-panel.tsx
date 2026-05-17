@@ -1,6 +1,7 @@
 import { useRef } from "react";
 
 import type { JsonObject } from "../../app/api/types";
+import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { useHighlightFlash } from "../../components/motion/use-highlight-flash";
 import { Card } from "../../components/ui";
 import { renderCardContent, type CardPatientContext, type CardPromptHandler } from "./card-renderers-extended";
@@ -63,9 +64,11 @@ export function ClinicalCardsPanel({
           })}
         </div>
       ) : (
-        <div className="clinical-card-empty-state" data-testid="clinical-card-empty-state">
-          <p>{emptyMessage}</p>
-        </div>
+        <ClinicalEmptyState
+          icon="cards"
+          title="医疗卡片待生成"
+          message={emptyMessage}
+        />
       )}
     </Card>
   );

@@ -1,5 +1,6 @@
 import type { JsonObject } from "../../app/api/types";
 import { formatCriticFeedback } from "../../app/clinical/critic-feedback";
+import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { Card } from "../../components/ui";
 
 type ExecutionPlanPanelProps = {
@@ -141,7 +142,12 @@ export function ExecutionPlanPanel({ plan, references, critic = null }: Executio
             })}
           </div>
         ) : (
-          <p className="clinical-empty-note">暂无执行计划。</p>
+          <ClinicalEmptyState
+            compact
+            icon="plan"
+            title="执行计划待生成"
+            message="暂无执行计划。"
+          />
         )}
       </Card>
       <Card as="section" padding="none" className="clinical-card clinical-reference-card">
@@ -167,11 +173,16 @@ export function ExecutionPlanPanel({ plan, references, critic = null }: Executio
             <button type="button" className="clinical-view-all-button">查看全部参考资料（{references.length}）</button>
           </>
         ) : (
-          <p className="clinical-empty-note">
-            {requiresHumanReview
-              ? "No direct references are attached to this recommendation."
-              : "暂无参考资料。"}
-          </p>
+          <ClinicalEmptyState
+            compact
+            icon="references"
+            title={requiresHumanReview ? "缺少直接参考" : "参考资料待关联"}
+            message={
+              requiresHumanReview
+                ? "No direct references are attached to this recommendation."
+                : "暂无参考资料。"
+            }
+          />
         )}
       </Card>
     </>

@@ -1,6 +1,7 @@
 import { useRef } from "react";
 
 import type { JsonObject } from "../../app/api/types";
+import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { useHighlightFlash } from "../../components/motion/use-highlight-flash";
 import { Card } from "../../components/ui";
 
@@ -105,7 +106,12 @@ export function RoadmapPanel({ roadmap, stage }: RoadmapPanelProps) {
           })}
         </ol>
       ) : (
-        <p className="clinical-empty-note">暂无工作流路线。</p>
+        <ClinicalEmptyState
+          compact
+          icon="roadmap"
+          title="路线图待生成"
+          message="暂无工作流路线。"
+        />
       )}
     </Card>
   );

@@ -7,6 +7,7 @@ describe("ExecutionPlanPanel", () => {
   it("renders empty plan and reference states", () => {
     render(<ExecutionPlanPanel plan={[]} references={[]} />);
 
+    expect(screen.getAllByTestId("clinical-empty-state")).toHaveLength(2);
     expect(screen.getByText("暂无执行计划。")).toBeInTheDocument();
     expect(screen.getByText("暂无参考资料。")).toBeInTheDocument();
     expect(screen.queryByText("NCCN 指南片段")).not.toBeInTheDocument();

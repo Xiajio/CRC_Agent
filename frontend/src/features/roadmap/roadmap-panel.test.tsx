@@ -7,6 +7,7 @@ describe("RoadmapPanel", () => {
   it("renders an empty roadmap state when no steps exist", () => {
     render(<RoadmapPanel roadmap={[]} stage={null} />);
 
+    expect(screen.getByTestId("clinical-empty-state")).toBeInTheDocument();
     expect(screen.getByText("暂无工作流路线。")).toBeInTheDocument();
     expect(screen.queryByText("意图识别")).not.toBeInTheDocument();
   });
