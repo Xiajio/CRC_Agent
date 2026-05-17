@@ -1473,12 +1473,12 @@ body {
 
 .clinical-dashboard {
   display: grid;
-  grid-template-columns: 330px minmax(560px, 1fr) 500px;
+  grid-template-columns: clamp(260px, 18vw, 280px) minmax(640px, 1fr) clamp(340px, 24vw, 370px);
   grid-template-areas:
     "left center right"
     "event event right";
-  gap: 12px;
-  padding: 12px;
+  gap: 10px;
+  padding: 10px;
   align-items: start;
 }
 
@@ -1933,7 +1933,7 @@ body {
 }
 
 .clinical-conversation-card {
-  min-height: 374px;
+  min-height: clamp(430px, 56vh, 620px);
   display: flex !important;
   flex-direction: column;
   padding: 0 !important;
@@ -2654,14 +2654,14 @@ body {
 }
 
 .clinical-event-stream {
-  min-height: 186px;
+  min-height: 0;
 }
 
 .clinical-event-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
-  padding: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px 12px;
 }
 
 .clinical-event-chip {
@@ -2692,8 +2692,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 38px;
-  padding: 0 12px;
+  min-height: 32px;
+  padding: 0 10px;
   border-bottom: 1px solid #dfeaf6;
 }
 
@@ -2709,11 +2709,11 @@ body {
 
 .clinical-event-chip p {
   margin: 0;
-  padding: 12px;
+  padding: 8px 10px;
   color: #40536a;
   font-size: 0.78rem;
   line-height: 1.5;
-  max-height: 5.7em;
+  max-height: 3.2em;
   overflow: hidden;
   overflow-wrap: anywhere;
 }
@@ -2742,7 +2742,7 @@ body {
 
 @media (max-width: 1450px) {
   .clinical-dashboard {
-    grid-template-columns: 300px minmax(500px, 1fr) 420px;
+    grid-template-columns: 280px minmax(580px, 1fr) 340px;
   }
 
   .clinical-multimodal-dashboard {
@@ -2800,8 +2800,8 @@ body {
   .clinical-dashboard {
     grid-template-columns: 1fr;
     grid-template-areas:
-      "left"
       "center"
+      "left"
       "right"
       "event";
   }
@@ -2822,6 +2822,14 @@ body {
   .clinical-dashboard {
     padding: 8px;
     gap: 8px;
+  }
+
+  .clinical-conversation-card {
+    min-height: 420px;
+  }
+
+  .clinical-event-row {
+    grid-template-columns: 1fr;
   }
 
   .clinical-patient-dashboard {
