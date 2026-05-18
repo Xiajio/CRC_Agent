@@ -76,6 +76,7 @@ describe("consultation cockpit layout CSS", () => {
     expect(css).toContain("--clinical-apple-bg: #f5f5f7");
     expect(css).toContain("--clinical-accent-blue: #0071e3");
     expect(css).toContain("--clinical-link-blue: #0066cc");
+    expect(css).toContain("--clinical-button-border-shadow");
     expect(css).toContain("--clinical-glass-ink");
     expect(css).toContain("--clinical-command-surface");
     expect(css).toContain("--clinical-command-ink");
@@ -88,7 +89,13 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-nav-tabs")).toContain("border-radius: 999px");
     expect(blockFor(".clinical-nav-tab-active")).toContain("var(--clinical-surface)");
     expect(blockFor(".clinical-nav-tab-active")).toContain("var(--clinical-accent-blue)");
-    expect(blockFor(".clinical-nav-tab-active")).toContain("box-shadow");
+    expect(blockFor(".clinical-nav-tab-active")).toContain("var(--clinical-button-border-shadow)");
+    expect(blockFor(".clinical-nav-tab-active")).not.toContain("0 1px 4px");
+    expect(blockFor(".clinical-reset-button")).toContain("var(--clinical-button-border-shadow)");
+    expect(blockFor(".clinical-sse-pill")).toContain("var(--clinical-button-border-shadow)");
+    expect(blockFor(".clinical-conversation-card .workspace-composer-send:hover:not(:disabled)")).toContain(
+      "transform: none",
+    );
     expect(blockFor(".clinical-logo-mark circle")).toContain("var(--clinical-accent-blue)");
     expect(blocksFor(".clinical-conversation-card")).toContainEqual(
       expect.stringContaining("var(--clinical-stage-shadow)"),

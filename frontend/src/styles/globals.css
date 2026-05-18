@@ -1276,9 +1276,10 @@ body {
   --clinical-primary-soft: #e8f2ff;
   --clinical-navy: var(--clinical-apple-ink);
   --clinical-muted: var(--clinical-apple-muted);
+  --clinical-button-border-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.72);
   --clinical-stage-shadow: 0 20px 56px rgba(0, 0, 0, 0.08);
   --clinical-panel-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
-  --clinical-control-shadow: 0 1px 0 rgba(255, 255, 255, 0.72), 0 8px 20px rgba(0, 0, 0, 0.05);
+  --clinical-control-shadow: 0 1px 0 rgba(0, 0, 0, 0.04);
 }
 
 .clinical-app-shell {
@@ -1384,12 +1385,12 @@ body {
 
 .clinical-nav-tab-active {
   background: var(--clinical-surface);
-  box-shadow: inset 0 -2px 0 var(--clinical-accent-blue), 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--clinical-button-border-shadow), inset 0 -2px 0 var(--clinical-accent-blue);
   color: var(--clinical-link-blue);
 }
 
 .clinical-top-nav-patient .clinical-nav-tab-active {
-  box-shadow: inset 0 -2px 0 var(--clinical-accent-blue), 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--clinical-button-border-shadow), inset 0 -2px 0 var(--clinical-accent-blue);
 }
 
 .clinical-scene-switcher {
@@ -1437,6 +1438,7 @@ body {
   font: inherit;
   font-size: 0.78rem;
   font-weight: 700;
+  box-shadow: var(--clinical-button-border-shadow);
   cursor: pointer;
 }
 
@@ -1460,6 +1462,7 @@ body {
   color: #1f7a3b;
   font-size: 0.82rem;
   font-weight: 700;
+  box-shadow: var(--clinical-button-border-shadow);
 }
 
 .clinical-sse-pill span {
@@ -2230,6 +2233,14 @@ body {
   border-radius: 8px;
   padding: 0;
   background: var(--clinical-primary);
+  box-shadow: none;
+  transition: background-color 0.16s ease;
+}
+
+.clinical-conversation-card .workspace-composer-send:hover:not(:disabled) {
+  background: #0077ed;
+  box-shadow: none;
+  transform: none;
 }
 
 .clinical-medical-cards-panel {
