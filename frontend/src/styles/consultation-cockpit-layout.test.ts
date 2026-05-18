@@ -73,15 +73,23 @@ describe("consultation cockpit layout CSS", () => {
   });
 
   it("defines the polished clinical visual system hooks", () => {
+    expect(css).toContain("--clinical-apple-bg: #f5f5f7");
+    expect(css).toContain("--clinical-accent-blue: #0071e3");
+    expect(css).toContain("--clinical-link-blue: #0066cc");
     expect(css).toContain("--clinical-glass-ink");
     expect(css).toContain("--clinical-command-surface");
     expect(css).toContain("--clinical-command-ink");
     expect(css).toContain("--clinical-panel-shadow");
+    expect(blockFor(".clinical-app-shell")).toContain("var(--clinical-apple-bg)");
+    expect(blockFor(".clinical-app-shell")).not.toContain("radial-gradient");
     expect(blockFor(".clinical-top-nav")).toContain("backdrop-filter");
     expect(blockFor(".clinical-top-nav")).toContain("var(--clinical-command-surface)");
     expect(blockFor(".clinical-top-nav")).toContain("color: var(--clinical-command-ink)");
     expect(blockFor(".clinical-nav-tabs")).toContain("border-radius: 999px");
+    expect(blockFor(".clinical-nav-tab-active")).toContain("var(--clinical-surface)");
+    expect(blockFor(".clinical-nav-tab-active")).toContain("var(--clinical-accent-blue)");
     expect(blockFor(".clinical-nav-tab-active")).toContain("box-shadow");
+    expect(blockFor(".clinical-logo-mark circle")).toContain("var(--clinical-accent-blue)");
     expect(blocksFor(".clinical-conversation-card")).toContainEqual(
       expect.stringContaining("var(--clinical-stage-shadow)"),
     );
