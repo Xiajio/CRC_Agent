@@ -74,8 +74,12 @@ describe("consultation cockpit layout CSS", () => {
 
   it("defines the polished clinical visual system hooks", () => {
     expect(css).toContain("--clinical-glass-ink");
+    expect(css).toContain("--clinical-command-surface");
+    expect(css).toContain("--clinical-command-ink");
     expect(css).toContain("--clinical-panel-shadow");
     expect(blockFor(".clinical-top-nav")).toContain("backdrop-filter");
+    expect(blockFor(".clinical-top-nav")).toContain("var(--clinical-command-surface)");
+    expect(blockFor(".clinical-top-nav")).toContain("color: var(--clinical-command-ink)");
     expect(blockFor(".clinical-nav-tabs")).toContain("border-radius: 999px");
     expect(blockFor(".clinical-nav-tab-active")).toContain("box-shadow");
     expect(blocksFor(".clinical-conversation-card")).toContainEqual(
