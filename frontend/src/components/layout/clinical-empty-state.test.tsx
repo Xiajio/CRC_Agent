@@ -14,7 +14,10 @@ describe("ClinicalEmptyState", () => {
     );
 
     expect(screen.getByTestId("clinical-empty-state")).toHaveClass("clinical-empty-state");
-    expect(screen.getByTestId("clinical-empty-state-icon")).toHaveClass("clinical-empty-state-icon-cards");
+    const icon = screen.getByTestId("clinical-empty-state-icon");
+    expect(icon).toHaveClass("clinical-empty-state-icon-cards");
+    expect(icon.querySelector("svg")).toBeInTheDocument();
+    expect(icon.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByText("No cards ready")).toBeInTheDocument();
     expect(screen.getByText("Clinical evidence cards will appear after the next assistant response.")).toBeInTheDocument();
   });

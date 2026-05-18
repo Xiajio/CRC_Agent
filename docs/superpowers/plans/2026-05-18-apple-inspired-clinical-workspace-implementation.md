@@ -35,7 +35,7 @@
 **Files:**
 - Modify: `frontend/src/styles/consultation-cockpit-layout.test.ts`
 
-- [ ] **Step 1: Add failing assertions for the Apple-inspired visual system**
+- [x] **Step 1: Add failing assertions for the Apple-inspired visual system**
 
 Add expectations inside `defines the polished clinical visual system hooks`:
 
@@ -44,8 +44,8 @@ expect(css).toContain("--clinical-glass-ink");
 expect(blockFor(".clinical-top-nav")).toContain("backdrop-filter");
 expect(blockFor(".clinical-nav-tabs")).toContain("border-radius: 999px");
 expect(blockFor(".clinical-conversation-card")).toContain("var(--clinical-stage-shadow)");
-expect(blockFor(".clinical-dashboard-left")).toContain("opacity");
-expect(blockFor(".clinical-dashboard-right")).toContain("opacity");
+expect(blockFor(".clinical-left-column")).toContain("opacity");
+expect(blockFor(".clinical-right-column")).toContain("opacity");
 expect(blockFor(".clinical-empty-state-icon svg")).toContain("stroke-width");
 expect(blockFor(".clinical-empty-state-icon::before")).toBe("");
 ```
@@ -63,7 +63,7 @@ it("keeps the Apple-inspired command layer compact on mobile", () => {
 });
 ```
 
-- [ ] **Step 2: Run the CSS contract test and confirm red**
+- [x] **Step 2: Run the CSS contract test and confirm red**
 
 Run:
 
@@ -80,7 +80,7 @@ Expected: FAIL because the new tokens, `backdrop-filter`, SVG icon CSS, and mobi
 - Modify: `frontend/src/components/layout/clinical-empty-state.test.tsx`
 - Modify: `frontend/src/styles/globals.css`
 
-- [ ] **Step 1: Add failing component expectations**
+- [x] **Step 1: Add failing component expectations**
 
 Add this assertion to the first `ClinicalEmptyState` test:
 
@@ -90,7 +90,7 @@ expect(icon.querySelector("svg")).toBeInTheDocument();
 expect(icon.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
 ```
 
-- [ ] **Step 2: Run the component test and confirm red**
+- [x] **Step 2: Run the component test and confirm red**
 
 Run:
 
@@ -100,7 +100,7 @@ $env:PATH='D:\anaconda3\envs\LangG;' + $env:PATH; cmd /c D:\anaconda3\envs\LangG
 
 Expected: FAIL because the icon span does not contain an SVG yet.
 
-- [ ] **Step 3: Implement SVG icon rendering**
+- [x] **Step 3: Implement SVG icon rendering**
 
 In `clinical-empty-state.tsx`, add a local icon path map and render an inline SVG:
 
@@ -169,7 +169,7 @@ Render:
 </span>
 ```
 
-- [ ] **Step 4: Remove pseudo-icon drawing CSS**
+- [x] **Step 4: Remove pseudo-icon drawing CSS**
 
 In `globals.css`, delete the drawing rules for:
 
@@ -204,7 +204,7 @@ Add:
 }
 ```
 
-- [ ] **Step 5: Run component and CSS tests**
+- [x] **Step 5: Run component and CSS tests**
 
 Run:
 
@@ -220,7 +220,7 @@ Expected: empty-state component tests pass; CSS test still fails until material 
 - Modify: `frontend/src/styles/globals.css`
 - Modify: `frontend/src/styles/consultation-cockpit-layout.test.ts`
 
-- [ ] **Step 1: Add material tokens near the clinical app styles**
+- [x] **Step 1: Add material tokens near the clinical app styles**
 
 Add tokens before `.clinical-app-shell`:
 
@@ -240,7 +240,7 @@ Add tokens before `.clinical-app-shell`:
 }
 ```
 
-- [ ] **Step 2: Refine top navigation into the command layer**
+- [x] **Step 2: Refine top navigation into the command layer**
 
 Update `.clinical-top-nav` and related classes:
 
@@ -282,7 +282,7 @@ Update `.clinical-top-nav` and related classes:
 }
 ```
 
-- [ ] **Step 3: Refine stage, rail, and panel weight**
+- [x] **Step 3: Refine stage, rail, and panel weight**
 
 Update these classes:
 
@@ -305,18 +305,18 @@ Update these classes:
   box-shadow: var(--clinical-stage-shadow);
 }
 
-.clinical-dashboard-left,
-.clinical-dashboard-right {
+.clinical-left-column,
+.clinical-right-column {
   opacity: 0.92;
 }
 
-.clinical-dashboard-right .clinical-card,
-.clinical-dashboard-left .clinical-card {
+.clinical-right-column .clinical-card,
+.clinical-left-column .clinical-card {
   box-shadow: 0 8px 22px rgba(18, 43, 76, 0.055);
 }
 ```
 
-- [ ] **Step 4: Refine composer and empty-state premium treatment**
+- [x] **Step 4: Refine composer and empty-state premium treatment**
 
 Use a quiet input tray and lower-contrast empty state:
 
@@ -341,7 +341,7 @@ Use a quiet input tray and lower-contrast empty state:
 }
 ```
 
-- [ ] **Step 5: Add mobile command-layer refinements**
+- [x] **Step 5: Add mobile command-layer refinements**
 
 Inside the existing mobile media area, or add a `@media (max-width: 700px)` block:
 
@@ -372,7 +372,7 @@ Inside the existing mobile media area, or add a `@media (max-width: 700px)` bloc
 }
 ```
 
-- [ ] **Step 6: Run focused CSS test**
+- [x] **Step 6: Run focused CSS test**
 
 Run:
 
@@ -388,7 +388,7 @@ Expected: PASS.
 - No new production files beyond Tasks 1-3.
 - Possible screenshot artifacts saved outside repo under `C:\Users\msi\AppData\Local\Temp`.
 
-- [ ] **Step 1: Run full frontend tests**
+- [x] **Step 1: Run full frontend tests**
 
 Run:
 
@@ -398,7 +398,7 @@ $env:PATH='D:\anaconda3\envs\LangG;' + $env:PATH; cmd /c D:\anaconda3\envs\LangG
 
 Expected: `39 passed`, `219 passed` or updated counts with zero failures.
 
-- [ ] **Step 2: Run build**
+- [x] **Step 2: Run build**
 
 Run:
 
@@ -408,7 +408,7 @@ $env:PATH='D:\anaconda3\envs\LangG;' + $env:PATH; cmd /c D:\anaconda3\envs\LangG
 
 Expected: `tsc --noEmit` and `vite build` complete with exit code 0.
 
-- [ ] **Step 3: Start fixture backend and frontend**
+- [x] **Step 3: Start fixture backend and frontend**
 
 Run in background sessions:
 
@@ -422,7 +422,7 @@ Expected:
 - Backend listens on `http://127.0.0.1:8000`.
 - Frontend listens on `http://127.0.0.1:4173/`.
 
-- [ ] **Step 4: Browser validation**
+- [x] **Step 4: Browser validation**
 
 Use Browser plugin first. If Codex in-app browser navigation times out again, use Chrome Extension backend and record the fallback.
 
@@ -435,7 +435,7 @@ Checks:
 - Console contains no relevant app errors. React Router v7 future warnings are acceptable.
 - Click `多模态`, verify multimodal content appears; click `会诊`, verify consultation content returns.
 
-- [ ] **Step 5: Capture screenshots**
+- [x] **Step 5: Capture screenshots**
 
 Use Playwright with persisted doctor scene:
 
@@ -445,7 +445,7 @@ D:\anaconda3\envs\LangG\node.exe -e "const { chromium } = require('playwright');
 
 Expected: desktop and mobile screenshots show the command layer, stage, rails, and SVG empty icons without overlap or clipping.
 
-- [ ] **Step 6: Diff and whitespace check**
+- [x] **Step 6: Diff and whitespace check**
 
 Run:
 
@@ -456,7 +456,7 @@ git status --short
 
 Expected: no whitespace errors and only intended files changed.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 Run:
 

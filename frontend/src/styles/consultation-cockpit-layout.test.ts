@@ -32,12 +32,6 @@ function mediaBlockFor(query: string) {
   return "";
 }
 
-function cssBetween(startSelector: string, endSelector: string) {
-  const start = css.indexOf(startSelector);
-  const end = css.indexOf(endSelector);
-  return start >= 0 && end > start ? css.slice(start, end) : "";
-}
-
 describe("consultation cockpit layout CSS", () => {
   it("gives the base desktop cockpit a dominant consultation center and compact support rails", () => {
     const dashboard = blockFor(".clinical-dashboard");
@@ -71,7 +65,7 @@ describe("consultation cockpit layout CSS", () => {
 
   it("makes the conversation and event stream proportions match a cockpit workflow", () => {
     expect(blocksFor(".clinical-conversation-card")).toContainEqual(
-      expect.stringContaining("clamp(430px, 56vh, 620px)"),
+      expect.stringContaining("clamp(470px, 60vh, 680px)"),
     );
     expect(blockFor(".clinical-event-stream")).toContain("min-height: 0");
     expect(blockFor(".clinical-event-row")).toContain("repeat(4, minmax(0, 1fr))");
@@ -79,20 +73,30 @@ describe("consultation cockpit layout CSS", () => {
   });
 
   it("defines the polished clinical visual system hooks", () => {
-    expect(css).toContain("0 10px 30px");
+    expect(css).toContain("--clinical-glass-ink");
+    expect(css).toContain("--clinical-panel-shadow");
+    expect(blockFor(".clinical-top-nav")).toContain("backdrop-filter");
+    expect(blockFor(".clinical-nav-tabs")).toContain("border-radius: 999px");
     expect(blockFor(".clinical-nav-tab-active")).toContain("box-shadow");
+    expect(blocksFor(".clinical-conversation-card")).toContainEqual(
+      expect.stringContaining("var(--clinical-stage-shadow)"),
+    );
+    expect(blocksFor(".clinical-left-column")).toContainEqual(expect.stringContaining("opacity"));
+    expect(blocksFor(".clinical-right-column")).toContainEqual(expect.stringContaining("opacity"));
     expect(blockFor(".clinical-empty-state")).toContain("grid-template-columns");
     expect(blockFor(".clinical-empty-state-icon")).toContain("border-radius: 8px");
-    expect(blockFor(".clinical-empty-state-icon::before")).toContain("position: absolute");
-    expect(blockFor(".clinical-empty-state-icon::before")).toContain("transform: translate(-50%, -50%)");
-    expect(blockFor(".clinical-empty-state-icon-chat::before")).not.toContain("box-shadow");
-    expect(
-      cssBetween(".clinical-empty-state-icon-events::before", ".clinical-empty-state-icon-plan::before"),
-    ).toContain("radial-gradient");
-    expect(
-      cssBetween(".clinical-empty-state-icon-plan::before", ".clinical-empty-state-icon-summary::before"),
-    ).toContain("linear-gradient");
+    expect(blockFor(".clinical-empty-state-icon svg")).toContain("stroke-width");
+    expect(blockFor(".clinical-empty-state-icon::before")).toBe("");
     expect(blockFor(".clinical-empty-state-compact")).toContain("padding");
     expect(blockFor(".clinical-conversation-card .clinical-composer-textarea")).toContain("box-shadow");
+  });
+
+  it("keeps the Apple-inspired command layer compact on mobile", () => {
+    const media700 = mediaBlockFor("max-width: 700px");
+
+    expect(blockFor(".clinical-top-nav", media700)).toContain("grid-template-columns: 1fr");
+    expect(blockFor(".clinical-nav-tabs", media700)).toContain("grid-template-columns");
+    expect(blockFor(".clinical-nav-tab", media700)).toContain("min-height");
+    expect(blockFor(".clinical-user-area", media700)).toContain("justify-content: flex-start");
   });
 });
