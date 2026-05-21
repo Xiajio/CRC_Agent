@@ -226,9 +226,9 @@ describe("DoctorSceneShell", () => {
     expect(screen.getByText("工作流路线图")).toBeInTheDocument();
     expect(screen.getByText("执行计划")).toBeInTheDocument();
     expect(screen.getByText("参考列表（前 2 条）")).toBeInTheDocument();
-    expect(screen.getByText("Registry patient:")).toBeInTheDocument();
+    expect(screen.getByText("登记号:")).toBeInTheDocument();
     expect(screen.getByText("P-1024")).toBeInTheDocument();
-    expect(screen.getByText("Case sample:")).toBeInTheDocument();
+    expect(screen.getByText("病例样本:")).toBeInTheDocument();
     expect(screen.getByText("093")).toBeInTheDocument();
     const profileSwitch = getDoctorProfileSwitch();
     expect(profileSwitch).toHaveClass("clinical-profile-switch");
@@ -387,7 +387,7 @@ describe("DoctorSceneShell", () => {
     );
 
     expect(screen.getByText("093")).toBeInTheDocument();
-    expect(screen.getByText("Case sample:")).toBeInTheDocument();
+    expect(screen.getByText("病例样本:")).toBeInTheDocument();
     expect(screen.getByText("31")).toBeInTheDocument();
     expect(screen.getByText("male")).toBeInTheDocument();
     expect(screen.getByText("CRC")).toBeInTheDocument();
@@ -464,7 +464,7 @@ describe("DoctorSceneShell", () => {
 
     expect(screen.getByText("Critic REJECTED")).toBeInTheDocument();
     expect(screen.getAllByText("missing references").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("HUMAN_REVIEW_REQUIRED").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("需人工复核").length).toBeGreaterThan(0);
   });
 
   it("keeps raw critic reasoning out of the event stream", () => {

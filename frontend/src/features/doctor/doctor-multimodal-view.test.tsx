@@ -220,7 +220,7 @@ describe("DoctorMultimodalView", () => {
       eventLog,
     });
 
-    expect(screen.getAllByText("HUMAN_REVIEW_REQUIRED")).toHaveLength(2);
+    expect(screen.getAllByText("需人工复核")).toHaveLength(2);
     expect(screen.getByText("REJECTED")).toBeInTheDocument();
     expect(screen.getByText("Need a clearer differential diagnosis.")).toBeInTheDocument();
     expect(screen.getByText("Critic detail that should be compacted")).toBeInTheDocument();

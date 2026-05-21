@@ -28,7 +28,7 @@ describe("AppShell, TopNav, and PanelGrid", () => {
             actions={<button type="button">Reset Scene</button>}
             statusLabel="SSE Connected"
             profileLabel="Doctor"
-            profileAriaLabel="patient scene"
+            profileAriaLabel="患者场景"
             profileIcon={<span data-testid="profile-icon" />}
           />
         }
@@ -63,7 +63,7 @@ describe("AppShell, TopNav, and PanelGrid", () => {
         statusLabel="Safe Mode"
         statusTone="safe"
         profileLabel="Doctor"
-        profileAriaLabel="patient scene"
+        profileAriaLabel="患者场景"
       />,
     );
 
@@ -80,7 +80,7 @@ describe("AppShell, TopNav, and PanelGrid", () => {
     fireEvent.click(screen.getByRole("button", { name: "Consultation" }));
     expect(onSelect).toHaveBeenCalledWith("consultation");
 
-    expect(screen.getByRole("button", { name: "patient scene" })).toHaveClass(
+    expect(screen.getByRole("button", { name: "患者场景" })).toHaveClass(
       "ui-profile-switch",
       "clinical-profile-switch",
     );

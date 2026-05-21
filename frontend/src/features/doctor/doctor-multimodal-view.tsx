@@ -7,6 +7,7 @@ import type {
   PatientRegistryDetail,
   PatientRegistryRecord,
 } from "../../app/api/types";
+import { CLINICAL_HUMAN_REVIEW_LABEL } from "../../app/clinical/clinical-copy";
 import { compactClinicalEventDetail, formatCriticFeedback } from "../../app/clinical/critic-feedback";
 import { Button, Card } from "../../components/ui";
 import { ClinicalCardsPanel } from "../cards/clinical-cards-panel";
@@ -403,7 +404,7 @@ function renderReviewPanel(props: DoctorMultimodalViewProps) {
       </div>
       {requiresHumanReview ? (
         <div className="clinical-multimodal-review-warning" role="status">
-          <strong>HUMAN_REVIEW_REQUIRED</strong>
+          <strong>{CLINICAL_HUMAN_REVIEW_LABEL}</strong>
           {typeof critic?.verdict === "string" && critic.verdict.trim() ? <p>{critic.verdict.trim()}</p> : null}
           <p>{reviewFeedback}</p>
         </div>
@@ -419,7 +420,7 @@ function renderReviewPanel(props: DoctorMultimodalViewProps) {
                   <span>{event.kind}</span>
                 </div>
                 {detail ? <p>{detail}</p> : null}
-                {event.requiresHumanReview ? <p>HUMAN_REVIEW_REQUIRED</p> : null}
+                {event.requiresHumanReview ? <p>{CLINICAL_HUMAN_REVIEW_LABEL}</p> : null}
               </article>
             );
           })}

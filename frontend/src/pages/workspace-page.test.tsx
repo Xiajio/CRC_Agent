@@ -117,7 +117,7 @@ vi.mock("../features/doctor/doctor-scene-shell", () => ({
     return (
       <section data-testid="doctor-scene-shell" data-latency-kind={props.latencyStatus?.kind ?? "idle"}>
         <div data-testid="doctor-toolbar">{props.toolbar}</div>
-        <button type="button" aria-label="patient scene" onClick={props.onSwitchScene}>
+        <button type="button" aria-label="患者场景" onClick={props.onSwitchScene}>
           switch to patient
         </button>
         <output data-testid="doctor-draft">{props.draft}</output>
@@ -856,10 +856,10 @@ describe("WorkspacePage patient triage submission wiring", () => {
     renderWorkspaceWithSceneSessions(buildApiClientStub());
 
     expect(screen.getByRole("navigation", { name: "患者工作台" })).toBeInTheDocument();
-    const profileSwitch = screen.getByRole("button", { name: /doctor scene/i });
+    const profileSwitch = screen.getByRole("button", { name: /医生场景/i });
     expect(profileSwitch).toHaveClass("clinical-profile-switch");
     expect(profileSwitch).toHaveTextContent("患者");
-    expect(screen.queryByRole("button", { name: /patient scene/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /患者场景/i })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "\u91cd\u7f6e\u5f53\u524d\u573a\u666f" })).toBeInTheDocument();
   });
 
@@ -1408,7 +1408,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
     expect(screen.getByTestId("latency-ms")).toHaveTextContent("2100");
 
-    fireEvent.click(screen.getByRole("button", { name: /doctor scene/i }));
+    fireEvent.click(screen.getByRole("button", { name: /医生场景/i }));
     view.rerenderWorkspace();
 
     expect(screen.getByTestId("doctor-scene-shell")).toBeInTheDocument();
@@ -1637,7 +1637,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
 
-    fireEvent.click(screen.getByRole("button", { name: /doctor scene/i }));
+    fireEvent.click(screen.getByRole("button", { name: /医生场景/i }));
     view.rerenderWorkspace();
 
     expect(screen.getByTestId("doctor-scene-shell")).toBeInTheDocument();

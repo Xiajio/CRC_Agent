@@ -1,4 +1,8 @@
 import type { JsonObject } from "../../app/api/types";
+import {
+  CLINICAL_HUMAN_REVIEW_LABEL,
+  CLINICAL_MISSING_DIRECT_REFERENCES_MESSAGE,
+} from "../../app/clinical/clinical-copy";
 import { formatCriticFeedback } from "../../app/clinical/critic-feedback";
 import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { Card } from "../../components/ui";
@@ -116,7 +120,7 @@ export function ExecutionPlanPanel({ plan, references, critic = null }: Executio
         {requiresHumanReview ? (
           <div className="clinical-review-warning" role="status">
             <div className="clinical-review-warning-head">
-              <strong>HUMAN_REVIEW_REQUIRED</strong>
+              <strong>{CLINICAL_HUMAN_REVIEW_LABEL}</strong>
               {typeof critic?.verdict === "string" ? <span>{critic.verdict}</span> : null}
             </div>
             <p className="clinical-review-feedback">{criticFeedback(critic)}</p>
@@ -179,7 +183,7 @@ export function ExecutionPlanPanel({ plan, references, critic = null }: Executio
             title={requiresHumanReview ? "缺少直接参考" : "参考资料待关联"}
             message={
               requiresHumanReview
-                ? "No direct references are attached to this recommendation."
+                ? CLINICAL_MISSING_DIRECT_REFERENCES_MESSAGE
                 : "暂无参考资料。"
             }
           />

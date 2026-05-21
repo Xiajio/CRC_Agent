@@ -6,6 +6,10 @@ import {
   type JsonObject,
   type PatientRegistryDetail,
 } from "../../app/api/types";
+import {
+  CLINICAL_HUMAN_REVIEW_LABEL,
+  CLINICAL_PATIENT_SCENE_ARIA_LABEL,
+} from "../../app/clinical/clinical-copy";
 import { compactClinicalEventDetail, formatCriticFeedback } from "../../app/clinical/critic-feedback";
 import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
@@ -292,8 +296,8 @@ function ClinicalPatientSummary({
   const hasSummary = registryPatientId !== null || caseDatabasePatientId !== null || detail !== null;
   const rows = hasSummary
     ? [
-        ["Registry patient:", registryPatientId !== null ? `P-${registryPatientId}` : "Unbound"],
-        ["Case sample:", caseDatabasePatientId ?? "None"],
+        ["登记号:", registryPatientId !== null ? `P-${registryPatientId}` : "未绑定"],
+        ["病例样本:", caseDatabasePatientId ?? "未绑定"],
         ["年龄:", detail?.age ?? "暂未提供"],
         ["性别:", detail?.gender ?? "暂未提供"],
         ["肿瘤部位:", detail?.tumor_location ? tumorTypeFromDetail(detail.tumor_location) : "暂未提供"],
@@ -331,7 +335,7 @@ function ClinicalPatientSummary({
 
 function uploadItemsFromRecords(records: DoctorSceneShellProps["patientRegistry"]["boundPatientRecords"]) {
   return records.slice(0, 3).map((record, index) => ({
-    title: record.document_type || record.record_type || `Record #${record.record_id}`,
+    title: record.document_type || record.record_type || `资料 #${record.record_id}`,
     tone: index === 0 ? "blue" : index === 1 ? "violet" : "cyan",
   }));
 }
@@ -399,7 +403,7 @@ function ClinicalEventStream({
       {requiresHumanReview ? (
         <div className="clinical-review-warning" role="status">
           <div className="clinical-review-warning-head">
-            <strong>HUMAN_REVIEW_REQUIRED</strong>
+            <strong>{CLINICAL_HUMAN_REVIEW_LABEL}</strong>
             {typeof critic?.verdict === "string" ? <span>{critic.verdict}</span> : null}
           </div>
           <p className="clinical-review-feedback">{reviewFeedback}</p>
@@ -421,7 +425,7 @@ function ClinicalEventStream({
                   <span>{event.kind}</span>
                 </div>
                 {detail ? <p>{detail}</p> : null}
-                {event.requiresHumanReview ? <p>HUMAN_REVIEW_REQUIRED</p> : null}
+                {event.requiresHumanReview ? <p>{CLINICAL_HUMAN_REVIEW_LABEL}</p> : null}
               </article>
             );
           })}
@@ -512,7 +516,7 @@ export function DoctorSceneShell({
        statusLabel="SSE 连接正常"
       statusTone="connected"
       profileLabel="医生"
-      profileAriaLabel="patient scene"
+      profileAriaLabel={CLINICAL_PATIENT_SCENE_ARIA_LABEL}
       onProfileClick={onSwitchScene}
     />
   );

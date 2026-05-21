@@ -26,7 +26,7 @@ describe("ClinicalTopNav", () => {
         statusLabel="SSE Connected"
         statusTone="connected"
         profileLabel="Doctor"
-        profileAriaLabel="patient scene"
+        profileAriaLabel="患者场景"
         onProfileClick={onProfileClick}
       />,
     );
@@ -34,11 +34,11 @@ describe("ClinicalTopNav", () => {
     expect(screen.getByText("LangGraph Clinical Assistant")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Clinical navigation" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Consultation" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("button", { name: "patient scene" })).toHaveClass("clinical-profile-switch");
+    expect(screen.getByRole("button", { name: "患者场景" })).toHaveClass("clinical-profile-switch");
     expect(screen.getByRole("button", { name: "Reset Scene" })).toBeInTheDocument();
     expect(screen.getByLabelText("场景操作")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "patient scene" }));
+    fireEvent.click(screen.getByRole("button", { name: "患者场景" }));
     expect(onProfileClick).toHaveBeenCalledTimes(1);
   });
 
@@ -55,7 +55,7 @@ describe("ClinicalTopNav", () => {
         statusLabel="SSE Connected"
         statusTone="connected"
         profileLabel="Doctor"
-        profileAriaLabel="patient scene"
+        profileAriaLabel="患者场景"
       />,
     );
 

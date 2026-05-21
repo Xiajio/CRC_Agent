@@ -20,6 +20,7 @@ import { usePatientUploads } from "../features/workspace/use-patient-uploads";
 import { useTurnLatencyProbe } from "../features/workspace/use-turn-latency-probe";
 import { useWorkspaceCards } from "../features/workspace/use-workspace-cards";
 import { useWorkspaceStreamingTurn } from "../features/workspace/use-workspace-streaming-turn";
+import { CLINICAL_DOCTOR_SCENE_ARIA_LABEL } from "../app/clinical/clinical-copy";
 import {
   primeDoctorClinicalWorkflow,
   readFiniteNumber,
@@ -556,7 +557,7 @@ export function WorkspacePage() {
         statusLabel="安全会话"
         statusTone="safe"
         profileLabel="患者"
-        profileAriaLabel="doctor scene"
+        profileAriaLabel={CLINICAL_DOCTOR_SCENE_ARIA_LABEL}
         onProfileClick={() => handleSceneSwitch("doctor")}
         className="clinical-top-nav-patient"
       />

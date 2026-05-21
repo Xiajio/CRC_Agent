@@ -237,8 +237,8 @@ test("keeps thinking hidden for patient replies while doctor replies disclose it
   await expect(page.locator(".clinical-thinking-disclosure")).toHaveCount(0);
   await expect(page.getByText(PATIENT_THINKING)).toHaveCount(0);
 
-  await page.getByRole("button", { name: "doctor scene" }).click();
-  await expect(page.getByRole("button", { name: "patient scene" })).toBeVisible();
+  await page.getByRole("button", { name: "医生场景" }).click();
+  await expect(page.getByRole("button", { name: "患者场景" })).toBeVisible();
 
   await submitCurrentComposer(page, "doctor prompt");
   await expect(page.getByText("Doctor-facing final answer.")).toBeVisible();
@@ -250,8 +250,8 @@ test("keeps thinking hidden for patient replies while doctor replies disclose it
 
 test("sends split identity context when doctor card prompt is clicked", async ({ page }) => {
   await openWorkspace(page);
-  await page.getByRole("button", { name: "doctor scene" }).click();
-  await expect(page.getByRole("button", { name: "patient scene" })).toBeVisible();
+  await page.getByRole("button", { name: "医生场景" }).click();
+  await expect(page.getByRole("button", { name: "患者场景" })).toBeVisible();
 
   const streamRequest = page.waitForRequest((request) =>
     request.method() === "POST"

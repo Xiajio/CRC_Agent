@@ -26,9 +26,9 @@ describe("ExecutionPlanPanel", () => {
       />,
     );
 
-    expect(screen.getByText(/HUMAN_REVIEW_REQUIRED/)).toBeInTheDocument();
+    expect(screen.getByText("需人工复核")).toBeInTheDocument();
     expect(screen.getByText(/missing references/)).toBeInTheDocument();
-    expect(screen.getByText(/No direct references are attached/)).toBeInTheDocument();
+    expect(screen.getByText("本建议未附带可直接引用的参考资料。")).toBeInTheDocument();
   });
 
   it("shows readable critic feedback when the backend sends thinking-wrapped JSON", () => {

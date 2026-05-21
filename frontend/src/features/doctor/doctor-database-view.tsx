@@ -29,12 +29,12 @@ function DatabaseSourceToolbar({
   onSourceChange: (value: DoctorDatabaseSource) => void;
 }) {
   return (
-    <div className="ui-segmented-control" aria-label="Database source">
+    <div className="ui-segmented-control" aria-label="数据库来源">
       <Button
         variant={activeSource === "historical_case_base" ? "primary" : "secondary"}
         size="sm"
         onClick={() => onSourceChange("historical_case_base")}
-        aria-label="historical case base"
+        aria-label="历史病例"
       >
         📚 历史病例
       </Button>
@@ -42,7 +42,7 @@ function DatabaseSourceToolbar({
         variant={activeSource === "patient_registry" ? "primary" : "secondary"}
         size="sm"
         onClick={() => onSourceChange("patient_registry")}
-        aria-label="patient registry"
+        aria-label="患者库"
       >
         🏥 患者库
       </Button>
@@ -76,7 +76,7 @@ export function DoctorDatabaseView({
         leftRailOpen={false}
         centerWorkspace={(
           <DatabaseWorkbenchPanel
-            title="Historical Case Base"
+            title="历史病例库"
             mode={databaseWorkbench.detail ? "detail" : "search"}
             naturalQuery={databaseWorkbench.naturalQuery}
             stats={databaseWorkbench.stats}
