@@ -13,13 +13,33 @@ if (!nodePathEntries.includes(frontendNodeModules)) {
   (Module as unknown as { _initPaths: () => void })._initPaths();
 }
 
+const demoWebServer =
+  process.env.PLAYWRIGHT_DEMO_SKIP_WEBSERVER === "1"
+    ? undefined
+    : [
+        {
+          command: "node scripts/playwright_demo_server.cjs backend",
+          cwd: repoRoot,
+          url: "http://127.0.0.1:8000/openapi.json",
+          reuseExistingServer: true,
+          timeout: 120_000,
+        },
+        {
+          command: "node scripts/playwright_demo_server.cjs frontend",
+          cwd: repoRoot,
+          url: "http://127.0.0.1:4173",
+          reuseExistingServer: true,
+          timeout: 120_000,
+        },
+      ];
+
 export default defineConfig({
-  testDir: "../tests/e2e/acceptance",
-  outputDir: "../output/acceptance",
+  testDir: "../tests/e2e",
+  outputDir: "test-results/demo",
   fullyParallel: false,
-  timeout: 60_000,
+  timeout: 90_000,
   expect: {
-    timeout: 15_000,
+    timeout: 20_000,
   },
   projects: [
     {
@@ -36,20 +56,5 @@ export default defineConfig({
     baseURL: "http://127.0.0.1:4173",
     trace: "on-first-retry",
   },
-  webServer: [
-    {
-      command: "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_backend_acceptance_fixture.ps1",
-      cwd: repoRoot,
-      url: "http://127.0.0.1:8000/openapi.json",
-      reuseExistingServer: false,
-      timeout: 120_000,
-    },
-    {
-      command: "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_frontend.ps1",
-      cwd: repoRoot,
-      url: "http://127.0.0.1:4173",
-      reuseExistingServer: true,
-      timeout: 120_000,
-    },
-  ],
+  webServer: demoWebServer,
 });

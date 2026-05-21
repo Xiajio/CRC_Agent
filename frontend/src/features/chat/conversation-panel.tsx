@@ -351,6 +351,7 @@ export function ConversationPanel({
           <div className="clinical-composer-box">
             <Textarea
               className="clinical-composer-textarea"
+              data-testid="conversation-input"
               placeholder="询问评估、治疗方案、引用依据或相似病例"
               value={draft}
               disabled={textareaDisabled}

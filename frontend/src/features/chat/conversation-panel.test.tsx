@@ -41,6 +41,7 @@ describe("ConversationPanel latency status", () => {
     expect(screen.getByText("hello").closest("li")).toHaveClass("ui-message-bubble-user");
     expect(screen.getByText("hi").closest("li")).toHaveClass("ui-message-bubble-assistant");
     expect(screen.getByRole("textbox")).toHaveClass("ui-textarea");
+    expect(screen.getByTestId("conversation-input")).toBe(screen.getByRole("textbox"));
   });
 
   it("filters diagnosis status chatter from persisted assistant messages", () => {

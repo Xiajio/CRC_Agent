@@ -1,0 +1,199 @@
+{
+  "ticks": [
+    {
+      "node_name": "intent_router",
+      "node_output": {
+        "findings": {
+          "user_intent": "treatment_decision",
+          "case_database_patient_id": "093"
+        }
+      }
+    },
+    {
+      "node_name": "planner",
+      "node_output": {
+        "current_plan": [
+          {
+            "id": "collect-context",
+            "description": "汇总病例093的结构化病历、影像和病理资料。",
+            "tool_needed": "summarize_patient_existing_info",
+            "status": "completed"
+          },
+          {
+            "id": "retrieve-guidelines",
+            "description": "检索结直肠癌诊疗证据。",
+            "tool_needed": "search_clinical_guidelines",
+            "status": "completed"
+          },
+          {
+            "id": "generate-recommendation",
+            "description": "生成治疗建议并进入引用核查。",
+            "tool_needed": "decision",
+            "status": "in_progress"
+          }
+        ],
+        "roadmap": [
+          { "id": "intent", "title": "意图识别", "status": "completed" },
+          { "id": "planner", "title": "计划拆解", "status": "completed" },
+          { "id": "assessment", "title": "临床评估", "status": "waiting" },
+          { "id": "decision", "title": "治疗建议", "status": "waiting" },
+          { "id": "citation", "title": "证据引用", "status": "waiting" },
+          { "id": "critic", "title": "安全复核", "status": "waiting" },
+          { "id": "finalize", "title": "输出结论", "status": "waiting" }
+        ]
+      }
+    },
+    {
+      "node_name": "assessment",
+      "node_output": {
+        "clinical_stage": "cT4bN1cM0 stage III colon cancer",
+        "assessment_draft": "病例093：31岁，ECOG 0，pMMR/MSS，cT4bN1cM0，CEA 10.29。影像与病理资料已收录，建议进入MDT治疗决策。",
+        "patient_profile": {
+          "case_database_patient_id": "093",
+          "age": 31,
+          "ecog_score": 0,
+          "mmr_status": "pMMR (MSS)",
+          "tnm_staging": {
+            "clinical": {
+              "cT": "cT4b",
+              "cN": "cN1c",
+              "cM": "cM0"
+            },
+            "stage_group": "III"
+          }
+        },
+        "findings": {
+          "case_database_patient_id": "093",
+          "risk_level": "High",
+          "assessment_draft": "病例093：cT4bN1cM0，pMMR/MSS，ECOG 0。",
+          "pathology_confirmed": true,
+          "mmr_status": "pMMR (MSS)",
+          "tnm_staging": {
+            "clinical": {
+              "cT": "cT4b",
+              "cN": "cN1c",
+              "cM": "cM0"
+            },
+            "stage_group": "III"
+          }
+        }
+      }
+    },
+    {
+      "node_name": "decision",
+      "node_output": {
+        "decision_json": {
+          "summary": "病例093为局部进展期结直肠癌样本，pMMR/MSS，cT4bN1cM0。",
+          "staging_conclusion": "临床III期，高危局部进展特征。",
+          "treatment_goals": [
+            "明确MDT治疗路径",
+            "控制局部进展风险",
+            "治疗前补齐必要分子检测"
+          ],
+          "treatment_plan": [
+            {
+              "phase": "MDT复核",
+              "regimen": "结合影像、病理和体能状态进行MDT讨论，确认可切除性和治疗顺序。"
+            },
+            {
+              "phase": "围手术期治疗",
+              "regimen": "根据专科评估选择新辅助治疗或手术优先策略，并在治疗前复核MMR/MSI、RAS/BRAF等分子状态。"
+            },
+            {
+              "phase": "疗效评估与随访",
+              "regimen": "治疗后复查影像、CEA和病理结果，形成术后辅助治疗与随访计划。"
+            }
+          ],
+          "key_considerations": [
+            "当前建议为演示回放输出，不能替代医生判断。",
+            "真实链路中应由指南检索和引用节点进一步核验。"
+          ]
+        },
+        "current_plan": [
+          { "id": "collect-context", "description": "汇总病例093资料。", "tool_needed": "summarize_patient_existing_info", "status": "completed" },
+          { "id": "retrieve-guidelines", "description": "检索指南证据。", "tool_needed": "search_clinical_guidelines", "status": "completed" },
+          { "id": "generate-recommendation", "description": "生成治疗建议。", "tool_needed": "decision", "status": "completed" },
+          { "id": "citation-check", "description": "引用覆盖核查。", "tool_needed": "citation", "status": "in_progress" }
+        ],
+        "roadmap": [
+          { "id": "intent", "title": "意图识别", "status": "completed" },
+          { "id": "planner", "title": "计划拆解", "status": "completed" },
+          { "id": "assessment", "title": "临床评估", "status": "completed" },
+          { "id": "decision", "title": "治疗建议", "status": "completed" },
+          { "id": "citation", "title": "证据引用", "status": "in_progress" },
+          { "id": "critic", "title": "安全复核", "status": "waiting" },
+          { "id": "finalize", "title": "输出结论", "status": "waiting" }
+        ]
+      }
+    },
+    {
+      "node_name": "citation",
+      "node_output": {
+        "retrieved_references": [
+          {
+            "id": "csco-crc-2025",
+            "title": "CSCO 结直肠癌诊疗指南 2025",
+            "source": "local_guideline",
+            "snippet": "局部进展期结直肠癌应由MDT结合影像、病理和分子检测制定治疗策略。"
+          },
+          {
+            "id": "nccn-colon-2025",
+            "title": "NCCN Colon Cancer v5.2025",
+            "source": "local_guideline",
+            "snippet": "Treatment sequencing should be individualized based on staging, risk features, and multidisciplinary review."
+          }
+        ],
+        "citation_report": {
+          "status": "needs_review",
+          "coverage_score": 70,
+          "needs_more_sources": true,
+          "missing_claims": [
+            "具体新辅助方案需要真实指南检索进一步核验。"
+          ],
+          "warnings": [
+            "Demo replay contains representative references only."
+          ]
+        }
+      }
+    },
+    {
+      "node_name": "critic",
+      "node_output": {
+        "critic_verdict": "APPROVED_WITH_WARNINGS",
+        "critic_feedback": "当前建议适合演示临床决策链路，但具体治疗方案必须由真实指南引用和医生复核后确认。",
+        "requires_human_review": true,
+        "iteration_count": 1
+      }
+    },
+    {
+      "node_name": "finalize",
+      "node_output": {
+        "requires_human_review": true,
+        "final_response": "> [!WARNING]\n> HUMAN_REVIEW_REQUIRED: 当前为演示回放建议，具体治疗方案需医生复核。\n\n综合病例093的结构化资料、影像/病理可用性和本地指南证据，建议进入MDT复核，确认局部进展风险、分子检测状态和治疗顺序。可讨论新辅助或围手术期治疗路径，并在治疗后结合影像、CEA和病理结果制定后续辅助治疗与随访计划。",
+        "messages": [
+          {
+            "type": "ai",
+            "id": "demo-doctor-final",
+            "content": "> [!WARNING]\n> HUMAN_REVIEW_REQUIRED: 当前为演示回放建议，具体治疗方案需医生复核。\n\n综合病例093的结构化资料、影像/病理可用性和本地指南证据，建议进入MDT复核，确认局部进展风险、分子检测状态和治疗顺序。可讨论新辅助或围手术期治疗路径，并在治疗后结合影像、CEA和病理结果制定后续辅助治疗与随访计划。"
+          }
+        ],
+        "current_plan": [
+          { "id": "collect-context", "description": "汇总病例093资料。", "tool_needed": "summarize_patient_existing_info", "status": "completed" },
+          { "id": "retrieve-guidelines", "description": "检索指南证据。", "tool_needed": "search_clinical_guidelines", "status": "completed" },
+          { "id": "generate-recommendation", "description": "生成治疗建议。", "tool_needed": "decision", "status": "completed" },
+          { "id": "citation-check", "description": "引用覆盖核查。", "tool_needed": "citation", "status": "completed" },
+          { "id": "human-review", "description": "医生复核后确认最终治疗方案。", "tool_needed": "ask_user", "status": "pending" }
+        ],
+        "roadmap": [
+          { "id": "intent", "title": "意图识别", "status": "completed" },
+          { "id": "planner", "title": "计划拆解", "status": "completed" },
+          { "id": "assessment", "title": "临床评估", "status": "completed" },
+          { "id": "decision", "title": "治疗建议", "status": "completed" },
+          { "id": "citation", "title": "证据引用", "status": "completed" },
+          { "id": "critic", "title": "安全复核", "status": "completed" },
+          { "id": "finalize", "title": "输出结论", "status": "completed" }
+        ]
+      }
+    }
+  ]
+}

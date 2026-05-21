@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 
 const PATIENT_SESSION_ID = "patient-session";
 const DOCTOR_SESSION_ID = "doctor-session";
@@ -228,6 +228,44 @@ async function submitCurrentComposer(page: Page, prompt: string) {
   await composer.fill(prompt);
   await composer.press("Enter");
 }
+
+async function visibleBox(locator: Locator) {
+  await expect(locator).toBeVisible();
+  const box = await locator.boundingBox();
+  expect(box).not.toBeNull();
+  return box!;
+}
+
+test("keeps the Apple-inspired command layer and center stage workspace layout stable", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 980 });
+  await openWorkspace(page);
+  await page.getByRole("button", { name: "医生场景" }).click();
+
+  await expect(page.getByTestId("doctor-scene")).toBeVisible();
+  const topNav = page.locator(".clinical-top-nav");
+  const leftRail = page.locator(".clinical-left-column");
+  const centerWorkspace = page.locator(".clinical-center-column");
+  const rightRail = page.locator(".clinical-right-column");
+
+  await visibleBox(topNav);
+  const desktopLeft = await visibleBox(leftRail);
+  const desktopCenter = await visibleBox(centerWorkspace);
+  const desktopRight = await visibleBox(rightRail);
+
+  await expect(topNav).toHaveClass(/clinical-top-nav/);
+  expect(desktopLeft.x).toBeLessThan(desktopCenter.x);
+  expect(desktopCenter.x).toBeLessThan(desktopRight.x);
+  expect(desktopCenter.width).toBeGreaterThan(desktopLeft.width);
+  expect(desktopCenter.width).toBeGreaterThan(desktopRight.width);
+
+  await page.setViewportSize({ width: 390, height: 900 });
+  const mobileCenter = await visibleBox(centerWorkspace);
+  const mobileLeft = await visibleBox(leftRail);
+  const mobileRight = await visibleBox(rightRail);
+
+  expect(mobileCenter.y).toBeLessThan(mobileLeft.y);
+  expect(mobileLeft.y).toBeLessThanOrEqual(mobileRight.y);
+});
 
 test("keeps thinking hidden for patient replies while doctor replies disclose it", async ({ page }) => {
   await openWorkspace(page);

@@ -1,6 +1,6 @@
 import type { JsonObject } from "../api/types";
 
-const DEFAULT_CRITIC_FEEDBACK = "Critic did not approve this recommendation.";
+const DEFAULT_CRITIC_FEEDBACK = "评审未通过该建议。";
 const THINKING_BLOCK_PATTERN = /<think\b[^>]*>[\s\S]*?<\/think>/gi;
 const CLOSING_THINKING_TAG = "</think>";
 

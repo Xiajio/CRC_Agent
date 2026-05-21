@@ -1,0 +1,44 @@
+{
+  "ticks": [
+    {
+      "node_name": "outpatient_triage",
+      "node_output": {
+        "findings": {
+          "encounter_track": "outpatient_triage",
+          "active_inquiry": false,
+          "symptom_snapshot": {
+            "chief_symptoms": "便血、左下腹隐痛、大便变细、体重下降",
+            "duration": "超过1个月",
+            "bleeding": true,
+            "bowel_change": true,
+            "weight_loss": true,
+            "fever": false
+          },
+          "triage_card": {
+            "type": "triage_card",
+            "title": "门诊分诊",
+            "data": {
+              "summary": "已根据便血、腹痛、排便习惯改变和体重下降生成预问诊分诊结果。",
+              "risk_level": "medium",
+              "disposition": "urgent_gi_clinic",
+              "chief_symptoms": "便血、左下腹隐痛、大便变细、体重下降",
+              "suggested_tests": [
+                "血常规",
+                "粪便常规/潜血",
+                "肠镜检查",
+                "腹部增强CT"
+              ]
+            }
+          }
+        },
+        "messages": [
+          {
+            "type": "ai",
+            "id": "demo-patient-triage-final",
+            "content": "这些症状已经超过1个月，并伴有便血、排便改变和体重下降，建议尽快到消化科或结直肠专科就诊，完善血常规、粪便潜血、肠镜和腹部增强CT。"
+          }
+        ]
+      }
+    }
+  ]
+}

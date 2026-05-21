@@ -20,6 +20,7 @@ import { usePatientUploads } from "../features/workspace/use-patient-uploads";
 import { useTurnLatencyProbe } from "../features/workspace/use-turn-latency-probe";
 import { useWorkspaceCards } from "../features/workspace/use-workspace-cards";
 import { useWorkspaceStreamingTurn } from "../features/workspace/use-workspace-streaming-turn";
+import { buildReplayDemoContext } from "../features/workspace/demo-mode";
 import { CLINICAL_DOCTOR_SCENE_ARIA_LABEL } from "../app/clinical/clinical-copy";
 import {
   primeDoctorClinicalWorkflow,
@@ -415,7 +416,8 @@ export function WorkspacePage() {
     }
 
     updateDraft(activeScene, "");
-    await activeTurn.submitPrompt(prompt, promptPatientContext(activeScene, activeSessionState, prompt));
+    const baseContext = promptPatientContext(activeScene, activeSessionState, prompt);
+    await activeTurn.submitPrompt(prompt, buildReplayDemoContext(activeScene, prompt, baseContext));
   }
 
   async function handleResetActiveScene() {
@@ -539,7 +541,7 @@ export function WorkspacePage() {
         onSetCurrentPatient={handleBindDoctorPatient}
         onSetCurrentCaseDatabasePatient={handleSetCurrentCaseDatabasePatient}
         onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
-          void doctorTurn.submitPrompt(prompt, context)
+          void doctorTurn.submitPrompt(prompt, buildReplayDemoContext("doctor", prompt, context))
         }
       />
     );
@@ -602,7 +604,7 @@ export function WorkspacePage() {
                 onSubmit={() => void submitPrompt()}
                 patientContext={patientPatientContext}
                 onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
-                  void patientTurn.submitPrompt(prompt, context)
+                  void patientTurn.submitPrompt(prompt, buildReplayDemoContext("patient", prompt, context))
                 }
               />
             )}

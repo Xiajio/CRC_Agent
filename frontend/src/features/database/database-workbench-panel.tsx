@@ -187,7 +187,7 @@ export function DatabaseWorkbenchPanel({
   const mmrItems = buildDistributionItems(stats?.mmr_status_distribution, "mmr");
 
   return (
-    <section className="workspace-panel-stack" data-testid="database-workbench-panel">
+    <section className="workspace-panel-stack" data-testid="database-workbench">
       <Card>
         <div className="database-section-heading database-section-heading-inline">
           <div>
@@ -203,6 +203,7 @@ export function DatabaseWorkbenchPanel({
                 type="button"
                 variant="primary"
                 size="sm"
+                data-testid={`database-case-${String(selectedPatientId).padStart(3, "0")}-bring-in`}
                 aria-label={`set current case database patient ${selectedPatientId}`}
                 onClick={() => onSetCurrentCaseDatabasePatient(selectedPatientId)}
               >

@@ -29,6 +29,7 @@ from backend.api.services.graph_service import DoctorGraphService, PatientGraphS
 from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_context_resolver import PatientContextResolver
 from backend.api.services.patient_registry_service import PatientRegistryService
+from backend.api.services.runtime_paths import resolve_runtime_root
 from backend.api.services.settings import RuntimeSettings, load_runtime_settings
 from backend.api.services.session_store import InMemorySessionStore
 
@@ -92,7 +93,7 @@ def _build_lifespan():
         rag_warmup = should_warm_rag()
         runtime_metadata = _build_runtime_metadata(runner_mode)
 
-        runtime_root = Path("runtime")
+        runtime_root = resolve_runtime_root()
         assets_root = runtime_root / "assets"
         assets_root.mkdir(parents=True, exist_ok=True)
         patient_registry_service = PatientRegistryService(runtime_root / "patient_registry.db")

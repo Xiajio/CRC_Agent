@@ -220,6 +220,7 @@ describe("DoctorSceneShell", () => {
     );
 
     expect(screen.getByText("临床助手")).toBeInTheDocument();
+    expect(screen.getByTestId("doctor-scene")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "会诊" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByText("患者摘要")).toBeInTheDocument();
     expect(screen.getByText("医疗卡片")).toBeInTheDocument();

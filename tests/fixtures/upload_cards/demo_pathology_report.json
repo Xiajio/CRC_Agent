@@ -1,0 +1,36 @@
+{
+  "type": "medical_visualization_card",
+  "title": "演示病理报告",
+  "data": {
+    "patient_summary": {
+      "chief_complaint": "肠镜活检提示结直肠恶性肿瘤",
+      "age": 31,
+      "gender": "female"
+    },
+    "diagnosis_block": {
+      "location": "colon",
+      "histology": "moderately differentiated adenocarcinoma",
+      "mmr_status": "pMMR (MSS)"
+    },
+    "staging_block": {
+      "clinical_stage": "cT4bN1cM0 stage III",
+      "t_stage": "cT4b",
+      "n_stage": "cN1c",
+      "m_stage": "cM0",
+      "staging_type": "clinical"
+    },
+    "key_findings": [
+      {
+        "category": "pathology",
+        "finding": "活检组织见中分化管状腺癌。",
+        "significance": "支持结直肠癌诊断。"
+      },
+      {
+        "category": "molecular",
+        "finding": "MMR蛋白表达保留，倾向pMMR/MSS。",
+        "significance": "影响后续系统治疗和免疫治疗适应证判断。"
+      }
+    ],
+    "treatment_draft": []
+  }
+}

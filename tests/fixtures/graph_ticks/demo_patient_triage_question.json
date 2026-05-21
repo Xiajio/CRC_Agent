@@ -1,0 +1,60 @@
+{
+  "ticks": [
+    {
+      "node_name": "intent_router",
+      "node_output": {
+        "findings": {
+          "user_intent": "clinical_assessment",
+          "encounter_track": "outpatient_triage"
+        }
+      }
+    },
+    {
+      "node_name": "outpatient_triage",
+      "node_output": {
+        "findings": {
+          "encounter_track": "outpatient_triage",
+          "active_inquiry": true,
+          "inquiry_type": "outpatient_triage",
+          "active_field": "duration",
+          "symptom_snapshot": {
+            "chief_symptoms": "便血、左下腹隐痛、大便变细、体重下降",
+            "bleeding": true,
+            "bowel_change": true,
+            "weight_loss": true
+          },
+          "triage_question_card": {
+            "type": "triage_question_card",
+            "title": "门诊分诊追问",
+            "question_id": "demo-duration",
+            "field_key": "duration",
+            "prompt": "这些症状大概持续多久了？",
+            "selection_mode": "single",
+            "allow_other": true,
+            "other_label": "其他",
+            "other_placeholder": "例如：2个月",
+            "options": [
+              {
+                "id": "1_2w",
+                "label": "1-2周",
+                "submit_text": "持续时间大约1到2周"
+              },
+              {
+                "id": "gt_1m",
+                "label": "1个月以上",
+                "submit_text": "持续时间超过1个月"
+              }
+            ]
+          }
+        },
+        "messages": [
+          {
+            "type": "ai",
+            "id": "demo-patient-triage-question",
+            "content": "我先帮你做门诊分诊预评估。为了判断风险，请补充这些症状大概持续多久了。"
+          }
+        ]
+      }
+    }
+  ]
+}

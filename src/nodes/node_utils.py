@@ -85,7 +85,11 @@ def set_stream_callback(callback: Callable[[dict[str, Any]], None]) -> Token:
 
 
 def clear_stream_callback(token: Token) -> None:
-    _STREAM_CALLBACK.reset(token)
+    try:
+        _STREAM_CALLBACK.reset(token)
+    except ValueError:
+        # Async generator cleanup can run after the request context has changed.
+        return
 
 
 def _extract_text_content(value: Any) -> str:

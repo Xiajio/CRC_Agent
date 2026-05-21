@@ -19,16 +19,39 @@ frontend/dist/
 playwright-report/
 test-results/
 tests/*
+!tests/backend/
+tests/backend/*
+!tests/backend/test_runtime_paths.py
+!tests/backend/test_fixture_graph_runner_demo.py
+!tests/backend/test_demo_upload_fixtures.py
+!tests/backend/test_demo_start_scripts.py
+!tests/backend/test_stream_callback_context.py
 !tests/e2e/
 tests/e2e/*
 !tests/e2e/acceptance/
 tests/e2e/acceptance/*
 !tests/e2e/acceptance/*.ts
+!tests/e2e/demo/
+tests/e2e/demo/*
+!tests/e2e/demo/*.ts
 !tests/fixtures/
 tests/fixtures/*
 !tests/fixtures/acceptance_case_db/
 tests/fixtures/acceptance_case_db/*
 !tests/fixtures/acceptance_case_db/seed.json
+!tests/fixtures/graph_ticks/
+tests/fixtures/graph_ticks/*
+!tests/fixtures/graph_ticks/demo_patient_triage_question.json
+!tests/fixtures/graph_ticks/demo_patient_triage_final.json
+!tests/fixtures/graph_ticks/demo_doctor_decision.json
+!tests/fixtures/upload_cards/
+tests/fixtures/upload_cards/*
+!tests/fixtures/upload_cards/demo_colonoscopy_report.json
+!tests/fixtures/upload_cards/demo_pathology_report.json
+!tests/fixtures/demo_uploads/
+tests/fixtures/demo_uploads/*
+!tests/fixtures/demo_uploads/demo_colonoscopy_report.pdf
+!tests/fixtures/demo_uploads/demo_pathology_report.pdf
 coverage/
 htmlcov/
 
@@ -64,4 +87,7 @@ data_temp.csv
 Thumbs.db
 
 # Local documentation drafts and generated reports
-docs/
+docs/*
+!docs/demo/
+docs/demo/*
+!docs/demo/demo-mode-runbook.md

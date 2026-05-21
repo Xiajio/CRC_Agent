@@ -29,6 +29,7 @@ export function DatabaseNaturalQueryBar({
       </div>
       <Input
         label={"\u81ea\u7136\u8bed\u8a00\u67e5\u8be2"}
+        data-testid="database-query-input"
         type="text"
         value={value}
         onChange={(event) => onChange(event.target.value)}
