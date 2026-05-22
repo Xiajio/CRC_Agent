@@ -1,0 +1,773 @@
+# Chat Latency Root-Cause Analysis Design
+
+## Goal
+
+Design a phased latency-analysis workflow for single-turn chat debugging in local and test environments.
+
+The immediate goal is to explain why one anchor request was slow, not to build a full observability platform up front.
+
+Primary example:
+
+- User prompt: `你有什么用`
+- Observed metric: `UI completion = 14.85s`
+- Desired outcome: identify which single phase accounts for most of the delay and propose the first concrete optimization to try
+
+## Problem Statement
+
+The current frontend can measure total UI completion time for a chat turn, but that value alone is not enough to diagnose slow responses.
+
+For a slow turn, the team still cannot reliably answer:
+
+- whether the delay happened before first visible output or during generation
+- whether the backend spent time in routing, retrieval, or model startup
+- whether reasoning or long-form answers inflated the latency
+- whether the frontend render tail was material or negligible
+
+This spec defines a phased root-cause analysis design that complements the existing UI completion metric with:
+
+- a cheap backend-only phase-0 profiling mode for immediate bottleneck discovery
+- a reusable phase-1 trace design for repeatable local and test debugging when phase 0 is insufficient
+
+## Success Criteria
+
+Phase 0:
+
+- For the anchor prompt `你有什么用`, the backend perf log must identify one server-side phase that accounts for at least 50% of `serverTotalMs`, or explicitly explain why no single server-side phase dominates.
+- The phase-0 output for the anchor prompt must include enough evidence to justify one concrete optimization attempt.
+
+Phase 1:
+
+- For the anchor prompt `你有什么用`, the analysis must identify one phase that accounts for at least 50% of `uiCompleteMs`, or explicitly explain why no single phase dominates.
+- The phase-1 output for the anchor prompt must include non-empty `nextActions`.
+- A single slow chat turn can be exported as one structured trace JSON object when the phase-1 trace path is enabled.
+- The system works in local and test environments without requiring a UI dashboard.
+- The primary workflow is console inspection plus logs, with JSON export as a secondary tool.
+- In a 10-run local repetition of the anchor prompt, at most 1 run should be classified as `mixed` or `unknown` once thresholds are calibrated.
+- The design is compatible with the existing SSE chat architecture and can be adopted incrementally.
+
+## Non-Goals
+
+- Production observability rollout in the first version
+- Long-term analytics storage across sessions
+- Metrics dashboards or time-series aggregation
+- OpenTelemetry adoption or a full span system
+- Automated regression benchmarking as the primary first-phase workflow
+
+## Recommended Approach
+
+Adopt a two-phase approach.
+
+### Phase 0: Cheap bottleneck logging first
+
+Before introducing protocol changes, enable a backend-only profiling mode behind `CHAT_PERF_LOG=1`.
+
+This mode should:
+
+- use `time.perf_counter()` around the major backend segments
+- log one per-turn summary line
+- answer the immediate question: which stage dominates the anchor prompt
+
+Recommended first phase-0 summary:
+
+```text
+chat_perf trace_id=... run_id=... prompt_preview="你有什么用" server_total_ms=...
+graph_path=...
+router_ms=... retrieval_ms=... llm_startup_ms=... llm_generation_ms=... stream_flush_tail_ms=...
+```
+
+This phase is intentionally cheap and should be attempted before the full trace path.
+
+Implementation note: the first-version phase-0 artifact should be emitted as one structured JSON line per turn. The textual example above is illustrative only; implementation and tests should treat JSONL as the contract.
+
+### Phase 1: Reusable mixed trace
+
+Only if phase 0 shows that bottlenecks vary across prompts, sessions, or layers, enable a mixed frontend-plus-backend trace design.
+
+The frontend should continue to record user-visible timestamps, while the backend emits a small set of trace events over SSE that describe server-side phase boundaries.
+
+This is the right second phase because:
+
+- frontend-only timing cannot distinguish backend orchestration from model generation
+- phase-0 logging may already be enough for obviously bad single-point regressions
+- a full span system is unnecessary for the current debugging goal
+- structured trace JSON becomes worthwhile only after the cheap path has been exhausted
+
+## Current-Code References
+
+The design must align with these existing files:
+
+- `frontend/src/pages/workspace-page.tsx`
+- `frontend/src/app/api/client.ts`
+- `frontend/src/app/api/stream.ts`
+- `frontend/src/app/api/types.ts`
+- `frontend/src/app/store/stream-reducer.ts`
+- `frontend/src/features/chat/conversation-panel.tsx`
+- `backend/api/routes/chat.py`
+- `backend/api/schemas/events.py`
+- `backend/api/services/graph_service.py`
+
+## Correlation IDs
+
+The design uses three identifiers with distinct roles:
+
+- `trace_id`
+  - generated by the frontend at submit time with `crypto.randomUUID()`
+  - sent with the request
+  - echoed by backend perf logs, backend trace events, frontend console summaries, and frontend trace exports
+
+- `run_id`
+  - generated by the backend graph execution layer
+  - identifies the concrete server-side run
+  - if multiple runs occur for one turn, the `run_id` associated with the final visible answer is the one that should be surfaced in phase-1 trace metadata
+
+- `session_id`
+  - reuses the existing chat session identity
+
+Phase 0 and phase 1 must both log `trace_id`, `run_id`, and `session_id` so frontend and backend artifacts can be correlated without guesswork.
+
+## Phase 0 Logging Contract
+
+Phase 0 should remain backend-only, but its fields must already line up with phase-1 semantics.
+
+Recommended phase-0 fields:
+
+- `server_total_ms = stream_done_at - received_at`
+- `router_ms = router_done_at - graph_started_at` when a router phase exists, otherwise null
+- `retrieval_ms = retrieval_done_at - router_done_at` when retrieval runs, otherwise null
+- `llm_startup_ms = llm_first_token_at - llm_request_started_at` for the LLM call that produces the final visible answer
+- `llm_generation_ms = message_done_at - llm_first_token_at` for the LLM call that produces the final visible answer
+- `stream_flush_tail_ms = stream_done_at - message_done_at`
+
+Phase 0 should also log:
+
+- `trace_id`
+- `run_id`
+- `session_id`
+- `graph_path`
+
+This keeps phase-0 output cheap while still making it comparable to phase-1 traces later.
+
+## Phase 1 High-Level Architecture
+
+Phase 1 has four layers:
+
+1. Client-visible timestamps
+   Capture when the user submitted, when the first stream event arrived, when the first answer text arrived, when `message.done` arrived, and when the UI commit completed.
+
+2. Server phase timestamps
+   Capture when the request reached the server, when orchestration phases finished, when the LLM request started, when the first token was available, when message finalization completed, and when the stream fully closed.
+
+3. Trace correlation
+   Tie every timestamp for one turn to a shared `trace_id`, together with `session_id`, `run_id`, `scene`, model metadata, graph path, and response metadata.
+
+4. Diagnosis and export
+   Build one final trace object, compute derived metrics, assign a rule-based diagnosis, log a summary to the console, and expose JSON strings for manual export.
+
+## Trace Object
+
+Each chat turn should produce one trace object.
+
+```ts
+type ChatLatencyTrace = {
+  traceId: string;
+  sessionId: string | null;
+  runId: string | null;
+  scene: "patient" | "doctor";
+  promptPreview: string;
+  promptLength: number;
+  graphPath: string[];
+
+  client: {
+    submitAt: number;
+    firstEventAt: number | null;
+    firstDeltaAt: number | null;
+    messageDoneReceivedAt: number | null;
+    uiCommittedAt: number | null;
+    abortedAt: number | null;
+    errorAt: number | null;
+  };
+
+  server: {
+    // Raw server wall-clock timestamps in ISO-8601 format.
+    receivedAt: string | null;
+    graphStartedAt: string | null;
+    firstByteAt: string | null;
+    routerDoneAt: string | null;
+    retrievalDoneAt: string | null;
+    llmRequestStartedAt: string | null;
+    llmFirstTokenAt: string | null;
+    messageDoneAt: string | null;
+    streamDoneAt: string | null;
+  };
+
+  transport: {
+    flushControlled: boolean | null;
+  };
+
+  clockSync: {
+    clientWallClockAtSubmit: string;
+    clientMonotonicAtSubmit: number;
+    estimatedClientServerOffsetMs: number | null;
+  };
+
+  response: {
+    model: string | null;
+    hasThinking: boolean;
+    responseChars: number | null;
+    responseTokens: number | null;
+    toolCalls: number | null;
+    retrievalHitCount: number | null;
+    simplePromptHeuristic: boolean;
+  };
+
+  derived: {
+    firstEventLagMs: number | null;
+    ttftMs: number | null;
+    generationMs: number | null;
+    renderTailMs: number | null;
+    uiCompleteMs: number | null;
+    serverOrchestrationMs: number | null;
+    serverOrchestrationOtherMs: number | null;
+    retrievalMs: number | null;
+    llmStartupMs: number | null;
+    serverGenerationMs: number | null;
+    streamFlushTailMs: number | null;
+    serverToClientFirstEventMs: number | null;
+    networkOrFirstByteShare: number | null;
+    accountedShare: number | null;
+    unaccountedShare: number | null;
+    charsPerSecond: number | null;
+    tokensPerSecond: number | null;
+  };
+
+  diagnosis: ChatLatencyDiagnosis | null;
+
+  status: "completed" | "aborted" | "superseded" | "error";
+  errorMessage: string | null;
+};
+```
+
+The split between `client`, `server`, `response`, and `derived` is required so raw evidence remains stable even if formulas or diagnosis rules change later.
+
+All `server.*At` fields are raw ISO-8601 wall-clock timestamps. Derived metrics must parse them into epoch milliseconds first and then apply clock normalization only where cross-domain comparison is required.
+
+## Clock Normalization
+
+Client timestamps and server timestamps use different clock domains.
+
+- client event timing should use `performance.now()` for stable in-browser deltas
+- server phase timing should use server wall-clock timestamps
+
+To safely compare client and server phases in one trace, the collector must also record:
+
+- `clientWallClockAtSubmit = new Date().toISOString()`
+- `clientMonotonicAtSubmit = performance.now()`
+
+The system should estimate one coarse client-to-server offset at trace start:
+
+`estimatedClientServerOffsetMs = epoch(server_received_at) - epoch(client_wall_clock_at_submit)`
+
+This offset is only for approximate cross-domain comparison in diagnostics. Pure client-side metrics and pure server-side metrics must still be computed within their own clock domains.
+It must not be treated as precise enough, by itself, to prove a pure network bottleneck.
+
+The first version must not directly subtract raw server ISO timestamps from raw `performance.now()` values without an explicit normalization step.
+
+## SSE Trace Protocol
+
+Do not overload existing business events such as `message.delta`, `message.done`, and `done` with ad hoc timing fields.
+
+Instead, add a small diagnostic side-channel with dedicated trace events.
+
+### `trace.start`
+
+Emitted once near the beginning of the run.
+
+```json
+{
+  "type": "trace.start",
+  "trace_id": "tr_123",
+  "run_id": "run_456",
+  "session_id": "sess_789",
+  "scene": "patient",
+  "server_received_at": "2026-04-20T10:00:00.100Z",
+  "graph_started_at": "2026-04-20T10:00:00.180Z",
+  "attrs": {
+    "flush_controlled": true
+  }
+}
+```
+
+### `trace.step`
+
+Emitted for major backend phase boundaries.
+
+```json
+{
+  "type": "trace.step",
+  "trace_id": "tr_123",
+  "name": "llm.first_token",
+  "at": "2026-04-20T10:00:03.420Z",
+  "attrs": {
+    "model": "gpt-x",
+    "has_thinking": true
+  }
+}
+```
+
+Recommended step names:
+
+- `stream.first_byte`
+- `router.done`
+- `retrieval.done`
+- `llm.request.started`
+- `llm.first_token`
+- `message.done`
+- `stream.done`
+- `error`
+
+In trace mode, response compression and buffering should be minimized where possible so `first_byte_at` reflects an actual early flush. If the deployment path cannot guarantee that, `network_or_first_byte` should be emitted with reduced confidence.
+
+`first_byte_at` should be taken immediately before the backend yields the first SSE event payload. Its physical meaning is therefore "yield to client receive" time, which may include buffering and transport delay, not pure socket RTT.
+
+### `trace.summary`
+
+Emitted once near stream completion to provide response metadata.
+
+```json
+{
+  "type": "trace.summary",
+  "trace_id": "tr_123",
+  "run_id": "run_456",
+  "status": "completed",
+  "response_chars": 412,
+  "response_tokens": 188,
+  "tool_calls": 0,
+  "retrieval_hit_count": 0,
+  "has_thinking": true,
+  "model": "gpt-x"
+}
+```
+
+## Frontend Collection Contract
+
+The frontend should maintain a dedicated trace collector separate from the business reducer.
+The collector tap should live in `frontend/src/app/api/stream.ts` or one layer immediately above it, not as an independent page-only stream path.
+
+Phase-1 frontend collection should be split into two parts:
+
+1. `stream.ts` tap
+   - owns backend trace events and raw SSE arrival timing
+   - records `firstEventAt`, `firstDeltaAt`, backend metadata, and `trace_id/run_id/session_id`
+   - forwards each event immediately into the existing reducer path
+
+2. page-level bridge in `workspace-page.tsx`
+   - owns submit timing, `message.done` receipt timing, and UI commit timing through the existing UI completion probe
+   - publishes those existing probe timestamps into the trace collector by `trace_id`
+
+The lower-level stream tap must not try to infer page-level commit timing by itself.
+The page-level bridge must not duplicate SSE parsing.
+
+Recommended behavior:
+
+- create the trace object immediately before `apiClient.streamTurn(...)`
+- capture the first SSE event time as `firstEventAt`
+- capture the first `message.delta` time as `firstDeltaAt`
+- capture `message.done` arrival as `messageDoneReceivedAt`
+- capture UI completion after one `requestAnimationFrame` following the committed final answer
+- record `abortedAt` or `errorAt` when applicable
+
+The collector must also support valid final-only turns where no `message.delta` is emitted before `message.done`.
+
+For final-only turns:
+
+- `firstDeltaAt` may remain null
+- `ttftMs` should fall back to `messageDoneReceivedAt - submitAt`
+- `generationMs` should be recorded as `0`
+- diagnosis should treat the turn as a no-stream or final-only response path rather than as missing data
+
+The collector should intercept each SSE event, update trace state immediately, and then forward that same event immediately to the existing reducer path.
+
+The existing UI completion probe in `workspace-page.tsx` should remain the source of truth for:
+
+- submit timing
+- `message.done` receipt timing
+- UI commit timing
+
+The phase-1 trace collector should receive those timestamp values from the page-level bridge that reads the existing probe state. It should not take a second independent `performance.now()` measurement for those same milestones.
+
+## Backend Instrumentation Contract
+
+The backend should emit phase timestamps only for major decision points that materially change diagnosis.
+For immediate debugging, phase 0 should be implemented first in `backend/api/services/graph_service.py` and the major graph-node entry/exit points before any SSE protocol changes are made.
+
+First version required timestamps:
+
+- `server_received_at`
+- `graph_started_at`
+- `first_byte_at`
+- `router_done_at`
+- `retrieval_done_at`
+- `llm_request_started_at`
+- `llm_first_token_at`
+- `message_done_at`
+- `stream_done_at`
+
+If a phase does not run, its timestamp remains null.
+
+The backend should also emit:
+
+- `trace_id`
+- `run_id`
+- `session_id`
+- `scene`
+- `graph_path`
+- `model`
+- `has_thinking`
+- `response_chars`
+- `response_tokens` when available, otherwise null
+- `tool_calls`
+- `retrieval_hit_count`
+
+When a turn triggers multiple LLM calls, the `llm_*` timestamps in the phase-1 trace must refer only to the LLM call that produces the final visible answer. Earlier LLM calls should be absorbed into `server_orchestration_other_ms` in the first version.
+
+## Derived Metrics
+
+The analysis system should calculate these standard metrics:
+
+```ts
+firstEventLagMs = firstEventAt - submitAt
+ttftMs = firstDeltaAt ? (firstDeltaAt - submitAt) : (messageDoneReceivedAt - submitAt)
+generationMs = firstDeltaAt ? (messageDoneReceivedAt - firstDeltaAt) : 0
+renderTailMs = uiCommittedAt - messageDoneReceivedAt
+uiCompleteMs = uiCommittedAt - submitAt
+
+serverToClientFirstEventMs = firstEventAt - normalized(firstByteAt)
+networkOrFirstByteShare = serverToClientFirstEventMs / uiCompleteMs
+
+serverOrchestrationMs = epoch(llmRequestStartedAt) - epoch(receivedAt)
+retrievalMs = epoch(retrievalDoneAt) - epoch(routerDoneAt)
+serverOrchestrationOtherMs = max(serverOrchestrationMs - retrievalMs, 0)
+llmStartupMs = epoch(llmFirstTokenAt) - epoch(llmRequestStartedAt)
+serverGenerationMs = epoch(messageDoneAt) - epoch(llmFirstTokenAt)
+streamFlushTailMs = epoch(streamDoneAt) - epoch(messageDoneAt)
+
+accountedShare =
+  (
+    renderTailMs
+    + serverToClientFirstEventMs
+    + serverOrchestrationOtherMs
+    + retrievalMs
+    + llmStartupMs
+    + serverGenerationMs
+  ) / uiCompleteMs
+
+unaccountedShare = 1 - accountedShare
+
+charsPerSecond = responseChars / (generationMs / 1000)
+tokensPerSecond = responseTokens / (serverGenerationMs / 1000)
+```
+
+Null-tolerant calculation is required. Missing timestamps must not crash diagnosis.
+If `generationMs <= 0` or `serverGenerationMs <= 0`, the corresponding throughput metric should be recorded as null rather than `Infinity`, `NaN`, or a synthetic fallback value.
+Token-derived throughput is optional auxiliary metadata in phase 1 and should not be required for any primary diagnosis rule.
+
+`normalized(firstByteAt)` means the server wall-clock timestamp converted into the client-relative time base using `estimatedClientServerOffsetMs`.
+`epoch(...)` means parse the ISO-8601 server timestamp into epoch milliseconds before subtraction.
+
+## Diagnosis Model
+
+The first version should use rule-based diagnosis instead of a statistical or ML model.
+
+Recommended diagnosis object:
+
+```ts
+type ChatLatencyDiagnosis = {
+  primaryBottleneck:
+    | "frontend_render_tail"
+    | "network_or_first_byte"
+    | "server_orchestration"
+    | "retrieval"
+    | "llm_startup"
+    | "llm_generation"
+    | "mixed"
+    | "unknown";
+
+  confidence: "low" | "medium" | "high";
+  evidence: string[];
+  secondaryFactors: string[];
+  nextActions: string[];
+};
+```
+
+### Rule Set
+
+Recommended first-phase rules.
+These thresholds are intentionally uncalibrated initial values and must be revisited after the first anchor-prompt traces are collected.
+
+- `frontend_render_tail`
+  - trigger when `renderTailMs > 150` or `renderTailMs / uiCompleteMs > 0.10`
+
+- `network_or_first_byte`
+  - trigger only with low or medium confidence when all of the following hold:
+    - `serverToClientFirstEventMs > 500`
+    - `serverOrchestrationMs < 500`
+    - `transport.flushControlled = true`
+  - do not use client/server offset alone as proof of a pure network bottleneck
+
+- `server_orchestration`
+  - trigger when `serverOrchestrationOtherMs > 1000` or `serverOrchestrationOtherMs / uiCompleteMs > 0.25`
+
+- `retrieval`
+  - trigger when `retrievalMs > 800` or `retrievalMs / uiCompleteMs > 0.25`
+
+- `llm_startup`
+  - trigger when `llmStartupMs > 1500` or `llmStartupMs / uiCompleteMs > 0.20`
+
+- `llm_generation`
+  - trigger when `serverGenerationMs > 4000` and response length is non-trivial
+
+- secondary factor `thinking_enabled`
+  - add when `hasThinking = true`
+  - treat as explanatory metadata in phase 1, not as a standalone primary bottleneck, unless a future version introduces `llm_first_visible_token_at` or equivalent thinking-specific timing
+
+- secondary factor `response_too_long`
+  - add when `simplePromptHeuristic = true` and `responseChars > 300`
+  - `simplePromptHeuristic` should initially mean: prompt length <= 20 visible characters, no uploads, and no attached card or patient-record context
+  - tool calls and retrieval hits should appear as evidence if they happened despite a simple prompt; they must not disqualify the heuristic
+
+- `mixed`
+  - trigger when no single phase dominates but multiple phases are materially elevated
+
+The output must include evidence strings and concrete next actions, not only a label.
+
+### Primary-Bottleneck Selection
+
+When multiple rule conditions match, the diagnosis must choose one deterministic primary bottleneck by non-overlapping phase share, not by a hard-coded category order.
+
+Recommended algorithm:
+
+1. Compute candidate shares against `uiCompleteMs` for:
+   - `frontend_render_tail`
+   - `network_or_first_byte` using `networkOrFirstByteShare`
+   - `server_orchestration` using `serverOrchestrationOtherMs / uiCompleteMs`
+   - `retrieval` using `retrievalMs / uiCompleteMs`
+   - `llm_startup`
+   - `llm_generation`
+2. Filter out candidates that do not meet their minimum threshold.
+3. Choose the candidate with the largest share as `primaryBottleneck`.
+4. If `accountedShare < 0.85`, add `unaccountedShare` to evidence. When sufficient transport evidence exists, `network_or_first_byte` may win with low confidence; otherwise fall back to `mixed`.
+5. If the top two candidates are within 15% of each other, or no candidate reaches 50% of `uiCompleteMs`, fall back to `mixed`.
+6. Use `unknown` only when the trace is too incomplete to defend any diagnosis.
+
+Recommended interpretation:
+
+- phase ownership should follow the largest credible contributor to elapsed time
+- nested phases must be de-overlapped before comparison
+- `thinking_enabled` and `response_too_long` should usually remain secondary factors layered onto a phase bottleneck
+
+## Console Output
+
+For every completed trace in debug mode, print one concise summary:
+
+```ts
+{
+  traceId: "tr_123",
+  promptPreview: "<truncated prompt preview>",
+  promptLength: 5,
+  uiCompleteMs: 14850,
+  ttftMs: 3200,
+  generationMs: 11200,
+  renderTailMs: 45,
+  model: "gpt-x",
+  hasThinking: true,
+  responseChars: 412,
+  primaryBottleneck: "llm_generation",
+  secondaryFactors: ["thinking_enabled", "response_too_long"]
+}
+```
+
+The console summary should be fast to scan and suitable for copy-paste into issue reports or chat threads.
+It should never log full prompt or response bodies by default.
+
+## JSON Export Contract
+
+The frontend should expose diagnostics through a lightweight debug surface rather than a visible in-app panel.
+
+Recommended browser object:
+
+```ts
+window.__chatLatency = {
+  latestTrace,
+  traceHistory,
+  latestDiagnosis,
+  toLatestTraceJson: () => string,
+  toAllTracesJson: () => string,
+};
+```
+
+Recommended export format:
+
+```json
+{
+  "version": 1,
+  "exported_at": "2026-04-20T11:20:30.000Z",
+  "environment": {
+    "mode": "local",
+    "frontend_debug": true,
+    "backend_trace": true
+  },
+  "trace": {},
+  "diagnosis": {}
+}
+```
+
+For multi-trace export, replace `trace` with `traces: []`.
+
+### Durable Artifacts
+
+Local debugging should not rely only on a live browser console session.
+
+For phase 1, durable persistence should come primarily from backend JSON-line logs, not from browser download flows.
+
+The frontend debug surface should only provide:
+
+- in-memory access to the latest trace and trace history
+- `JSON.stringify(...)` helpers for manual copy/paste when needed
+- an optional callback hook or test-only sink for automated collection
+
+## Environment and Activation
+
+The first version should be opt-in.
+
+Recommended switches:
+
+- frontend: `localStorage.chatLatencyDebug = "1"` or `VITE_CHAT_LATENCY_DEBUG=true`
+- backend phase 0: `CHAT_PERF_LOG=1`
+- backend phase 1: `CHAT_LATENCY_TRACE=1`
+
+Only when diagnostics are enabled should the system:
+
+- collect full trace history
+- emit extra trace events
+- print console summaries
+- expose JSON helpers
+
+This prevents normal development logs from becoming noisy.
+
+## Local Debug Workflow
+
+Recommended operator workflow:
+
+1. Run phase 0 first with `CHAT_PERF_LOG=1`.
+2. Reset the relevant scene or session.
+3. Submit the anchor prompt.
+4. Inspect the backend perf summary and identify the dominant stage.
+5. If phase 0 identifies one server-side stage >= 50% of `serverTotalMs`, and one targeted fix cuts `uiCompleteMs` roughly in half, stop at phase 0.
+6. If phase 0 is insufficient, or bottlenecks drift across prompts, enable phase-1 trace mode.
+7. Re-run the target prompt.
+8. Inspect the console summary and backend JSON-line log.
+9. Use `window.__chatLatency.toLatestTraceJson()` only when a browser-side artifact is needed.
+
+This workflow should make it possible to answer:
+
+- what was slow
+- what evidence supports that conclusion
+- what change should be tried first
+
+## Test-Environment Workflow
+
+Test environments should support the same trace object and diagnosis model, but should not rely only on manual browser inspection.
+
+The backend JSON-line log is the primary durable server-side artifact for both test environments and scripted local runs.
+It is not a full substitute for browser-side client timings; when end-to-end client-visible timings matter, pair it with the frontend trace export.
+
+Recommended log payload:
+
+```json
+{
+  "kind": "chat_latency_trace",
+  "trace_id": "tr_123",
+  "session_id": "sess_789",
+  "run_id": "run_456",
+  "scene": "patient",
+  "graph_path": ["router", "planner", "answer"],
+  "server_received_at": "...",
+  "first_byte_at": "...",
+  "router_done_at": "...",
+  "retrieval_done_at": "...",
+  "llm_request_started_at": "...",
+  "llm_first_token_at": "...",
+  "message_done_at": "...",
+  "stream_done_at": "...",
+  "model": "gpt-x",
+  "has_thinking": true,
+  "response_chars": 412,
+  "response_tokens": null,
+  "tool_calls": 0,
+  "retrieval_hit_count": 0,
+  "status": "completed"
+}
+```
+
+This allows frontend and backend evidence to be correlated later even when a browser export is unavailable, while still making the server-side bottleneck visible from logs alone.
+
+## Failure Handling
+
+Traces must explicitly support:
+
+- aborted turns
+- superseded turns
+- backend business errors
+- transport failures
+- missing optional phase timestamps
+
+In all of these cases the collector should still emit a final trace with:
+
+- terminal `status`
+- partial timestamps
+- `errorMessage` when available
+
+Partial traces are still useful for diagnosis.
+
+`superseded` should be used when a running turn is replaced by a later submit in the same session. `aborted` should be reserved for explicit user cancellation, scene reset, or navigation-style interruption.
+
+## Security and Privacy Notes
+
+The analysis system should not export full PHI-rich prompts or responses by default.
+
+Recommended first-phase behavior:
+
+- store `promptPreview` as a truncated value with a maximum of 24 visible characters
+- store `promptLength` separately
+- store response size counts rather than full response bodies
+- avoid serializing raw uploaded documents, cards, or patient records into the trace
+
+If deeper content inspection is ever needed, it should be added as an explicit debug-only opt-in later.
+
+## Incremental Rollout
+
+Implement in this order:
+
+1. phase-0 backend perf logging
+2. run the anchor prompt and calibrate the dominant stage
+3. stop here if phase 0 already isolates the bottleneck and the first targeted fix materially reduces latency
+4. only if needed, add the phase-1 trace object and frontend collector
+5. backend trace events and timestamps
+6. derived-metric computation
+7. rule-based diagnosis
+8. console summary and JSON helpers
+9. backend JSON-line logging for test environments
+
+This keeps the rollout debuggable and reduces protocol risk.
+
+## Open Questions
+
+- Whether the existing UI completion probe and the phase-1 trace collector should remain separate modules that share `trace_id`, or whether the collector should eventually own the probe lifecycle
+- Whether `retrieval_hit_count` should mean returned documents, retained context items, or cited references
+- Whether the initial `simplePromptHeuristic` should stay local to the trace collector or move to shared configuration
+- Whether a future version should add `llm_first_visible_token_at` so thinking time can be separated from visible answer generation
+- Whether future multi-LLM-call traces should keep only the final-answer call or also expose a summarized list of earlier LLM calls
+
+For the first version, `response_tokens` should be treated as optional metadata, not a required field for successful diagnosis.
+
+None of these block the first version.
