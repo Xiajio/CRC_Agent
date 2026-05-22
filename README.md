@@ -346,12 +346,15 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start_real.ps1 -WarmupRag
 
 ```powershell
 # 终端 1：启动后端（端口 8000）
-$env:AUTH_MODE = "none"
+$env:AUTH_MODE = "bearer"
+$env:API_BEARER_TOKEN = "local-dev-token"
 $env:FRONTEND_ORIGINS = "http://127.0.0.1:4173"
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
 
 # 终端 2：启动前端（端口 4173）
-cd frontend && npm run dev:e2e
+$env:VITE_API_BEARER_TOKEN = "local-dev-token"
+cd frontend
+npm run dev:e2e
 ```
 
 启动后访问 `http://127.0.0.1:4173`。
@@ -442,6 +445,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start_demo.ps1
 | `AUTH_MODE` | 认证模式：`none` / `bearer`；未显式配置时默认要求 Bearer | `bearer` |
 | `API_BEARER_TOKEN` | Bearer 用户令牌；`AUTH_MODE=bearer` 时必填 | — |
 | `API_ADMIN_BEARER_TOKEN` | 管理令牌；用于病例 upsert、患者删除/清空等管理端点，未设置时复用用户令牌 | `API_BEARER_TOKEN` |
+| `VITE_API_BEARER_TOKEN` | 前端请求后端时使用的 Bearer 令牌 | — |
 | `FRONTEND_ORIGINS` | CORS 允许源 | `http://localhost:5173` |
 | `GRAPH_RUNNER_MODE` | 图运行模式：`real` / `fixture` | `real` |
 | `RAG_WARMUP` | 启动时预热 RAG | `true` |
@@ -453,6 +457,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start_demo.ps1
 | `CHAT_LATENCY_TRACE` | 延迟追踪（Phase1 详细事件） | `0` |
 | `UPLOAD_CONVERTER_MODE` | 上传转换模式：`real` / `fixture` | `real` |
 | `VITE_DEMO_MODE` | 前端 demo 回放模式：`replay` 时展示稳定演示上下文 | — |
+
+本地浏览器 UI 不应暴露单独的 admin token。若本地 UI 需要删除患者或 upsert 病例，使用单 token 模式：只设置 `API_BEARER_TOKEN`，不要设置 `API_ADMIN_BEARER_TOKEN`。
 
 ## 测试
 
@@ -479,6 +485,15 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_e2e_full_acceptance.ps1
 node .\scripts\run_demo_playwright.cjs
 ```
 
+### Python 依赖审计
+
+```bash
+pip install pip-audit
+pip-audit
+```
+
+在 CI 或本地安全检查中，应在安装项目 Python 依赖后运行 `pip-audit`。如果使用冻结依赖文件，可改为 `pip-audit -r requirements.txt`。
+
 ## 运行模式
 
 系统支持三类运行形态：
@@ -491,11 +506,13 @@ node .\scripts\run_demo_playwright.cjs
 
 ```powershell
 # Real 模式（开发环境示例）
-$env:AUTH_MODE = "none"
+$env:AUTH_MODE = "bearer"
+$env:API_BEARER_TOKEN = "local-dev-token"
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
 
 # Fixture 模式
-$env:AUTH_MODE = "none"
+$env:AUTH_MODE = "bearer"
+$env:API_BEARER_TOKEN = "local-dev-token"
 $env:GRAPH_RUNNER_MODE = "fixture"
 $env:GRAPH_FIXTURE_CASE = "demo_doctor_decision"
 python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000

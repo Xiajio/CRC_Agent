@@ -20,11 +20,10 @@ if (kind !== "backend" && kind !== "frontend") {
 const env = { ...process.env };
 const backendPort = env.LANGG_BACKEND_PORT || "8000";
 const frontendPort = env.LANGG_FRONTEND_PORT || "4173";
+env.API_BEARER_TOKEN = (env.API_BEARER_TOKEN || "").trim() || "local-dev-token";
 const frontendBearerToken =
-  (env.VITE_API_BEARER_TOKEN || "").trim() || (env.API_BEARER_TOKEN || "").trim();
-if (frontendBearerToken) {
-  env.VITE_API_BEARER_TOKEN = frontendBearerToken;
-}
+  (env.VITE_API_BEARER_TOKEN || "").trim() || env.API_BEARER_TOKEN;
+env.VITE_API_BEARER_TOKEN = frontendBearerToken;
 
 let args;
 if (kind === "backend") {

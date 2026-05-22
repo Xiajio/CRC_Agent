@@ -17,7 +17,10 @@ def test_fixture_backend_default_remains_database_case():
     text = (ROOT / "scripts" / "start_backend_fixture.ps1").read_text(encoding="utf-8")
 
     assert '$FixtureCase = "database_case"' in text
-    assert '$env:AUTH_MODE = "none"' in text
+    assert 'if (-not $env:AUTH_MODE)' in text
+    assert '$env:AUTH_MODE = "bearer"' in text
+    assert '$env:API_BEARER_TOKEN = "local-dev-token"' in text
+    assert '$env:AUTH_MODE = "none"' not in text
     assert '$env:GRAPH_RUNNER_MODE = "fixture"' in text
     assert "$env:GRAPH_FIXTURE_CASE = $FixtureCase" in text
 

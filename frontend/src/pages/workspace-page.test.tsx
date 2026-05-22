@@ -489,6 +489,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
         ] as any,
         uploaded_assets: {
           "1": {
+            asset_url: "/api/sessions/patient-session/assets/1",
             filename: "report.pdf",
             derived: { record_id: 1 },
           },
@@ -526,6 +527,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(mockSceneSessions.patient.setState).toHaveBeenCalled();
     expect(mockSceneSessions.patient.state.uploadedAssets).toEqual({
       "1": {
+        asset_url: "/api/sessions/patient-session/assets/1",
         filename: "report.pdf",
         derived: { record_id: 1 },
       },
@@ -908,6 +910,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
         snapshot: {
           uploaded_assets: {
             "1": {
+              asset_url: "/api/sessions/patient-session/assets/1",
               filename: "report.pdf",
               derived: { record_id: 1 },
             },
@@ -972,6 +975,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
         snapshot: {
           uploaded_assets: {
             "1": {
+              asset_url: "/api/sessions/patient-session/assets/1",
               filename: "report.pdf",
               derived: { record_id: 1 },
             },

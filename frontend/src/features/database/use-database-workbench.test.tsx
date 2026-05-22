@@ -3,7 +3,7 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppProviders } from "../../app/providers";
-import type { DatabaseCaseDetailResponse } from "../../app/api/types";
+import type { DatabaseCaseDetailResponse, DatabaseUpsertRequest } from "../../app/api/types";
 import { buildApiClientStub } from "../../test/test-utils";
 import {
   findMissingRequiredFields,
@@ -174,7 +174,7 @@ describe("useDatabaseWorkbench.saveRecord", () => {
   it("calls upsert with mode=full when all required fields are present", async () => {
     const detail = makeDetail(7);
     const getDatabaseCaseDetail = vi.fn(async () => detail);
-    const upsertDatabaseCase = vi.fn(async () => detail);
+    const upsertDatabaseCase = vi.fn(async (_request: DatabaseUpsertRequest) => detail);
     const apiClient = buildApiClientStub({ getDatabaseCaseDetail, upsertDatabaseCase });
     const { result } = renderWorkbench(apiClient);
 
@@ -196,7 +196,7 @@ describe("useDatabaseWorkbench.saveRecord", () => {
   it("blocks the upsert request and surfaces an error when required fields are missing", async () => {
     const detail = makeDetail(7);
     const getDatabaseCaseDetail = vi.fn(async () => detail);
-    const upsertDatabaseCase = vi.fn(async () => detail);
+    const upsertDatabaseCase = vi.fn(async (_request: DatabaseUpsertRequest) => detail);
     const apiClient = buildApiClientStub({ getDatabaseCaseDetail, upsertDatabaseCase });
     const { result } = renderWorkbench(apiClient);
 

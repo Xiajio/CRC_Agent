@@ -46,5 +46,8 @@ $npmCmd = Resolve-CommandPath -PreferredPaths $preferredNpmPaths -CommandNames @
 Set-Location $frontendRoot
 
 $env:VITE_API_BASE_URL = "http://127.0.0.1:$BackendPort"
+if (-not $env:VITE_API_BEARER_TOKEN) {
+  $env:VITE_API_BEARER_TOKEN = if ($env:API_BEARER_TOKEN) { $env:API_BEARER_TOKEN } else { "local-dev-token" }
+}
 
 & $npmCmd run dev:e2e -- --port $FrontendPort
