@@ -40,13 +40,14 @@ def _get_runtime_dependency(request: Request) -> tuple[InMemorySessionStore, obj
     return session_store, assets_root
 
 
-@router.get("/assets/{asset_id}")
-async def get_asset(asset_id: str, request: Request):
+@router.get("/sessions/{session_id}/assets/{asset_id}")
+async def get_asset(session_id: str, asset_id: str, request: Request):
     session_store, assets_root = _get_runtime_dependency(request)
     try:
         payload = load_asset_content(
             session_store=session_store,
             assets_root=assets_root,
+            session_id=session_id,
             asset_id=asset_id,
         )
     except AssetNotFoundError as exc:

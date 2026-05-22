@@ -15,7 +15,12 @@ if (-not (Test-Path $pythonExe)) {
 Set-Location $repoRoot
 
 $env:PYTHONUTF8 = "1"
-$env:AUTH_MODE = "none"
+if (-not $env:AUTH_MODE) {
+  $env:AUTH_MODE = "bearer"
+}
+if ($env:AUTH_MODE -eq "bearer" -and -not $env:API_BEARER_TOKEN) {
+  $env:API_BEARER_TOKEN = "local-dev-token"
+}
 $env:GRAPH_RUNNER_MODE = "fixture"
 $env:GRAPH_FIXTURE_CASE = $FixtureCase
 $env:RAG_WARMUP = "false"

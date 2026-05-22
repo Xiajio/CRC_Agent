@@ -50,7 +50,12 @@ Set-Location $repoRoot
 
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
-$env:AUTH_MODE = "none"
+if (-not $env:AUTH_MODE) {
+  $env:AUTH_MODE = "bearer"
+}
+if ($env:AUTH_MODE -eq "bearer" -and -not $env:API_BEARER_TOKEN) {
+  $env:API_BEARER_TOKEN = "local-dev-token"
+}
 $env:GRAPH_RUNNER_MODE = "real"
 $env:RAG_WARMUP = if ($WarmupRag) { "true" } else { "false" }
 $env:FRONTEND_ORIGINS = "http://127.0.0.1:4173"

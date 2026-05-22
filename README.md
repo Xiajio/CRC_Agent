@@ -239,8 +239,7 @@ LangG/
 │   ├── prepare_acceptance_case_db.py  # 验收测试数据库准备
 │   ├── run_e2e_full_acceptance.ps1   # E2E 验收测试
 │   └── capture_graph_fixtures.py # 图固定数据捕获
-├── pyproject.toml                # Python 项目配置
-└── start.txt                     # 快捷启动命令
+└── pyproject.toml                # Python 项目配置
 ```
 
 ## 快速开始
@@ -323,10 +322,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start_real.ps1 -WarmupRag
 
 ```bash
 # 终端 1：启动后端（端口 8000）
-uvicorn backend.app:app --host 0.0.0.0 --port 8000
+AUTH_MODE=bearer API_BEARER_TOKEN=local-dev-token uvicorn backend.app:app --host 127.0.0.1 --port 8000
 
 # 终端 2：启动前端（端口 4173）
-cd frontend && npm run dev:e2e
+cd frontend && VITE_API_BEARER_TOKEN=local-dev-token npm run dev:e2e
 ```
 
 启动后访问 `http://localhost:4173`。
@@ -403,8 +402,10 @@ cd frontend && npm run dev:e2e
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `AUTH_MODE` | 认证模式：`none` / `bearer` | `none` |
-| `API_BEARER_TOKEN` | Bearer 令牌 | — |
+| `AUTH_MODE` | 认证模式：`none` / `bearer` | `bearer` |
+| `API_BEARER_TOKEN` | Bearer 令牌；`AUTH_MODE=bearer` 时必填 | — |
+| `API_ADMIN_BEARER_TOKEN` | 管理端点 Bearer 令牌；未设置时回退到 `API_BEARER_TOKEN` | — |
+| `VITE_API_BEARER_TOKEN` | 前端请求后端时使用的 Bearer 令牌 | — |
 | `FRONTEND_ORIGINS` | CORS 允许源 | `http://localhost:5173` |
 | `GRAPH_RUNNER_MODE` | 图运行模式：`real` / `fixture` | `real` |
 | `RAG_WARMUP` | 启动时预热 RAG | `true` |
@@ -412,13 +413,15 @@ cd frontend && npm run dev:e2e
 | `CHAT_LATENCY_TRACE` | 延迟追踪（Phase1 详细事件） | `0` |
 | `UPLOAD_CONVERTER_MODE` | 上传转换模式：`real` / `fixture` | `real` |
 
+本地浏览器 UI 不应暴露单独的 admin token。若本地 UI 需要删除患者或 upsert 病例，使用单 token 模式：只设置 `API_BEARER_TOKEN`，不要设置 `API_ADMIN_BEARER_TOKEN`。
+
 ## 测试
 
 ```bash
 # 后端单元/集成测试（pytest）
 pytest tests/backend/
 
-# 前端单元测试（vitest — 33 个测试文件）
+# 前端单元测试（vitest）
 cd frontend && npm test
 
 # E2E 测试（playwright）
@@ -431,6 +434,15 @@ cd frontend && npm run test:e2e:acceptance
 powershell -ExecutionPolicy Bypass -File .\scripts\run_e2e_full_acceptance.ps1
 ```
 
+### Python 依赖审计
+
+```bash
+pip install pip-audit
+pip-audit
+```
+
+在 CI 或本地安全检查中，应在安装项目 Python 依赖后运行 `pip-audit`。如果使用冻结依赖文件，可改为 `pip-audit -r requirements.txt`。
+
 ## 运行模式
 
 系统支持两种图执行模式：
@@ -442,10 +454,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_e2e_full_acceptance.ps1
 
 ```bash
 # Real 模式
-uvicorn backend.app:app --host 0.0.0.0 --port 8000
+AUTH_MODE=bearer API_BEARER_TOKEN=local-dev-token uvicorn backend.app:app --host 127.0.0.1 --port 8000
 
 # Fixture 模式
-GRAPH_RUNNER_MODE=fixture GRAPH_FIXTURE_CASE=database_case uvicorn backend.app:app --host 0.0.0.0 --port 8000
+AUTH_MODE=bearer API_BEARER_TOKEN=local-dev-token GRAPH_RUNNER_MODE=fixture GRAPH_FIXTURE_CASE=database_case uvicorn backend.app:app --host 127.0.0.1 --port 8000
 
 # 可用固定数据用例: database_case, decision_case, safety_case, knowledge_case,
 #                   offtopic_date_case, offtopic_date_after_plan_case, upload_followup_case

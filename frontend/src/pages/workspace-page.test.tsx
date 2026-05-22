@@ -489,6 +489,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
         ] as any,
         uploaded_assets: {
           "1": {
+            asset_url: "/api/sessions/patient-session/assets/1",
             filename: "report.pdf",
             derived: { record_id: 1 },
           },
@@ -497,6 +498,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     });
     const uploadFile = vi.fn(async () => ({
         asset_id: "1",
+        asset_url: "/api/sessions/patient-session/assets/1",
         filename: "report.pdf",
         content_type: "application/pdf",
         size: 7,
@@ -525,6 +527,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(mockSceneSessions.patient.setState).toHaveBeenCalled();
     expect(mockSceneSessions.patient.state.uploadedAssets).toEqual({
       "1": {
+        asset_url: "/api/sessions/patient-session/assets/1",
         filename: "report.pdf",
         derived: { record_id: 1 },
       },
@@ -893,6 +896,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
   it("switches the patient top nav between profile and upload workspaces while keeping upload usable", async () => {
     const uploadFile = vi.fn(async () => ({
       asset_id: "1",
+      asset_url: "/api/sessions/patient-session/assets/1",
       filename: "report.pdf",
       content_type: "application/pdf",
       size: 7,
@@ -906,6 +910,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
         snapshot: {
           uploaded_assets: {
             "1": {
+              asset_url: "/api/sessions/patient-session/assets/1",
               filename: "report.pdf",
               derived: { record_id: 1 },
             },
@@ -942,6 +947,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
   it("keeps upload progress and success status copy in UTF-8 Chinese", async () => {
     let finishUpload!: (value: {
       asset_id: string;
+      asset_url: string;
       filename: string;
       content_type: string;
       size: number;
@@ -952,6 +958,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     const uploadFile = vi.fn(() =>
       new Promise<{
         asset_id: string;
+        asset_url: string;
         filename: string;
         content_type: string;
         size: number;
@@ -968,6 +975,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
         snapshot: {
           uploaded_assets: {
             "1": {
+              asset_url: "/api/sessions/patient-session/assets/1",
               filename: "report.pdf",
               derived: { record_id: 1 },
             },
@@ -986,6 +994,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     await act(async () => {
       finishUpload({
         asset_id: "1",
+        asset_url: "/api/sessions/patient-session/assets/1",
         filename: "report.pdf",
         content_type: "application/pdf",
         size: 7,

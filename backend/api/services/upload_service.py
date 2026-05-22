@@ -244,9 +244,17 @@ def _cleanup_empty_stable_roots(stable_original_root: Path, stable_derived_root:
                 pass
 
 
-def _response_payload(asset_record: dict[str, Any], *, reused: bool) -> dict[str, Any]:
+def build_asset_url(session_id: str, asset_id: str | int) -> str:
+    return f"/api/sessions/{session_id}/assets/{asset_id}"
+
+
+def _response_payload(asset_record: dict[str, Any], *, reused: bool, session_id: str | None = None) -> dict[str, Any]:
+    asset_url = asset_record.get("asset_url")
+    if not asset_url and session_id is not None:
+        asset_url = build_asset_url(session_id, asset_record["asset_id"])
     return {
         "asset_id": asset_record["asset_id"],
+        "asset_url": asset_url,
         "filename": asset_record["filename"],
         "content_type": asset_record["content_type"],
         "size": asset_record["size"],
@@ -335,7 +343,7 @@ def store_session_upload(
             if existing_asset_id is not None:
                 existing_asset = meta.uploaded_assets.get(str(existing_asset_id))
                 if isinstance(existing_asset, dict):
-                    return _response_payload(existing_asset, reused=True)
+                    return _response_payload(existing_asset, reused=True, session_id=session_id)
             meta.processed_files.pop(processed_key, None)
 
         patient_asset_root = assets_root / str(patient_id)
@@ -404,12 +412,14 @@ def store_session_upload(
                 )
                 asset_record = {
                     "asset_id": asset_id,
+                    "asset_url": build_asset_url(session_id, asset_id),
                     "record_id": None,
                     "patient_id": patient_id,
                     "filename": normalized_filename,
                     "content_type": normalized_content_type,
                     "size": len(file_bytes),
                     "sha256": sha256,
+                    "storage_path": str(original_path),
                     "reused": bool(upload_result.reused or failed_result.reused),
                     "derived": derived_payload,
                 }
@@ -419,7 +429,7 @@ def store_session_upload(
                     "record_id": None,
                 }
                 session_store.bump_snapshot_version(session_id)
-                return _response_payload(asset_record, reused=bool(upload_result.reused or failed_result.reused))
+                return _response_payload(asset_record, reused=bool(upload_result.reused or failed_result.reused), session_id=session_id)
 
             card_payload = _card_to_dict(medical_card)
             document_type = classify_upload_document(normalized_filename, card_payload)
@@ -441,12 +451,14 @@ def store_session_upload(
             if ingest_decision == "asset_only":
                 asset_record = {
                     "asset_id": asset_id,
+                    "asset_url": build_asset_url(session_id, asset_id),
                     "record_id": None,
                     "patient_id": patient_id,
                     "filename": normalized_filename,
                     "content_type": normalized_content_type,
                     "size": len(file_bytes),
                     "sha256": sha256,
+                    "storage_path": str(original_path),
                     "reused": bool(upload_result.reused),
                     "derived": {
                         "medical_card_created": False,
@@ -463,7 +475,7 @@ def store_session_upload(
                     "record_id": None,
                 }
                 session_store.bump_snapshot_version(session_id)
-                return _response_payload(asset_record, reused=bool(upload_result.reused))
+                return _response_payload(asset_record, reused=bool(upload_result.reused), session_id=session_id)
 
             registry_write = patient_commands.record_medical_card_extracted(
                 patient_id=patient_id,
@@ -479,12 +491,14 @@ def store_session_upload(
             record_id = int(registry_write.record_id)
             asset_record = {
                 "asset_id": asset_id,
+                "asset_url": build_asset_url(session_id, asset_id),
                 "record_id": record_id,
                 "patient_id": patient_id,
                 "filename": normalized_filename,
                 "content_type": normalized_content_type,
                 "size": len(file_bytes),
                 "sha256": sha256,
+                "storage_path": str(original_path),
                 "reused": bool(upload_result.reused or registry_write.reused),
                 "derived": {
                     "medical_card_created": True,
@@ -512,7 +526,7 @@ def store_session_upload(
             session_store.enqueue_context_message(session_id, context_message)
             session_store.bump_snapshot_version(session_id)
 
-            return _response_payload(asset_record, reused=bool(upload_result.reused or registry_write.reused))
+            return _response_payload(asset_record, reused=bool(upload_result.reused or registry_write.reused), session_id=session_id)
         except Exception as exc:
             if "upload_result" in locals() and upload_result.asset_id is not None:
                 (stable_derived_root / "medical_card.json").unlink(missing_ok=True)

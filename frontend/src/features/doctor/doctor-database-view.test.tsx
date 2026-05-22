@@ -51,8 +51,8 @@ describe("DoctorDatabaseView", () => {
 
     renderView({ onSourceChange });
 
-    const historicalCaseBase = screen.getByRole("button", { name: "historical case base" });
-    const patientRegistry = screen.getByRole("button", { name: "patient registry" });
+    const historicalCaseBase = screen.getByRole("button", { name: "历史病例" });
+    const patientRegistry = screen.getByRole("button", { name: "患者库" });
     expect(historicalCaseBase).toHaveTextContent("历史病例");
     expect(patientRegistry).toHaveTextContent("患者库");
 

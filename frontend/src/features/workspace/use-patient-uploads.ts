@@ -71,6 +71,7 @@ export function usePatientUploads({
       uploadedAssets: {
         ...current.uploadedAssets,
         [String(response.asset_id)]: {
+          asset_url: response.asset_url,
           filename: response.filename,
           derived: response.derived,
         },

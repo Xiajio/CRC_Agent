@@ -13,6 +13,7 @@ const backendPort = 8101;
 const frontendPort = 4176;
 const backendUrl = `http://127.0.0.1:${backendPort}`;
 const frontendUrl = `http://127.0.0.1:${frontendPort}`;
+const apiBearerToken = process.env.API_BEARER_TOKEN || "local-dev-token";
 
 function ensureOutputDir() {
   fs.mkdirSync(outputDir, { recursive: true });
@@ -56,7 +57,8 @@ function startBackend() {
       cwd: repoRoot,
       env: {
         ...process.env,
-        AUTH_MODE: "none",
+        AUTH_MODE: "bearer",
+        API_BEARER_TOKEN: apiBearerToken,
         GRAPH_RUNNER_MODE: "fixture",
         GRAPH_FIXTURE_CASE: fixtureCase,
         UPLOAD_CONVERTER_MODE: "fixture",
@@ -98,6 +100,7 @@ async function proxyApiRequest(request, response, parsed) {
     const body = await readRequestBody(request);
     const headers = { ...request.headers };
     delete headers.host;
+    headers.authorization = headers.authorization || `Bearer ${apiBearerToken}`;
     const upstream = await fetch(`${backendUrl}${parsed.pathname}${parsed.search}`, {
       method: request.method,
       headers,
