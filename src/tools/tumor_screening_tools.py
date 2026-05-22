@@ -17,6 +17,7 @@ from langchain_core.messages import ToolMessage
 from pydantic import BaseModel, Field
 
 from ..services.virtual_database_service import RADIOGRAPHIC_IMAGING_DIR
+from .path_security import UnsafeToolPathError, validate_model_path, validate_tool_input_path
 
 # 注意：ultralytics 和 cv2 使用延迟导入
 # 这样即使这些包没安装，智能体也能启动，只是不能使用肿瘤筛选功能
@@ -57,13 +58,17 @@ def get_tumor_model(model_path: str = None):
     """
     global _tumor_model, _model_path
     
-    if model_path is None:
-        model_path = os.path.join(
-            os.path.dirname(__file__),
-            "tool",
-            "Tumor_Detection",
-            "best.pt"
-        )
+    default_model_path = os.path.join(
+        os.path.dirname(__file__),
+        "tool",
+        "Tumor_Detection",
+        "best.pt",
+    )
+    try:
+        model_path = validate_model_path(model_path, default_path=default_model_path)
+    except UnsafeToolPathError as exc:
+        print(f"[TumorScreening] rejected model path: {exc}")
+        return None
     
     # 如果模型已加载且路径相同，直接返回
     if _tumor_model is not None and _model_path == model_path:
@@ -168,7 +173,13 @@ def tumor_screening_tool(
             "example_usage": "tumor_screening_tool(input_dir='/path/to/ct_images', confidence_threshold=0.5)"
         }
     
-    input_dir = input_dir.strip()
+    try:
+        input_dir = validate_tool_input_path(input_dir.strip(), label="input_dir")
+    except UnsafeToolPathError as exc:
+        return {
+            "success": False,
+            "error_message": str(exc),
+        }
     
     # 设置默认图像扩展名
     if image_extensions is None:
@@ -412,7 +423,13 @@ def quick_tumor_check(image_path: str, model_path: str = None) -> Dict:
             "error_message": "必须提供图像路径 (image_path)"
         }
     
-    image_path = image_path.strip()
+    try:
+        image_path = validate_tool_input_path(image_path.strip(), label="image_path")
+    except UnsafeToolPathError as exc:
+        return {
+            "success": False,
+            "error_message": str(exc),
+        }
     
     # 检查文件是否存在
     if not os.path.exists(image_path):

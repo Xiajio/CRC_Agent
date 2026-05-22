@@ -18,6 +18,8 @@ if (kind !== "backend" && kind !== "frontend") {
 }
 
 const env = { ...process.env };
+env.API_BEARER_TOKEN = env.API_BEARER_TOKEN || "local-dev-token";
+env.VITE_API_BEARER_TOKEN = env.VITE_API_BEARER_TOKEN || env.API_BEARER_TOKEN;
 
 let args;
 if (kind === "backend") {

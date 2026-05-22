@@ -92,6 +92,7 @@ export interface ApiClient {
     traceTap?: StreamTraceTap,
   ): Promise<void>;
   uploadFile(sessionId: string, file: File): Promise<UploadResponse>;
+  downloadSessionAsset(sessionId: string, assetId: string): Promise<Blob>;
   resetSession(sessionId: string): Promise<SessionResponse>;
   bindPatient(sessionId: string, patientId: number): Promise<SessionResponse>;
   saveSessionPatientIdentity(
@@ -177,6 +178,24 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         headers: defaultHeaders,
       });
       return parseJsonResponse<UploadResponse>(response);
+    },
+
+    async downloadSessionAsset(sessionId, assetId) {
+      const encodedSessionId = encodeURIComponent(sessionId);
+      const encodedAssetId = encodeURIComponent(assetId);
+      const response = await fetchImpl(
+        buildUrl(`/api/sessions/${encodedSessionId}/assets/${encodedAssetId}`, baseUrl),
+        { headers: defaultHeaders },
+      );
+      if (!response.ok) {
+        const detail = await parseJsonOrNull(response);
+        const message =
+          typeof detail === "object" && detail && "detail" in detail
+            ? String((detail as { detail: unknown }).detail)
+            : `Request failed with status ${response.status}`;
+        throw new ApiClientError(response.status, message, detail);
+      }
+      return response.blob();
     },
 
     async resetSession(sessionId) {

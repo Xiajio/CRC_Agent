@@ -265,6 +265,7 @@ export interface ChatTurnRequest {
 
 export interface UploadResponse {
   asset_id: string;
+  asset_url: string;
   filename: string;
   content_type: string;
   size: number;
@@ -570,4 +571,3 @@ export interface SessionState {
   streamingMessageCursors: Record<string, string>;
   eventLog: ClinicalEventLogEntry[];
 }
-

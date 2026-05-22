@@ -26,6 +26,9 @@ tests/backend/*
 !tests/backend/test_demo_upload_fixtures.py
 !tests/backend/test_demo_start_scripts.py
 !tests/backend/test_stream_callback_context.py
+!tests/backend/test_assets_api.py
+!tests/backend/test_auth_security.py
+!tests/backend/test_tool_path_security.py
 !tests/e2e/
 tests/e2e/*
 !tests/e2e/acceptance/
@@ -66,8 +69,10 @@ tmp/
 /tmp*
 /pytest-cache-files*
 pytest-*
+codex_pytest_*
 .worktrees/
 *.log
+/start.txt
 /_fix_*.txt
 /_ftfy_fixed.py
 /_garbled_analysis.txt
@@ -87,7 +92,11 @@ data_temp.csv
 Thumbs.db
 
 # Local documentation drafts and generated reports
+generated_reports/
 docs/*
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
 !docs/demo/
 docs/demo/*
 !docs/demo/demo-mode-runbook.md

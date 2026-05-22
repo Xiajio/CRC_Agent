@@ -19,7 +19,12 @@ if ($LASTEXITCODE -ne 0) {
   throw "Acceptance case database preparation failed with exit code $LASTEXITCODE"
 }
 
-$env:AUTH_MODE = "none"
+if (-not $env:AUTH_MODE) {
+  $env:AUTH_MODE = "bearer"
+}
+if ($env:AUTH_MODE -eq "bearer" -and -not $env:API_BEARER_TOKEN) {
+  $env:API_BEARER_TOKEN = "local-dev-token"
+}
 $env:GRAPH_RUNNER_MODE = "fixture"
 $env:GRAPH_FIXTURE_CASE = "database_case"
 $env:UPLOAD_CONVERTER_MODE = "fixture"

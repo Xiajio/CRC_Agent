@@ -31,6 +31,12 @@ from langchain_core.messages import ToolMessage
 from pydantic import BaseModel, Field
 
 from ..services.virtual_database_service import PATHOLOGY_SLIDE_FOLDERS
+from .path_security import (
+    UnsafeToolPathError,
+    safe_torch_load,
+    validate_model_path,
+    validate_tool_input_path,
+)
 
 
 # ==============================================================================
@@ -152,8 +158,11 @@ def _get_clam_model(model_path: str = None):
     """
     global _clam_model, _clam_model_path
     
-    if model_path is None:
-        model_path = DEFAULT_MODEL_PATH
+    try:
+        model_path = validate_model_path(model_path, default_path=DEFAULT_MODEL_PATH)
+    except UnsafeToolPathError as exc:
+        print(f"[PathologyCLAM] rejected model path: {exc}")
+        return None
     
     # 如果模型已加载且路径相同，直接返回
     if _clam_model is not None and _clam_model_path == model_path:
@@ -187,7 +196,7 @@ def _get_clam_model(model_path: str = None):
         print(f"[PathologyCLAM] 正在加载 CLAM 模型: {model_path}")
         
         # 加载模型配置和权重
-        checkpoint = torch.load(model_path, map_location=device)
+        checkpoint = safe_torch_load(torch, model_path, map_location=device)
         
         # 根据配置创建模型
         model_args = {
@@ -264,7 +273,10 @@ def _validate_slide_path(slide_path: str) -> Tuple[bool, str]:
     if not slide_path or not slide_path.strip():
         return False, "必须提供切片文件路径"
     
-    slide_path = slide_path.strip()
+    try:
+        slide_path = validate_tool_input_path(slide_path.strip(), label="slide_path")
+    except UnsafeToolPathError as exc:
+        return False, str(exc)
     
     if not os.path.exists(slide_path):
         return False, f"切片文件不存在: {slide_path}"
@@ -313,8 +325,13 @@ def _run_clam_pipeline(
             "error_message": "缺少依赖: pyyaml 或 pandas"
         }
     
-    if model_path is None:
-        model_path = DEFAULT_MODEL_PATH
+    try:
+        model_path = validate_model_path(model_path, default_path=DEFAULT_MODEL_PATH)
+    except UnsafeToolPathError as exc:
+        return {
+            "success": False,
+            "error_message": str(exc),
+        }
     
     # 创建临时目录
     temp_dir = tempfile.mkdtemp(prefix="clam_")

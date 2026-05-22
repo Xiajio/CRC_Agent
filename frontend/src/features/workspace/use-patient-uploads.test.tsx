@@ -60,6 +60,7 @@ describe("usePatientUploads", () => {
     const apiClient = buildApiClientStub({
       uploadFile: vi.fn(async () => ({
         asset_id: "1",
+        asset_url: "/api/sessions/patient-session/assets/1",
         filename: "report.pdf",
         content_type: "application/pdf",
         size: 12,
@@ -96,6 +97,7 @@ describe("usePatientUploads", () => {
     expect(applyPatientResponse).toHaveBeenCalledWith(refreshed);
     expect(patient.state.uploadedAssets).toEqual({
       "1": {
+        asset_url: "/api/sessions/patient-session/assets/1",
         filename: "report.pdf",
         derived: { record_id: 1 },
       },
@@ -222,6 +224,7 @@ describe("usePatientUploads", () => {
     });
     const upload = createDeferred<{
       asset_id: string;
+      asset_url: string;
       filename: string;
       content_type: string;
       size: number;
@@ -263,6 +266,7 @@ describe("usePatientUploads", () => {
 
     upload.resolve({
       asset_id: "1",
+      asset_url: "/api/sessions/patient-session/assets/1",
       filename: "report.pdf",
       content_type: "application/pdf",
       size: 8,
@@ -276,6 +280,7 @@ describe("usePatientUploads", () => {
     expect(applyPatientResponse).toHaveBeenCalledWith(refreshedSession);
     expect(patient.state.uploadedAssets).toEqual({
       "1": {
+        asset_url: "/api/sessions/patient-session/assets/1",
         filename: "report.pdf",
         derived: { record_id: 1 },
       },
@@ -330,6 +335,7 @@ describe("usePatientUploads", () => {
     });
     const upload = createDeferred<{
       asset_id: string;
+      asset_url: string;
       filename: string;
       content_type: string;
       size: number;
@@ -376,6 +382,7 @@ describe("usePatientUploads", () => {
 
     upload.resolve({
       asset_id: "1",
+      asset_url: "/api/sessions/patient-session/assets/1",
       filename: "report.pdf",
       content_type: "application/pdf",
       size: 6,
@@ -394,6 +401,7 @@ describe("usePatientUploads", () => {
   it("invalidates in-flight upload completion when patient session id changes", async () => {
     const upload = createDeferred<{
       asset_id: string;
+      asset_url: string;
       filename: string;
       content_type: string;
       size: number;
@@ -445,6 +453,7 @@ describe("usePatientUploads", () => {
 
     upload.resolve({
       asset_id: "1",
+      asset_url: "/api/sessions/old-session/assets/1",
       filename: "report.pdf",
       content_type: "application/pdf",
       size: 8,
