@@ -51,12 +51,14 @@ class InMemorySessionStore:
         with self._store_lock:
             return self._sessions.get(session_id)
 
-    def find_uploaded_asset(self, asset_id: str) -> tuple[SessionMeta, dict[str, Any]] | None:
+    def find_uploaded_asset(self, session_id: str, asset_id: str) -> tuple[SessionMeta, dict[str, Any]] | None:
         with self._store_lock:
-            for meta in self._sessions.values():
-                asset = meta.uploaded_assets.get(asset_id)
-                if isinstance(asset, dict):
-                    return meta, asset
+            meta = self._sessions.get(session_id)
+            if meta is None:
+                return None
+            asset = meta.uploaded_assets.get(asset_id)
+            if isinstance(asset, dict):
+                return meta, asset
         return None
 
     def rotate_thread(self, session_id: str, *, clear_patient_id: bool = False) -> SessionMeta:

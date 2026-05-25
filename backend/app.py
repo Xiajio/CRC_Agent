@@ -64,15 +64,32 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         expected = self._settings.api_bearer_token
+        expected_admin = self._settings.api_admin_bearer_token or expected
         authorization = request.headers.get("Authorization")
         if not expected:
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
 
         scheme, _, token = authorization.partition(" ") if authorization else ("", "", "")
-        if scheme.lower() != "bearer" or not token or not hmac.compare_digest(token, expected):
+        user_token_matches = bool(token and hmac.compare_digest(token, expected))
+        admin_token_matches = bool(expected_admin and token and hmac.compare_digest(token, expected_admin))
+        if scheme.lower() != "bearer" or not token or not (user_token_matches or admin_token_matches):
             return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
+        if _requires_admin_token(request) and not admin_token_matches:
+            return JSONResponse(status_code=403, content={"detail": "Forbidden"})
 
         return await call_next(request)
+
+
+def _requires_admin_token(request: Request) -> bool:
+    method = request.method.upper()
+    path = request.url.path.rstrip("/")
+    if method == "POST" and path == "/api/database/cases/upsert":
+        return True
+    if method == "DELETE" and path == "/api/patient-registry/patients":
+        return True
+    if method == "DELETE" and path.startswith("/api/patient-registry/patients/"):
+        return True
+    return False
 
 
 def _build_runtime_metadata(runner_mode: str) -> dict[str, str | None]:

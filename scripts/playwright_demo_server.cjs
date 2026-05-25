@@ -18,6 +18,11 @@ if (kind !== "backend" && kind !== "frontend") {
 }
 
 const env = { ...process.env };
+const frontendBearerToken =
+  (env.VITE_API_BEARER_TOKEN || "").trim() || (env.API_BEARER_TOKEN || "").trim();
+if (frontendBearerToken) {
+  env.VITE_API_BEARER_TOKEN = frontendBearerToken;
+}
 
 let args;
 if (kind === "backend") {

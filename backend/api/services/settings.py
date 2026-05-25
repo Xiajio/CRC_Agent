@@ -22,10 +22,10 @@ def _parse_csv(value: str | None) -> list[str]:
 
 def _parse_auth_mode(value: str | None) -> AuthMode:
     if value is None:
-        return "none"
+        return "bearer"
     normalized = value.strip().lower()
     if not normalized:
-        return "none"
+        return "bearer"
     if normalized in {"none", "bearer"}:
         return normalized
     raise RuntimeError("AUTH_MODE must be one of: none, bearer")
@@ -33,8 +33,9 @@ def _parse_auth_mode(value: str | None) -> AuthMode:
 
 @dataclass(slots=True)
 class RuntimeSettings:
-    auth_mode: AuthMode = "none"
+    auth_mode: AuthMode = "bearer"
     api_bearer_token: str | None = None
+    api_admin_bearer_token: str | None = None
     frontend_origins: list[str] | None = None
     graph_runner_mode: str = "real"
     rag_warmup: bool = True
@@ -43,6 +44,7 @@ class RuntimeSettings:
 def load_runtime_settings() -> RuntimeSettings:
     auth_mode = _parse_auth_mode(os.getenv("AUTH_MODE"))
     api_bearer_token = os.getenv("API_BEARER_TOKEN")
+    api_admin_bearer_token = os.getenv("API_ADMIN_BEARER_TOKEN")
     frontend_origins_raw = os.getenv("FRONTEND_ORIGINS")
     frontend_origins = _parse_csv(frontend_origins_raw)
     if frontend_origins_raw is None:
@@ -51,10 +53,17 @@ def load_runtime_settings() -> RuntimeSettings:
     settings = RuntimeSettings(
         auth_mode=auth_mode,
         api_bearer_token=api_bearer_token.strip() if isinstance(api_bearer_token, str) and api_bearer_token.strip() else None,
+        api_admin_bearer_token=(
+            api_admin_bearer_token.strip()
+            if isinstance(api_admin_bearer_token, str) and api_admin_bearer_token.strip()
+            else None
+        ),
         frontend_origins=frontend_origins,
         graph_runner_mode=os.getenv("GRAPH_RUNNER_MODE", "real").strip().lower() or "real",
         rag_warmup=_parse_bool(os.getenv("RAG_WARMUP"), default=True),
     )
     if settings.auth_mode == "bearer" and not settings.api_bearer_token:
         raise RuntimeError("API_BEARER_TOKEN must be set when AUTH_MODE=bearer")
+    if settings.auth_mode == "bearer" and not settings.api_admin_bearer_token:
+        settings.api_admin_bearer_token = settings.api_bearer_token
     return settings

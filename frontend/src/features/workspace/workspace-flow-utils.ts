@@ -2,6 +2,8 @@ import { ApiClientError } from "../../app/api/client";
 import type { FrontendMessage, JsonObject, Scene, SessionState } from "../../app/api/types";
 
 export const DEFAULT_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;
+export const STREAM_EMPTY_RESPONSE_MESSAGE =
+  "\u672c\u8f6e\u672a\u6536\u5230\u52a9\u624b\u56de\u7b54\uff0c\u8bf7\u91cd\u8bd5\u6216\u8865\u5145\u95ee\u9898\u540e\u518d\u53d1\u9001\u3002";
 
 export function readFiniteNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {

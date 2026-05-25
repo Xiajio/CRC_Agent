@@ -71,7 +71,11 @@ export function usePatientUploads({
       uploadedAssets: {
         ...current.uploadedAssets,
         [String(response.asset_id)]: {
+          asset_url: response.asset_url,
+          content_type: response.content_type,
           filename: response.filename,
+          sha256: response.sha256,
+          size: response.size,
           derived: response.derived,
         },
       },

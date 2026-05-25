@@ -5,8 +5,55 @@ const DOCTOR_SESSION_ID = "doctor-session";
 const DOCTOR_THINKING = "DOCTOR_INTERNAL_REASONING_VISIBLE";
 const PATIENT_THINKING = "PATIENT_INTERNAL_REASONING_HIDDEN";
 const TREATMENT_PLAN_LABEL = "\u751f\u6210\u6cbb\u7597\u65b9\u6848";
+const STREAM_EMPTY_RESPONSE_MESSAGE =
+  "\u672c\u8f6e\u672a\u6536\u5230\u52a9\u624b\u56de\u7b54\uff0c\u8bf7\u91cd\u8bd5\u6216\u8865\u5145\u95ee\u9898\u540e\u518d\u53d1\u9001\u3002";
 
 type Scene = "patient" | "doctor";
+type WorkspaceMockOptions = {
+  patientStreamEvents?: unknown[];
+  doctorStreamEvents?: unknown[];
+};
+
+const EMPTY_PATIENT_STREAM_EVENTS = [
+  {
+    type: "done",
+    thread_id: "patient-thread",
+    run_id: "patient-run-empty",
+    snapshot_version: 2,
+  },
+];
+
+const DEFAULT_PATIENT_STREAM_EVENTS = [
+  {
+    type: "message.done",
+    role: "assistant",
+    content: "Patient-facing final answer.",
+    thinking: PATIENT_THINKING,
+    message_id: "patient-answer-1",
+  },
+  {
+    type: "done",
+    thread_id: "patient-thread",
+    run_id: "patient-run-1",
+    snapshot_version: 2,
+  },
+];
+
+const DEFAULT_DOCTOR_STREAM_EVENTS = [
+  {
+    type: "message.done",
+    role: "assistant",
+    content: "Doctor-facing final answer.",
+    thinking: DOCTOR_THINKING,
+    message_id: "doctor-answer-1",
+  },
+  {
+    type: "done",
+    thread_id: "doctor-thread",
+    run_id: "doctor-run-1",
+    snapshot_version: 2,
+  },
+];
 
 function baseSnapshot(overrides: Record<string, unknown> = {}) {
   return {
@@ -94,7 +141,7 @@ async function fulfillSse(route: Route, events: unknown[]) {
   });
 }
 
-async function installWorkspaceMocks(page: Page) {
+async function installWorkspaceMocks(page: Page, options: WorkspaceMockOptions = {}) {
   await page.addInitScript(() => {
     window.localStorage.clear();
   });
@@ -139,39 +186,11 @@ async function installWorkspaceMocks(page: Page) {
   });
 
   await page.route(`**/api/sessions/${PATIENT_SESSION_ID}/messages/stream`, async (route) => {
-    await fulfillSse(route, [
-      {
-        type: "message.done",
-        role: "assistant",
-        content: "Patient-facing final answer.",
-        thinking: PATIENT_THINKING,
-        message_id: "patient-answer-1",
-      },
-      {
-        type: "done",
-        thread_id: "patient-thread",
-        run_id: "patient-run-1",
-        snapshot_version: 2,
-      },
-    ]);
+    await fulfillSse(route, options.patientStreamEvents ?? DEFAULT_PATIENT_STREAM_EVENTS);
   });
 
   await page.route(`**/api/sessions/${DOCTOR_SESSION_ID}/messages/stream`, async (route) => {
-    await fulfillSse(route, [
-      {
-        type: "message.done",
-        role: "assistant",
-        content: "Doctor-facing final answer.",
-        thinking: DOCTOR_THINKING,
-        message_id: "doctor-answer-1",
-      },
-      {
-        type: "done",
-        thread_id: "doctor-thread",
-        run_id: "doctor-run-1",
-        snapshot_version: 2,
-      },
-    ]);
+    await fulfillSse(route, options.doctorStreamEvents ?? DEFAULT_DOCTOR_STREAM_EVENTS);
   });
 
   await page.route("**/api/patient-registry/patients/recent?limit=20", async (route) => {
@@ -217,8 +236,8 @@ async function installWorkspaceMocks(page: Page) {
   });
 }
 
-async function openWorkspace(page: Page) {
-  await installWorkspaceMocks(page);
+async function openWorkspace(page: Page, options: WorkspaceMockOptions = {}) {
+  await installWorkspaceMocks(page, options);
   await page.goto("/");
   await expect(page.getByTestId("conversation-panel")).toBeVisible();
 }
@@ -284,6 +303,17 @@ test("keeps thinking hidden for patient replies while doctor replies disclose it
   await expect(thinkingDisclosure).toHaveCount(1);
   await thinkingDisclosure.locator("summary").click();
   await expect(thinkingDisclosure).toContainText(DOCTOR_THINKING);
+});
+
+test("surfaces a retry prompt when the patient stream ends without assistant output", async ({ page }) => {
+  await openWorkspace(page, { patientStreamEvents: EMPTY_PATIENT_STREAM_EVENTS });
+
+  await submitCurrentComposer(page, "patient prompt");
+
+  await expect(page.getByText(STREAM_EMPTY_RESPONSE_MESSAGE)).toBeVisible();
+  await expect(page.getByTestId("status-node")).toHaveText("\u7a7a\u95f2");
+  await expect(page.getByTestId("conversation-input")).toBeEnabled();
+  await expect(page.getByText("Patient-facing final answer.")).toHaveCount(0);
 });
 
 test("sends split identity context when doctor card prompt is clicked", async ({ page }) => {

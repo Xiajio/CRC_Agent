@@ -33,13 +33,37 @@ function parseEventBlock(block: string): StreamEvent | null {
   return JSON.parse(dataLines.join("\n")) as StreamEvent;
 }
 
+async function readStreamErrorMessage(response: Response): Promise<string> {
+  const fallback = `Stream request failed with status ${response.status}`;
+
+  try {
+    const text = await response.text();
+    if (!text.trim()) {
+      return fallback;
+    }
+
+    try {
+      const detail = JSON.parse(text) as unknown;
+      if (typeof detail === "object" && detail && "detail" in detail) {
+        return String((detail as { detail: unknown }).detail);
+      }
+    } catch {
+      return text;
+    }
+
+    return text;
+  } catch {
+    return fallback;
+  }
+}
+
 export async function consumeSseResponse(
   response: Response,
   onEvent: (event: StreamEvent) => void,
   traceTap?: StreamTraceTap,
 ): Promise<void> {
   if (!response.ok) {
-    throw new Error(`Stream request failed with status ${response.status}`);
+    throw new Error(await readStreamErrorMessage(response));
   }
 
   if (!response.body) {

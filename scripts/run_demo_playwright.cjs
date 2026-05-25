@@ -8,6 +8,13 @@ const frontendRoot = path.join(repoRoot, "frontend");
 const serverScript = path.join(repoRoot, "scripts", "playwright_demo_server.cjs");
 const playwrightCli = path.join(frontendRoot, "node_modules", "@playwright", "test", "cli.js");
 
+function resolveFrontendBearerToken(env) {
+  const viteToken = (env.VITE_API_BEARER_TOKEN || "").trim();
+  if (viteToken) return viteToken;
+  const apiToken = (env.API_BEARER_TOKEN || "").trim();
+  return apiToken || undefined;
+}
+
 function killProcessTree(pid) {
   if (!pid) return;
 
@@ -94,10 +101,12 @@ async function runPlaywright(args, options) {
 async function main() {
   const backendReadyUrl = "http://127.0.0.1:8000/openapi.json";
   const frontendReadyUrl = "http://127.0.0.1:4173";
+  const frontendBearerToken = resolveFrontendBearerToken(process.env);
   const serverEnv = {
     ...process.env,
     LANGG_RUNTIME_ROOT: process.env.LANGG_RUNTIME_ROOT || "runtime/demo",
     VITE_DEMO_MODE: "replay",
+    ...(frontendBearerToken ? { VITE_API_BEARER_TOKEN: frontendBearerToken } : {}),
   };
 
   const servers = [];
@@ -164,6 +173,7 @@ async function main() {
         PLAYWRIGHT_BASE_URL: process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:4173",
         PLAYWRIGHT_DEMO_SKIP_WEBSERVER: "1",
         VITE_DEMO_MODE: "replay",
+        ...(frontendBearerToken ? { VITE_API_BEARER_TOKEN: frontendBearerToken } : {}),
       },
     });
 

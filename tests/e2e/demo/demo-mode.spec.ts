@@ -21,9 +21,30 @@ test("replay demo walks patient and doctor flows", async ({ page }) => {
   await expect(page.getByText("建议尽快")).toBeVisible();
 
   await page.getByRole("button", { name: "上传资料" }).click();
+  const uploadResponsePromise = page.waitForResponse((response) =>
+    response.request().method() === "POST"
+    && response.url().includes("/api/sessions/")
+    && response.url().endsWith("/uploads")
+  );
   await page
     .getByTestId("upload-input")
     .setInputFiles(path.join(repoRoot, "tests", "fixtures", "demo_uploads", "demo_colonoscopy_report.pdf"));
+  const uploadPayload = await uploadResponsePromise.then((response) => response.json() as Promise<{
+    asset_id: string;
+    asset_url: string;
+  }>);
+  expect(uploadPayload.asset_url).toMatch(
+    new RegExp(`/api/sessions/[^/]+/assets/${uploadPayload.asset_id}$`),
+  );
+  const apiBaseUrl = process.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
+  const bearerToken = (process.env.VITE_API_BEARER_TOKEN ?? process.env.API_BEARER_TOKEN ?? "").trim();
+  const assetResponse = await page.request.get(
+    new URL(uploadPayload.asset_url, apiBaseUrl).toString(),
+    bearerToken ? { headers: { Authorization: `Bearer ${bearerToken}` } } : undefined,
+  );
+  expect(assetResponse.ok()).toBeTruthy();
+  expect(assetResponse.headers()["content-type"]).toContain("application/pdf");
+  expect((await assetResponse.body()).byteLength).toBeGreaterThan(0);
   await expect(page.getByText("demo_colonoscopy_report.pdf")).toBeVisible();
 
   await page.getByRole("button", { name: "医生场景" }).click();

@@ -4,13 +4,14 @@ import { generateTraceId } from "../../app/api/generate-trace-id";
 import type { ChatLatencyTraceStore } from "../../app/api/chat-latency-trace";
 import type { ApiClient } from "../../app/api/client";
 import type { StreamTraceTap } from "../../app/api/stream";
-import type { ChatTurnRequest, Scene, SessionResponse, SessionState } from "../../app/api/types";
+import type { ChatTurnRequest, Scene, SessionResponse, SessionState, StreamEvent } from "../../app/api/types";
 import { mergeMessageHistory, reduceStreamEvent } from "../../app/store/stream-reducer";
 import {
   appendOptimisticUserMessage,
   isAbortError,
   isNotFoundApiError,
   readWorkspaceErrorMessage,
+  STREAM_EMPTY_RESPONSE_MESSAGE,
 } from "./workspace-flow-utils";
 import type {
   BeginTurnInput,
@@ -34,6 +35,28 @@ type TurnLatencyApi = {
 
 function isProbeIncomplete(probe: TurnLatencyProbe | null): probe is TurnLatencyProbe {
   return probe !== null && probe.status !== "ui_complete" && probe.status !== "aborted" && probe.status !== "error";
+}
+
+function hasVisibleAssistantOutput(event: StreamEvent): boolean {
+  if (event.type === "card.upsert") {
+    return true;
+  }
+
+  if (event.type === "message.delta") {
+    return event.delta.trim().length > 0;
+  }
+
+  if (event.type !== "message.done") {
+    return false;
+  }
+
+  if (event.inline_cards?.length) {
+    return true;
+  }
+
+  return typeof event.content === "string"
+    ? event.content.trim().length > 0
+    : event.content !== null && event.content !== undefined;
 }
 
 export type UseWorkspaceStreamingTurnOptions = {
@@ -153,6 +176,8 @@ export function useWorkspaceStreamingTurn({
       const traceTap: StreamTraceTap = (event, receivedAt) => {
         traceStoreRef.current.recordStreamObservation(traceId, event, receivedAt);
       };
+      let receivedVisibleAssistantOutput = false;
+      let receivedRecoverableError = false;
 
       try {
         await apiClient.streamTurn(
@@ -161,6 +186,13 @@ export function useWorkspaceStreamingTurn({
           (event) => {
             if (activeStreamRef.current !== controller || streamSequenceRef.current !== sequence) {
               return;
+            }
+
+            if (hasVisibleAssistantOutput(event)) {
+              receivedVisibleAssistantOutput = true;
+            }
+            if (event.type === "error") {
+              receivedRecoverableError = true;
             }
 
             if (event.type === "message.done") {
@@ -179,6 +211,31 @@ export function useWorkspaceStreamingTurn({
           controller.signal,
           traceTap,
         );
+
+        if (
+          !receivedVisibleAssistantOutput
+          && !receivedRecoverableError
+          && activeStreamRef.current === controller
+          && streamSequenceRef.current === sequence
+        ) {
+          const errorAt = performance.now();
+          latencyProbe.markError({
+            sequence,
+            scene,
+            at: errorAt,
+            message: STREAM_EMPTY_RESPONSE_MESSAGE,
+          });
+          traceStoreRef.current.recordClientError(traceId, errorAt);
+          setSessionState((current) =>
+            reduceStreamEvent(current, {
+              type: "error",
+              code: "STREAM_EMPTY_RESPONSE",
+              message: STREAM_EMPTY_RESPONSE_MESSAGE,
+              recoverable: true,
+            }),
+          );
+          setErrorMessage(STREAM_EMPTY_RESPONSE_MESSAGE);
+        }
       } catch (error) {
         if (
           !isAbortError(error)

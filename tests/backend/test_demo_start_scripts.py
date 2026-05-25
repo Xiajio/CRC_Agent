@@ -17,6 +17,7 @@ def test_fixture_backend_default_remains_database_case():
     text = (ROOT / "scripts" / "start_backend_fixture.ps1").read_text(encoding="utf-8")
 
     assert '$FixtureCase = "database_case"' in text
+    assert '$env:AUTH_MODE = "none"' in text
     assert '$env:GRAPH_RUNNER_MODE = "fixture"' in text
     assert "$env:GRAPH_FIXTURE_CASE = $FixtureCase" in text
 
@@ -37,6 +38,16 @@ def test_demo_playwright_config_starts_demo_profile():
     assert "@playwright" in runner_text
     assert "cli.js" in runner_text
     assert "npx.cmd" not in runner_text
+
+
+def test_demo_playwright_forwards_optional_bearer_token_to_frontend():
+    runner_text = (ROOT / "scripts" / "run_demo_playwright.cjs").read_text(encoding="utf-8")
+    server_text = (ROOT / "scripts" / "playwright_demo_server.cjs").read_text(encoding="utf-8")
+
+    assert "VITE_API_BEARER_TOKEN" in runner_text
+    assert "API_BEARER_TOKEN" in runner_text
+    assert "VITE_API_BEARER_TOKEN" in server_text
+    assert "API_BEARER_TOKEN" in server_text
 
 
 def test_demo_playwright_server_wrapper_cleans_up_process_tree():

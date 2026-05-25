@@ -21,6 +21,13 @@ from datetime import datetime
 from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
+from .path_security import (
+    UnsafeToolPathError,
+    safe_torch_load,
+    validate_model_path,
+    validate_tool_input_path,
+)
+
 
 # ==============================================================================
 # 延迟导入（避免启动时强制依赖）
@@ -84,13 +91,17 @@ def get_unet_model(model_path: str = None):
     """
     global _unet_model, _unet_model_path
     
-    if model_path is None:
-        model_path = os.path.join(
-            os.path.dirname(__file__),
-            "tool",
-            "Tumor_Localization",
-            "checkpoint_epoch_last.pth"
-        )
+    default_model_path = os.path.join(
+        os.path.dirname(__file__),
+        "tool",
+        "Tumor_Localization",
+        "checkpoint_epoch_last.pth",
+    )
+    try:
+        model_path = validate_model_path(model_path, default_path=default_model_path)
+    except UnsafeToolPathError as exc:
+        print(f"[Radiomics] rejected model path: {exc}")
+        return None
     
     # 如果模型已加载且路径相同，直接返回
     if _unet_model is not None and _unet_model_path == model_path:
@@ -121,7 +132,7 @@ def get_unet_model(model_path: str = None):
         model = UNet(n_channels=3, n_classes=2, bilinear=False)
         
         # 加载权重
-        checkpoint = torch.load(model_path, map_location=device)
+        checkpoint = safe_torch_load(torch, model_path, map_location=device)
         
         # 过滤掉非模型权重的额外键（如 mask_values）
         model_keys = set(model.state_dict().keys())
@@ -195,10 +206,12 @@ def unet_segmentation_tool(
     """
     
     # 参数验证
-    if not image_path or not os.path.exists(image_path):
+    try:
+        image_path = validate_tool_input_path(image_path, label="image_path")
+    except UnsafeToolPathError as exc:
         return {
             "success": False,
-            "error_message": f"图像文件不存在: {image_path}"
+            "error_message": str(exc),
         }
     
     # 加载依赖
@@ -369,16 +382,13 @@ def radiomics_feature_extraction_tool(
     """
     
     # 参数验证
-    if not os.path.exists(image_path):
+    try:
+        image_path = validate_tool_input_path(image_path, label="image_path")
+        mask_path = validate_tool_input_path(mask_path, label="mask_path")
+    except UnsafeToolPathError as exc:
         return {
             "success": False,
-            "error_message": f"图像文件不存在: {image_path}"
-        }
-    
-    if not os.path.exists(mask_path):
-        return {
-            "success": False,
-            "error_message": f"掩膜文件不存在: {mask_path}"
+            "error_message": str(exc),
         }
     
     # 加载依赖
@@ -725,10 +735,12 @@ def comprehensive_radiomics_analysis(
         image_extensions = ['.png', '.jpg', '.jpeg']
     
     # 参数验证
-    if not os.path.exists(input_path):
+    try:
+        input_path = validate_tool_input_path(input_path, label="input_path")
+    except UnsafeToolPathError as exc:
         return {
             "success": False,
-            "error_message": f"路径不存在: {input_path}"
+            "error_message": str(exc),
         }
     
     # 判断是单张图像还是目录

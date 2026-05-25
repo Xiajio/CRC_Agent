@@ -27,10 +27,13 @@ tests/backend/*
 !tests/backend/test_demo_start_scripts.py
 !tests/backend/test_stream_callback_context.py
 !tests/backend/test_app_runtime_wiring.py
+!tests/backend/test_assets_api.py
+!tests/backend/test_auth_security.py
 !tests/backend/test_graph_service_streaming.py
 !tests/backend/test_patient_context_resolver.py
 !tests/backend/test_patient_event_sourcing.py
 !tests/backend/test_scene_sessions.py
+!tests/backend/test_tool_path_security.py
 !tests/backend/test_upload_registry_intake.py
 !tests/e2e/
 tests/e2e/*

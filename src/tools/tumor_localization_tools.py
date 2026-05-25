@@ -16,6 +16,13 @@ from langchain_core.tools import tool, StructuredTool
 from langchain_core.messages import ToolMessage
 from pydantic import BaseModel, Field
 
+from .path_security import (
+    UnsafeToolPathError,
+    safe_torch_load,
+    validate_model_path,
+    validate_tool_input_path,
+)
+
 # 注意：torch 和相关库使用延迟导入
 # 这样即使这些包没安装，智能体也能启动，只是不能使用肿瘤定位功能
 
@@ -64,13 +71,17 @@ def get_localization_model(model_path: str = None):
     """
     global _localization_model, _model_path, _device
     
-    if model_path is None:
-        model_path = os.path.join(
-            os.path.dirname(__file__),
-            "tool",
-            "Tumor_Localization",
-            "checkpoint_epoch_last.pth"
-        )
+    default_model_path = os.path.join(
+        os.path.dirname(__file__),
+        "tool",
+        "Tumor_Localization",
+        "checkpoint_epoch_last.pth",
+    )
+    try:
+        model_path = validate_model_path(model_path, default_path=default_model_path)
+    except UnsafeToolPathError as exc:
+        print(f"[TumorLocalization] rejected model path: {exc}")
+        return None
     
     # 如果模型已加载且路径相同，直接返回
     if _localization_model is not None and _model_path == model_path:
@@ -117,7 +128,7 @@ def get_localization_model(model_path: str = None):
         )
         
         # 加载训练好的权重
-        checkpoint = torch.load(model_path, map_location=_device)
+        checkpoint = safe_torch_load(torch, model_path, map_location=_device)
         
         # 处理不同的checkpoint格式
         if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
@@ -172,6 +183,8 @@ def preprocess_image(image_path: str, target_size: Tuple[int, int] = (256, 256))
     Returns:
         预处理后的图像数组 (C, H, W)，归一化到[0, 1]
     """
+    image_path = validate_tool_input_path(image_path, label="image_path")
+
     cv2 = _import_cv2()
     if cv2 is None:
         raise ImportError("cv2模块未安装")
@@ -358,7 +371,13 @@ def tumor_localization_tool(
             "example_usage": "tumor_localization_tool(image_path='/path/to/ct_image.png')"
         }
     
-    image_path = image_path.strip()
+    try:
+        image_path = validate_tool_input_path(image_path.strip(), label="image_path")
+    except UnsafeToolPathError as exc:
+        return {
+            "success": False,
+            "error_message": str(exc),
+        }
     
     # 检查图像文件是否存在
     if not os.path.exists(image_path):
@@ -572,7 +591,13 @@ def batch_tumor_localization(
             "error_message": "错误：必须提供输入目录路径 (input_dir)"
         }
     
-    input_dir = input_dir.strip()
+    try:
+        input_dir = validate_tool_input_path(input_dir.strip(), label="input_dir")
+    except UnsafeToolPathError as exc:
+        return {
+            "success": False,
+            "error_message": str(exc),
+        }
     
     # 设置默认图像扩展名
     if image_extensions is None:

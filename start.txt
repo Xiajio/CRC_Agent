@@ -1,1 +1,0 @@
-powershell -ExecutionPolicy Bypass -File .\scripts\start_real.ps1 -WarmupRag

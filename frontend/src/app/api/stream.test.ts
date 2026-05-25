@@ -77,6 +77,31 @@ describe("consumeSseResponse", () => {
     );
     expect(traceTap).toHaveBeenCalledTimes(1);
   });
+
+  it("surfaces backend error details for failed stream responses", async () => {
+    const response = new Response(JSON.stringify({ detail: "backend fixture unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+
+    await expect(consumeSseResponse(response, vi.fn())).rejects.toThrow("backend fixture unavailable");
+  });
+
+  it("falls back to plain-text error bodies and status-only responses", async () => {
+    const plainTextResponse = new Response("maintenance in progress", {
+      status: 503,
+      headers: { "Content-Type": "text/plain" },
+    });
+    const emptyResponse = new Response("", {
+      status: 502,
+      headers: { "Content-Type": "application/json" },
+    });
+
+    await expect(consumeSseResponse(plainTextResponse, vi.fn())).rejects.toThrow("maintenance in progress");
+    await expect(consumeSseResponse(emptyResponse, vi.fn())).rejects.toThrow(
+      "Stream request failed with status 502",
+    );
+  });
 });
 
 describe("streamJsonEvents", () => {

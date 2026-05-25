@@ -11,6 +11,7 @@ import { buildApiClientStub, makeSessionResponse } from "../../test/test-utils";
 import { createInitialSessionState } from "../../app/store/stream-reducer";
 import { useTurnLatencyProbe } from "./use-turn-latency-probe";
 import { useWorkspaceStreamingTurn } from "./use-workspace-streaming-turn";
+import { STREAM_EMPTY_RESPONSE_MESSAGE } from "./workspace-flow-utils";
 
 vi.mock("../../app/api/generate-trace-id");
 
@@ -118,6 +119,103 @@ describe("useWorkspaceStreamingTurn", () => {
     expect(view.result.current.turn.isStreaming).toBe(false);
     expect(view.result.current.turn.errorMessage).toBeNull();
     expect(view.result.current.traceStoreRef.current.getTrace("trace-1")?.status).toBe("active");
+  });
+
+  it("does not mark card-only turns as empty when the stream ends after card upserts", async () => {
+    const streamTurn = vi.fn(
+      async (_sessionId: string, _request: unknown, onEvent: (event: StreamEvent) => void) => {
+        onEvent({
+          type: "card.upsert",
+          card_type: "triage_summary",
+          payload: { summary: "needs follow-up" },
+        });
+        onEvent({
+          type: "done",
+          thread_id: "thread-patient",
+          run_id: "run-1",
+          snapshot_version: 2,
+        });
+      },
+    );
+    const apiClient = buildApiClientStub({ streamTurn });
+    const view = createTurnHarness({
+      apiClient,
+      scene: "patient",
+      sessionState: makeSessionState({
+        sessionId: "patient-session",
+      }),
+    });
+
+    await act(async () => {
+      await view.result.current.turn.submitPrompt("hello");
+    });
+
+    expect(view.result.current.state.lastError).toBeNull();
+    expect(view.result.current.turn.errorMessage).toBeNull();
+    expect(view.result.current.turn.isStreaming).toBe(false);
+  });
+
+  it("surfaces backend stream error details as a recoverable turn error", async () => {
+    const streamTurn = vi.fn(async () => {
+      throw new Error("backend fixture unavailable");
+    });
+    const apiClient = buildApiClientStub({ streamTurn });
+    const view = createTurnHarness({
+      apiClient,
+      scene: "patient",
+      sessionState: makeSessionState({
+        sessionId: "patient-session",
+      }),
+    });
+
+    await act(async () => {
+      await view.result.current.turn.submitPrompt("hello");
+    });
+
+    expect(view.result.current.state.lastError).toMatchObject({
+      code: "STREAM_REQUEST_FAILED",
+      message: "backend fixture unavailable",
+      recoverable: true,
+    });
+    expect(view.result.current.turn.errorMessage).toBe("backend fixture unavailable");
+    expect(view.result.current.latencyProbe.activeProbe?.status).toBe("error");
+    expect(view.result.current.turn.isStreaming).toBe(false);
+  });
+
+  it("marks the turn recoverable when the stream ends without visible assistant output", async () => {
+    const streamTurn = vi.fn(
+      async (_sessionId: string, _request: unknown, onEvent: (event: StreamEvent) => void) => {
+        onEvent({
+          type: "done",
+          thread_id: "thread-patient",
+          run_id: "run-1",
+          snapshot_version: 2,
+        });
+      },
+    );
+    const apiClient = buildApiClientStub({ streamTurn });
+    const view = createTurnHarness({
+      apiClient,
+      scene: "patient",
+      sessionState: makeSessionState({
+        sessionId: "patient-session",
+      }),
+    });
+
+    await act(async () => {
+      await view.result.current.turn.submitPrompt("hello");
+    });
+
+    expect(view.result.current.state.messages).toHaveLength(1);
+    expect(view.result.current.state.messages[0]).toMatchObject({ type: "human", content: "hello" });
+    expect(view.result.current.state.lastError).toMatchObject({
+      code: "STREAM_EMPTY_RESPONSE",
+      message: STREAM_EMPTY_RESPONSE_MESSAGE,
+      recoverable: true,
+    });
+    expect(view.result.current.turn.errorMessage).toBe(STREAM_EMPTY_RESPONSE_MESSAGE);
+    expect(view.result.current.latencyProbe.activeProbe?.status).toBe("error");
+    expect(view.result.current.turn.isStreaming).toBe(false);
   });
 
   it("ignores blank prompt submissions", async () => {

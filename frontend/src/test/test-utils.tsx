@@ -168,6 +168,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
   const streamTurn = vi.fn(async () => undefined);
   const uploadFile = vi.fn(async () => ({
     asset_id: "1",
+    asset_url: "/api/sessions/sess-patient/assets/1",
     filename: "report.pdf",
     content_type: "application/pdf",
     size: 4,
@@ -175,6 +176,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
     reused: false,
     derived: { record_id: 1 },
   }));
+  const downloadSessionAsset = vi.fn(async () => new Blob(["asset"], { type: "application/octet-stream" }));
   const resetSession = vi.fn(async (sessionId: string) => makeSessionResponse({ session_id: sessionId, scene: "patient" }));
   const bindPatient = vi.fn(async (sessionId: string, patientId: number) =>
     makeSessionResponse({
@@ -246,6 +248,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
     getMessages,
     streamTurn,
     uploadFile,
+    downloadSessionAsset,
     resetSession,
     bindPatient,
     saveSessionPatientIdentity,
