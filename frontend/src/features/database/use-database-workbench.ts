@@ -218,8 +218,11 @@ function normalizeRecordValue(field: string, value: unknown): unknown {
   }
 
   if (NUMERIC_RECORD_FIELDS.has(field)) {
-    const normalized = normalizeOptionalNumber(value);
-    return normalized ?? value;
+    // Returning the raw user input on parse failure used to surface as HTTP
+    // 500 from the backend ("invalid age"). Returning null forwards the empty
+    // intent cleanly, and the saveRecord guard catches required-field cases
+    // before the request leaves the client.
+    return normalizeOptionalNumber(value);
   }
 
   if (typeof value !== "string") {
@@ -227,6 +230,32 @@ function normalizeRecordValue(field: string, value: unknown): unknown {
   }
 
   return value.trim() ? value : "";
+}
+
+export const REQUIRED_UPSERT_FIELDS = [
+  "patient_id",
+  "gender",
+  "age",
+  "histology_type",
+  "tumor_location",
+  "ct_stage",
+  "cn_stage",
+  "clinical_stage",
+  "cea_level",
+  "mmr_status",
+] as const;
+
+export function findMissingRequiredFields(record: Record<string, unknown>): string[] {
+  return REQUIRED_UPSERT_FIELDS.filter((field) => {
+    const value = record[field];
+    if (value === null || value === undefined) {
+      return true;
+    }
+    if (typeof value === "string" && !value.trim()) {
+      return true;
+    }
+    return false;
+  });
 }
 
 export function normalizeRecordForUpsert(record: Record<string, unknown>): JsonObject {
@@ -451,16 +480,25 @@ export function useDatabaseWorkbench(options: UseDatabaseWorkbenchOptions = {}) 
       return;
     }
 
+    const normalizedRecord = normalizeRecordForUpsert({
+      ...(detail?.case_record ?? {}),
+      ...editRecord,
+      patient_id: patientId,
+    });
+
+    const missing = findMissingRequiredFields(normalizedRecord);
+    if (missing.length > 0) {
+      setPageError(`以下必填字段未填写，请补齐后再保存：${missing.join("、")}`);
+      return;
+    }
+
     setIsSaving(true);
     setPageError(null);
 
     try {
       const response = await apiClient.upsertDatabaseCase({
-        record: normalizeRecordForUpsert({
-          ...(detail?.case_record ?? {}),
-          ...editRecord,
-          patient_id: patientId,
-        }),
+        record: normalizedRecord,
+        mode: "full",
       });
 
       setDetail(response);

@@ -444,7 +444,14 @@ describe("DoctorSceneShell", () => {
     );
   });
 
-  it("renders clinical stream events when the session has event log entries", () => {
+  it("renders clinical stream events with localized labels", () => {
+    const safetyReview = "\u5b89\u5168\u590d\u6838";
+    const safetyReviewRejected = "\u5b89\u5168\u590d\u6838\u672a\u901a\u8fc7";
+    const rejected = "\u672a\u901a\u8fc7";
+    const roadmapKind = "\u8def\u7ebf\u56fe\u66f4\u65b0";
+    const roadmapUpdated = "\u8def\u7ebf\u56fe\u5df2\u66f4\u65b0";
+    const stepCount = "2 \u4e2a\u6b65\u9aa4";
+
     renderDoctorSceneShell({
       eventLog: [
         {
@@ -455,6 +462,14 @@ describe("DoctorSceneShell", () => {
           tone: "warning",
           requiresHumanReview: true,
         },
+        {
+          id: "event-2",
+          kind: "roadmap",
+          title: "Roadmap updated",
+          detail: "2 step(s)",
+          tone: "neutral",
+          requiresHumanReview: false,
+        },
       ],
       critic: {
         verdict: "REJECTED",
@@ -463,8 +478,19 @@ describe("DoctorSceneShell", () => {
       },
     } as any);
 
-    expect(screen.getByText("Critic REJECTED")).toBeInTheDocument();
+    expect(screen.getByText(safetyReviewRejected)).toBeInTheDocument();
+    expect(screen.getAllByText(safetyReview).length).toBeGreaterThan(0);
+    expect(screen.getByText(rejected)).toBeInTheDocument();
+    expect(screen.getByText(roadmapUpdated)).toBeInTheDocument();
+    expect(screen.getByText(roadmapKind)).toBeInTheDocument();
+    expect(screen.getByText(stepCount)).toBeInTheDocument();
     expect(screen.getAllByText("missing references").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Critic REJECTED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^critic$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^REJECTED$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Roadmap updated/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^roadmap$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/step\(s\)/)).not.toBeInTheDocument();
     expect(screen.getAllByText("需人工复核").length).toBeGreaterThan(0);
   });
 

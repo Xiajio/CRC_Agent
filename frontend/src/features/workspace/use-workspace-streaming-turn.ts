@@ -68,7 +68,17 @@ export type UseWorkspaceStreamingTurnOptions = {
   traceStoreRef: MutableRefObject<ChatLatencyTraceStore>;
   latencyProbe: TurnLatencyApi;
   primeInitialState?: (state: SessionState, prompt: string) => SessionState;
+  /**
+   * Invoked when an HTTP 404 surfaces from the backend, signalling the
+   * persisted session no longer exists. Implementations should create a fresh
+   * scene session and hydrate state; this hook only handles surfacing the
+   * recovery message to the user.
+   */
+  onSessionExpired?: (scene: Scene) => Promise<SessionResponse | null>;
 };
+
+const SESSION_EXPIRED_TURN_MESSAGE =
+  "后端会话已失效，本轮消息未发送成功。系统已为您创建新会话，请重新发送。";
 
 export type UseWorkspaceStreamingTurn = {
   isStreaming: boolean;
@@ -89,6 +99,7 @@ export function useWorkspaceStreamingTurn({
   traceStoreRef,
   latencyProbe,
   primeInitialState,
+  onSessionExpired,
 }: UseWorkspaceStreamingTurnOptions): UseWorkspaceStreamingTurn {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -242,7 +253,8 @@ export function useWorkspaceStreamingTurn({
           && activeStreamRef.current === controller
           && streamSequenceRef.current === sequence
         ) {
-          const message = readWorkspaceErrorMessage(error);
+          const expired = isNotFoundApiError(error);
+          const message = expired ? SESSION_EXPIRED_TURN_MESSAGE : readWorkspaceErrorMessage(error);
           const errorAt = performance.now();
           latencyProbe.markError({
             sequence,
@@ -256,12 +268,15 @@ export function useWorkspaceStreamingTurn({
           setSessionState((current) =>
             reduceStreamEvent(current, {
               type: "error",
-              code: "STREAM_REQUEST_FAILED",
+              code: expired ? "SESSION_NOT_FOUND" : "STREAM_REQUEST_FAILED",
               message,
               recoverable: true,
             }),
           );
           setErrorMessage(message);
+          if (expired && onSessionExpired) {
+            void onSessionExpired(scene);
+          }
         }
       } finally {
         if (streamSequenceRef.current === sequence) {
@@ -288,11 +303,23 @@ export function useWorkspaceStreamingTurn({
       const history = await apiClient.getMessages(sessionId, before, 20);
       setSessionState((current) => mergeMessageHistory(current, history, "prepend"));
     } catch (error) {
-      setErrorMessage(readWorkspaceErrorMessage(error));
+      if (isNotFoundApiError(error) && onSessionExpired) {
+        void onSessionExpired(scene);
+        setErrorMessage(SESSION_EXPIRED_TURN_MESSAGE);
+      } else {
+        setErrorMessage(readWorkspaceErrorMessage(error));
+      }
     } finally {
       setIsLoadingHistory(false);
     }
-  }, [apiClient, sessionState.sessionId, sessionState.messagesNextBeforeCursor, setSessionState]);
+  }, [
+    apiClient,
+    onSessionExpired,
+    scene,
+    sessionState.sessionId,
+    sessionState.messagesNextBeforeCursor,
+    setSessionState,
+  ]);
 
   const resetScene = useCallback(async (): Promise<boolean> => {
     const sessionId = sessionState.sessionId;

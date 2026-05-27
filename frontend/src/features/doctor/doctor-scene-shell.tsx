@@ -10,6 +10,12 @@ import {
   CLINICAL_HUMAN_REVIEW_LABEL,
   CLINICAL_PATIENT_SCENE_ARIA_LABEL,
 } from "../../app/clinical/clinical-copy";
+import {
+  formatClinicalCriticVerdict,
+  formatClinicalEventDetail,
+  formatClinicalEventKind,
+  formatClinicalEventTitle,
+} from "../../app/clinical/clinical-event-labels";
 import { compactClinicalEventDetail, formatCriticFeedback } from "../../app/clinical/critic-feedback";
 import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
@@ -397,6 +403,7 @@ function ClinicalEventStream({
 }) {
   const requiresHumanReview = criticRequiresHumanReview(critic);
   const reviewFeedback = formatCriticFeedback(critic?.feedback);
+  const reviewVerdict = formatClinicalCriticVerdict(critic?.verdict);
   return (
     <Card as="section" padding="none" className="clinical-card clinical-event-stream">
       <ClinicalPanelHeader icon={<SmallIcon name="event" />} title="事件流" />
@@ -404,7 +411,7 @@ function ClinicalEventStream({
         <div className="clinical-review-warning" role="status">
           <div className="clinical-review-warning-head">
             <strong>{CLINICAL_HUMAN_REVIEW_LABEL}</strong>
-            {typeof critic?.verdict === "string" ? <span>{critic.verdict}</span> : null}
+            {reviewVerdict ? <span>{reviewVerdict}</span> : null}
           </div>
           <p className="clinical-review-feedback">{reviewFeedback}</p>
         </div>
@@ -412,17 +419,18 @@ function ClinicalEventStream({
       {events.length > 0 ? (
         <div className="clinical-event-row">
           {events.map((event) => {
-            const detail = event.kind === "critic"
+            const rawDetail = event.kind === "critic"
               ? compactClinicalEventDetail(event.detail)
               : event.detail;
+            const detail = formatClinicalEventDetail(rawDetail);
             return (
               <article
                 key={event.id}
                 className={`clinical-event-chip clinical-event-chip-${event.tone}`}
               >
                 <div>
-                  <strong>{event.title}</strong>
-                  <span>{event.kind}</span>
+                  <strong>{formatClinicalEventTitle(event)}</strong>
+                  <span>{formatClinicalEventKind(event.kind)}</span>
                 </div>
                 {detail ? <p>{detail}</p> : null}
                 {event.requiresHumanReview ? <p>{CLINICAL_HUMAN_REVIEW_LABEL}</p> : null}

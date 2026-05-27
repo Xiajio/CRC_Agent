@@ -27,11 +27,13 @@ function createTurnHarness({
   sessionState,
   applySessionResponse,
   apiClient,
+  onSessionExpired,
 }: {
   scene?: "patient" | "doctor";
   sessionState: SessionState;
   applySessionResponse?: (response: SessionResponse) => void;
   apiClient: ApiClient;
+  onSessionExpired?: (scene: "patient" | "doctor") => Promise<SessionResponse | null>;
 }) {
   return renderHook(() => {
     const [state, setState] = useState(sessionState);
@@ -55,6 +57,7 @@ function createTurnHarness({
         markMessageDone: latencyProbe.markMessageDone,
         markUiComplete: latencyProbe.markUiComplete,
       },
+      onSessionExpired,
     });
 
     return {
@@ -128,6 +131,7 @@ describe("useWorkspaceStreamingTurn", () => {
           type: "card.upsert",
           card_type: "triage_summary",
           payload: { summary: "needs follow-up" },
+          source_channel: "state",
         });
         onEvent({
           type: "done",
@@ -540,6 +544,52 @@ describe("useWorkspaceStreamingTurn", () => {
     expect(didReset).toBe(true);
     expect(applySessionResponse).toHaveBeenCalledWith(replacement);
     expect(view.result.current.turn.errorMessage).toBeNull();
+  });
+
+  it("notifies onSessionExpired and surfaces a recovery message when streamTurn returns 404", async () => {
+    const streamTurn = vi.fn(async () => {
+      const error = new Error("Session not found") as Error & { status: number };
+      error.status = 404;
+      throw error;
+    });
+    const onSessionExpired = vi.fn(async () => makeSessionResponse({ session_id: "recovered" }));
+    const apiClient = buildApiClientStub({ streamTurn });
+    const view = createTurnHarness({
+      apiClient,
+      onSessionExpired,
+      sessionState: makeSessionState({ sessionId: "patient-session" }),
+    });
+
+    await act(async () => {
+      await view.result.current.turn.submitPrompt("hello");
+    });
+
+    expect(onSessionExpired).toHaveBeenCalledWith("patient");
+    expect(view.result.current.turn.errorMessage).toContain("会话已失效");
+    expect(view.result.current.state.lastError?.code).toBe("SESSION_NOT_FOUND");
+  });
+
+  it("notifies onSessionExpired when loadMessageHistory hits 404", async () => {
+    const getMessages = vi.fn(async () => {
+      throw new ApiClientError(404, "Session not found", { detail: "missing" });
+    });
+    const onSessionExpired = vi.fn(async () => makeSessionResponse({ session_id: "recovered" }));
+    const apiClient = buildApiClientStub({ getMessages });
+    const view = createTurnHarness({
+      apiClient,
+      onSessionExpired,
+      sessionState: makeSessionState({
+        sessionId: "patient-session",
+        messagesNextBeforeCursor: "10",
+      }),
+    });
+
+    await act(async () => {
+      await view.result.current.turn.loadMessageHistory();
+    });
+
+    expect(onSessionExpired).toHaveBeenCalledWith("patient");
+    expect(view.result.current.turn.errorMessage).toContain("会话已失效");
   });
 
   it("aborts active stream and records client abort", async () => {

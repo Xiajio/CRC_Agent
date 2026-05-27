@@ -8,6 +8,12 @@ import type {
   PatientRegistryRecord,
 } from "../../app/api/types";
 import { CLINICAL_HUMAN_REVIEW_LABEL } from "../../app/clinical/clinical-copy";
+import {
+  formatClinicalCriticVerdict,
+  formatClinicalEventDetail,
+  formatClinicalEventKind,
+  formatClinicalEventTitle,
+} from "../../app/clinical/clinical-event-labels";
 import { compactClinicalEventDetail, formatCriticFeedback } from "../../app/clinical/critic-feedback";
 import { Button, Card } from "../../components/ui";
 import { ClinicalCardsPanel } from "../cards/clinical-cards-panel";
@@ -394,6 +400,7 @@ function renderReviewPanel(props: DoctorMultimodalViewProps) {
   const critic = props.critic ?? null;
   const requiresHumanReview = criticRequiresHumanReview(critic);
   const reviewFeedback = formatCriticFeedback(critic?.feedback);
+  const reviewVerdict = formatClinicalCriticVerdict(critic?.verdict);
   const recentEvents = (props.eventLog ?? []).slice(-4);
 
   return (
@@ -405,19 +412,20 @@ function renderReviewPanel(props: DoctorMultimodalViewProps) {
       {requiresHumanReview ? (
         <div className="clinical-multimodal-review-warning" role="status">
           <strong>{CLINICAL_HUMAN_REVIEW_LABEL}</strong>
-          {typeof critic?.verdict === "string" && critic.verdict.trim() ? <p>{critic.verdict.trim()}</p> : null}
+          {reviewVerdict ? <p>{reviewVerdict}</p> : null}
           <p>{reviewFeedback}</p>
         </div>
       ) : null}
       {recentEvents.length > 0 ? (
         <div className="clinical-multimodal-review-list">
           {recentEvents.map((event) => {
-            const detail = event.kind === "critic" ? compactClinicalEventDetail(event.detail) : event.detail;
+            const rawDetail = event.kind === "critic" ? compactClinicalEventDetail(event.detail) : event.detail;
+            const detail = formatClinicalEventDetail(rawDetail);
             return (
               <article key={event.id} className={`clinical-multimodal-review-entry clinical-multimodal-review-entry-${event.tone}`}>
                 <div className="clinical-multimodal-review-entry-head">
-                  <strong>{event.title}</strong>
-                  <span>{event.kind}</span>
+                  <strong>{formatClinicalEventTitle(event)}</strong>
+                  <span>{formatClinicalEventKind(event.kind)}</span>
                 </div>
                 {detail ? <p>{detail}</p> : null}
                 {event.requiresHumanReview ? <p>{CLINICAL_HUMAN_REVIEW_LABEL}</p> : null}

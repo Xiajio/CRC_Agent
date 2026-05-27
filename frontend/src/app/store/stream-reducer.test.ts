@@ -121,6 +121,22 @@ describe("reduceStreamEvent", () => {
     expect((state as any).eventLog[24]).toMatchObject({ title: "node-34" });
   });
 
+  it("keeps clinical event log ids unique after the bounded log starts pruning", () => {
+    let state = createInitialSessionState();
+
+    for (let index = 0; index < 35; index += 1) {
+      state = reduceStreamEvent(state, {
+        type: "plan.update",
+        plan: [{ id: "plan-1", title: "Treatment sequence", status: "completed" }],
+      });
+    }
+
+    const ids = (state as any).eventLog.map((entry: any) => entry.id);
+
+    expect(ids).toHaveLength(25);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
   it("records roadmap updates in the visible event log", () => {
     const state = reduceStreamEvent(createInitialSessionState(), {
       type: "roadmap.update",
@@ -257,6 +273,63 @@ describe("reduceStreamEvent", () => {
       content: "Hello world",
       thinking: "reasoning",
     });
+  });
+
+  it("appends a new assistant message when a later turn reuses a completed message id", () => {
+    const firstDone: MessageDoneEvent = {
+      type: "message.done",
+      role: "assistant",
+      message_id: "fixture-reused-id",
+      node: "triage",
+      content: "first fixture reply",
+    };
+    const secondDone: MessageDoneEvent = {
+      type: "message.done",
+      role: "assistant",
+      message_id: "fixture-reused-id",
+      node: "triage",
+      content: "second fixture reply",
+    };
+
+    const afterFirst = reduceStreamEvent(createInitialSessionState(), firstDone);
+    const finalState = reduceStreamEvent(afterFirst, secondDone);
+
+    expect(finalState.messages).toHaveLength(2);
+    expect(finalState.messages.map((message) => message.content)).toEqual([
+      "first fixture reply",
+      "second fixture reply",
+    ]);
+  });
+
+  it("starts a fresh streaming message when a later turn reuses a completed delta id", () => {
+    const firstDelta: MessageDeltaEvent = {
+      type: "message.delta",
+      message_id: "fixture-stream-id",
+      node: "triage",
+      delta: "first",
+    };
+    const firstDone: MessageDoneEvent = {
+      type: "message.done",
+      role: "assistant",
+      message_id: "fixture-stream-id",
+      node: "triage",
+      content: "first",
+    };
+    const secondDelta: MessageDeltaEvent = {
+      type: "message.delta",
+      message_id: "fixture-stream-id",
+      node: "triage",
+      delta: "second",
+    };
+
+    const finalFirst = reduceStreamEvent(
+      reduceStreamEvent(createInitialSessionState(), firstDelta),
+      firstDone,
+    );
+    const afterSecondDelta = reduceStreamEvent(finalFirst, secondDelta);
+
+    expect(afterSecondDelta.messages).toHaveLength(2);
+    expect(afterSecondDelta.messages.map((message) => message.content)).toEqual(["first", "second"]);
   });
 
   it("keeps inline cards attached when they arrive between message.delta and message.done", () => {

@@ -1,5 +1,6 @@
 import type { FrontendMessage } from "../../app/api/types";
 import type { ReactNode } from "react";
+import { CLINICAL_HUMAN_REVIEW_LABEL } from "../../app/clinical/clinical-copy";
 import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { Button, Card, MessageBubble, Textarea } from "../../components/ui";
 import {
@@ -47,6 +48,23 @@ const INTERNAL_LINE_PATTERNS = [
   /^\s*\ud83d\udccb\s*\u6cbb\u7597\u65b9\u6848\u5df2\u751f\u6210:.*$/gm,
 ];
 
+const HUMAN_REVIEW_WARNING_BLOCK_PATTERN =
+  /^\s*>\s*\[!WARNING\]\s*\r?\n\s*>\s*HUMAN_REVIEW_REQUIRED:\s*([^\r\n]*)/gim;
+const HUMAN_REVIEW_STATUS_LINE_PATTERN = /^\s*>?\s*HUMAN_REVIEW_REQUIRED:\s*([^\r\n]*)/gim;
+
+function formatHumanReviewWarning(reason: string): string {
+  const normalizedReason = reason.replace(/^>\s*/gm, "").replace(/\s+/g, " ").trim();
+  return normalizedReason
+    ? `${CLINICAL_HUMAN_REVIEW_LABEL}\uff1a${normalizedReason}`
+    : CLINICAL_HUMAN_REVIEW_LABEL;
+}
+
+function localizeHumanReviewWarning(text: string): string {
+  return text
+    .replace(HUMAN_REVIEW_WARNING_BLOCK_PATTERN, (_match, reason: string) => formatHumanReviewWarning(reason))
+    .replace(HUMAN_REVIEW_STATUS_LINE_PATTERN, (_match, reason: string) => formatHumanReviewWarning(reason));
+}
+
 function executionStatusLabel(statusNode: string | null, isStreaming: boolean): string {
   if (statusNode === "memory_manager") {
     return "记忆管理";
@@ -87,6 +105,7 @@ function normalizeMessageText(content: unknown): { text: string } {
   for (const pattern of INTERNAL_LINE_PATTERNS) {
     text = text.replace(pattern, "");
   }
+  text = localizeHumanReviewWarning(text);
 
   const trimmed = text.trim();
   if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {

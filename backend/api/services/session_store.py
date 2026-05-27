@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, field
-from threading import Lock
+from threading import Lock, RLock
 from typing import Any
 from uuid import uuid4
 
@@ -26,7 +26,7 @@ class InMemorySessionStore:
     def __init__(self) -> None:
         self._sessions: dict[str, SessionMeta] = {}
         self._run_locks: dict[str, Lock] = {}
-        self._store_lock = Lock()
+        self._store_lock = RLock()
 
     def reset(self) -> None:
         with self._store_lock:
@@ -124,6 +124,9 @@ class InMemorySessionStore:
 
     def restore_context_messages(self, session_id: str, messages: list[Any]) -> None:
         self._sessions[session_id].pending_context_messages.extend(messages)
+
+    def touch(self, session_id: str) -> None:
+        del session_id
 
     def bump_snapshot_version(self, session_id: str) -> int:
         with self._store_lock:

@@ -43,7 +43,12 @@ async def get_case_detail(patient_id: int) -> DatabaseCaseDetailResponse:
 
 @router.post("/cases/upsert", response_model=DatabaseCaseDetailResponse)
 async def upsert_case(body: DatabaseUpsertRequest) -> DatabaseCaseDetailResponse:
-    payload = upsert_database_case(body.record)
+    try:
+        payload = upsert_database_case(body.record, mode=body.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except DatabaseCaseNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Patient not found") from exc
     return DatabaseCaseDetailResponse(**payload)
 
 

@@ -5,7 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppProviders } from "../../app/providers";
 import type { DatabaseCaseDetailResponse } from "../../app/api/types";
 import { buildApiClientStub } from "../../test/test-utils";
-import { useDatabaseWorkbench } from "./use-database-workbench";
+import {
+  findMissingRequiredFields,
+  normalizeRecordForUpsert,
+  useDatabaseWorkbench,
+} from "./use-database-workbench";
 
 function createDeferred<T>() {
   let resolve!: (value: T) => void;
@@ -78,5 +82,142 @@ describe("useDatabaseWorkbench", () => {
     expect(result.current.detail?.patient_id).toBe(2);
     expect(result.current.editRecord?.patient_id).toBe(2);
     await waitFor(() => expect(result.current.isLoadingDetail).toBe(false));
+  });
+});
+
+describe("normalizeRecordForUpsert", () => {
+  it("forwards null for numeric fields when input cannot be parsed", () => {
+    const normalized = normalizeRecordForUpsert({
+      patient_id: 7,
+      age: "",
+      cea_level: "abc",
+      ecog_score: null,
+    });
+
+    expect(normalized.age).toBeNull();
+    expect(normalized.cea_level).toBeNull();
+    expect(normalized.ecog_score).toBeNull();
+  });
+
+  it("clears boolean fields when input is empty or null", () => {
+    const normalized = normalizeRecordForUpsert({
+      patient_id: 7,
+      family_history: "",
+      biopsy_confirmed: null,
+    });
+
+    expect(normalized.family_history).toBeNull();
+    expect(normalized.biopsy_confirmed).toBeNull();
+  });
+
+  it("clears risk_factors to empty array when input is empty", () => {
+    const normalized = normalizeRecordForUpsert({
+      patient_id: 7,
+      risk_factors: "",
+    });
+
+    expect(normalized.risk_factors).toEqual([]);
+  });
+});
+
+describe("findMissingRequiredFields", () => {
+  it("reports every missing required field", () => {
+    expect(
+      findMissingRequiredFields({
+        patient_id: 7,
+        gender: null,
+        age: null,
+        histology_type: "",
+      }),
+    ).toEqual(expect.arrayContaining(["gender", "age", "histology_type"]));
+  });
+
+  it("accepts numeric zero and non-empty strings", () => {
+    expect(
+      findMissingRequiredFields({
+        patient_id: 7,
+        gender: 1,
+        age: 0,
+        histology_type: "adenocarcinoma",
+        tumor_location: "rectum",
+        ct_stage: "3",
+        cn_stage: "1",
+        clinical_stage: "III",
+        cea_level: 0,
+        mmr_status: 1,
+      }),
+    ).toEqual([]);
+  });
+});
+
+describe("useDatabaseWorkbench.saveRecord", () => {
+  function makeDetail(patientId: number): DatabaseCaseDetailResponse {
+    return {
+      patient_id: patientId,
+      case_record: {
+        patient_id: patientId,
+        gender: 1,
+        age: 55,
+        histology_type: "adenocarcinoma",
+        tumor_location: "rectum",
+        ct_stage: "3",
+        cn_stage: "1",
+        clinical_stage: "III",
+        cea_level: 5.5,
+        mmr_status: 1,
+      },
+      available_data: { case_info: true, imaging: false, pathology_slides: false },
+      cards: {},
+    };
+  }
+
+  it("calls upsert with mode=full when all required fields are present", async () => {
+    const detail = makeDetail(7);
+    const getDatabaseCaseDetail = vi.fn(async () => detail);
+    const upsertDatabaseCase = vi.fn(async () => detail);
+    const apiClient = buildApiClientStub({ getDatabaseCaseDetail, upsertDatabaseCase });
+    const { result } = renderWorkbench(apiClient);
+
+    await act(async () => {
+      await result.current.loadCaseDetail(7);
+    });
+    await waitFor(() => expect(result.current.detail?.patient_id).toBe(7));
+
+    await act(async () => {
+      await result.current.saveRecord();
+    });
+
+    expect(upsertDatabaseCase).toHaveBeenCalledTimes(1);
+    const payload = upsertDatabaseCase.mock.calls[0][0];
+    expect(payload.mode).toBe("full");
+    expect(payload.record).toMatchObject({ patient_id: 7, age: 55, cea_level: 5.5 });
+  });
+
+  it("blocks the upsert request and surfaces an error when required fields are missing", async () => {
+    const detail = makeDetail(7);
+    const getDatabaseCaseDetail = vi.fn(async () => detail);
+    const upsertDatabaseCase = vi.fn(async () => detail);
+    const apiClient = buildApiClientStub({ getDatabaseCaseDetail, upsertDatabaseCase });
+    const { result } = renderWorkbench(apiClient);
+
+    await act(async () => {
+      await result.current.loadCaseDetail(7);
+    });
+    await waitFor(() => expect(result.current.detail?.patient_id).toBe(7));
+
+    act(() => {
+      result.current.setEditField("age", "");
+    });
+    act(() => {
+      result.current.setEditField("cea_level", "");
+    });
+
+    await act(async () => {
+      await result.current.saveRecord();
+    });
+
+    expect(upsertDatabaseCase).not.toHaveBeenCalled();
+    expect(result.current.pageError ?? "").toContain("age");
+    expect(result.current.pageError ?? "").toContain("cea_level");
   });
 });

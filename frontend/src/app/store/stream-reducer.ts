@@ -40,7 +40,13 @@ const EVENT_LOG_LIMIT = 25;
 type FrontendInlineCard = NonNullable<FrontendMessage["inlineCards"]>[number];
 
 function eventLogEntryId(state: SessionState, kind: ClinicalEventLogEntry["kind"], title: string): string {
-  const cursor = (state.eventLog ?? []).length + 1;
+  const cursor = Math.max(
+    0,
+    ...(state.eventLog ?? []).map((entry) => {
+      const match = entry.id.match(/^[^-]+-(\d+)-/);
+      return match ? Number.parseInt(match[1], 10) : 0;
+    }),
+  ) + 1;
   return `${kind}-${cursor}-${title.replace(/\s+/g, "-").toLowerCase()}`;
 }
 
@@ -268,11 +274,6 @@ function messageKey(message: FrontendMessage): string {
   return message.cursor || message.id || JSON.stringify([message.type, message.content]);
 }
 
-function findMessageCursorById(messages: FrontendMessage[], messageId: string): string | null {
-  const match = messages.find((message) => message.id === messageId);
-  return match?.cursor ?? null;
-}
-
 function nextMessageCursor(messages: FrontendMessage[]): string {
   const numericCursors = messages
     .map((message) => Number.parseInt(message.cursor, 10))
@@ -407,9 +408,7 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
     }
     case "message.delta":
       {
-        const existingCursor =
-          state.streamingMessageCursors[event.message_id] ??
-          findMessageCursorById(state.messages, event.message_id);
+        const existingCursor = state.streamingMessageCursors[event.message_id];
 
         if (existingCursor) {
           return {
@@ -461,9 +460,7 @@ export function reduceStreamEvent(state: SessionState, event: StreamEvent): Sess
     case "message.done":
       {
         const eventInlineCards = (event.inline_cards ?? []).map(normalizeInlineCard);
-        const existingCursor =
-          (event.message_id ? state.streamingMessageCursors[event.message_id] : null) ??
-          (event.message_id ? findMessageCursorById(state.messages, event.message_id) : null);
+        const existingCursor = event.message_id ? state.streamingMessageCursors[event.message_id] : null;
 
         if (existingCursor) {
           const nextStreamingMessageCursors = { ...state.streamingMessageCursors };

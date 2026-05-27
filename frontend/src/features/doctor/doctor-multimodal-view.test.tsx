@@ -199,6 +199,8 @@ describe("DoctorMultimodalView", () => {
   });
 
   it("renders critic review output without leaking raw thinking blocks", () => {
+    const safetyReviewRejected = "\u5b89\u5168\u590d\u6838\u672a\u901a\u8fc7";
+    const rejected = "\u672a\u901a\u8fc7";
     const critic: JsonObject = {
       requires_human_review: true,
       verdict: "REJECTED",
@@ -208,7 +210,7 @@ describe("DoctorMultimodalView", () => {
       {
         id: "event-1",
         kind: "critic",
-        title: "Critic event",
+        title: "Critic REJECTED",
         detail: "<think>hidden</think>Critic detail that should be compacted",
         tone: "warning",
         requiresHumanReview: true,
@@ -221,9 +223,13 @@ describe("DoctorMultimodalView", () => {
     });
 
     expect(screen.getAllByText("需人工复核")).toHaveLength(2);
-    expect(screen.getByText("REJECTED")).toBeInTheDocument();
+    expect(screen.getByText(safetyReviewRejected)).toBeInTheDocument();
+    expect(screen.getByText(rejected)).toBeInTheDocument();
     expect(screen.getByText("Need a clearer differential diagnosis.")).toBeInTheDocument();
     expect(screen.getByText("Critic detail that should be compacted")).toBeInTheDocument();
+    expect(screen.queryByText(/Critic REJECTED/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^critic$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^REJECTED$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/<think>/)).not.toBeInTheDocument();
   });
 

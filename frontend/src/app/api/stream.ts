@@ -57,13 +57,23 @@ async function readStreamErrorMessage(response: Response): Promise<string> {
   }
 }
 
+export class StreamRequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "StreamRequestError";
+    this.status = status;
+  }
+}
+
 export async function consumeSseResponse(
   response: Response,
   onEvent: (event: StreamEvent) => void,
   traceTap?: StreamTraceTap,
 ): Promise<void> {
   if (!response.ok) {
-    throw new Error(await readStreamErrorMessage(response));
+    throw new StreamRequestError(response.status, await readStreamErrorMessage(response));
   }
 
   if (!response.body) {

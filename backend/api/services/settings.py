@@ -6,6 +6,7 @@ from typing import Literal
 
 
 AuthMode = Literal["none", "bearer"]
+SessionStoreBackend = Literal["memory", "sqlite"]
 
 
 def _parse_bool(value: str | None, default: bool) -> bool:
@@ -31,6 +32,32 @@ def _parse_auth_mode(value: str | None) -> AuthMode:
     raise RuntimeError("AUTH_MODE must be one of: none, bearer")
 
 
+def _parse_session_store_backend(value: str | None) -> SessionStoreBackend:
+    if value is None:
+        return "memory"
+    normalized = value.strip().lower()
+    if not normalized:
+        return "memory"
+    if normalized in {"memory", "sqlite"}:
+        return normalized
+    raise RuntimeError("SESSION_STORE_BACKEND must be one of: memory, sqlite")
+
+
+def _parse_optional_int(value: str | None, default: int | None) -> int | None:
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"", "none", "null"}:
+        return None
+    try:
+        parsed = int(normalized)
+    except ValueError as exc:
+        raise RuntimeError("SESSION_STORE_TTL_DAYS must be an integer, none, or null") from exc
+    if parsed < 0:
+        raise RuntimeError("SESSION_STORE_TTL_DAYS must be >= 0")
+    return parsed
+
+
 @dataclass(slots=True)
 class RuntimeSettings:
     auth_mode: AuthMode = "bearer"
@@ -39,6 +66,9 @@ class RuntimeSettings:
     frontend_origins: list[str] | None = None
     graph_runner_mode: str = "real"
     rag_warmup: bool = True
+    session_store_backend: SessionStoreBackend = "memory"
+    session_store_sqlite_path: str | None = None
+    session_store_ttl_days: int | None = 7
 
 
 def load_runtime_settings() -> RuntimeSettings:
@@ -61,6 +91,11 @@ def load_runtime_settings() -> RuntimeSettings:
         frontend_origins=frontend_origins,
         graph_runner_mode=os.getenv("GRAPH_RUNNER_MODE", "real").strip().lower() or "real",
         rag_warmup=_parse_bool(os.getenv("RAG_WARMUP"), default=True),
+        session_store_backend=_parse_session_store_backend(os.getenv("SESSION_STORE_BACKEND")),
+        session_store_sqlite_path=(
+            os.getenv("SESSION_STORE_SQLITE_PATH", "").strip() or None
+        ),
+        session_store_ttl_days=_parse_optional_int(os.getenv("SESSION_STORE_TTL_DAYS"), 7),
     )
     if settings.auth_mode == "bearer" and not settings.api_bearer_token:
         raise RuntimeError("API_BEARER_TOKEN must be set when AUTH_MODE=bearer")

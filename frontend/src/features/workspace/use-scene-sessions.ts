@@ -87,13 +87,18 @@ type LoadedSessionResult = {
   stale: boolean;
 };
 
+export const SESSION_RECOVERY_NOTICE =
+  "后端会话已失效，已为您创建新会话；上一轮历史已无法继续，请重新发送或重新上传。";
+
 export function useSceneSessions() {
   const apiClient = useApiClient();
   const [activeScene, setActiveSceneState] = useState<Scene>(() => readPersistedActiveScene());
   const [bootstrapStatus, setBootstrapStatus] = useState<SceneBootstrapStatus>("loading");
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
+  const [bootstrapRecoveredScenes, setBootstrapRecoveredScenes] = useState<Scene[]>([]);
   const [patientState, setPatientState] = useState<SessionState>(() => createInitialSessionState());
   const [doctorState, setDoctorState] = useState<SessionState>(() => createInitialSessionState());
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
 
   const setActiveScene = useCallback((scene: Scene) => {
     setActiveSceneState(scene);
@@ -104,6 +109,27 @@ export function useSceneSessions() {
     persistSessionId(sceneStorageKey(scene), response.session_id);
     const setState = scene === "patient" ? setPatientState : setDoctorState;
     setState((current) => hydrateSessionState(current, response));
+  }, []);
+
+  const recoverScene = useCallback(
+    async (scene: Scene): Promise<SessionResponse | null> => {
+      try {
+        const response = await apiClient.createSession(scene);
+        applyResponseToScene(scene, response);
+        setRecoveryNotice(SESSION_RECOVERY_NOTICE);
+        return response;
+      } catch {
+        // The caller is responsible for surfacing the original error to the
+        // user; we deliberately swallow the recovery failure so that we never
+        // shadow the actionable upstream message.
+        return null;
+      }
+    },
+    [apiClient, applyResponseToScene],
+  );
+
+  const dismissRecoveryNotice = useCallback(() => {
+    setRecoveryNotice(null);
   }, []);
 
   useEffect(() => {
@@ -148,11 +174,18 @@ export function useSceneSessions() {
           clearPersistedSessionId(DOCTOR_SESSION_STORAGE_KEY);
         }
 
+        const recovered: Scene[] = [];
         if (patientResponse === null) {
           patientResponse = await apiClient.createSession("patient");
+          if (patientLoaded.stale) {
+            recovered.push("patient");
+          }
         }
         if (doctorResponse === null) {
           doctorResponse = await apiClient.createSession("doctor");
+          if (doctorLoaded.stale) {
+            recovered.push("doctor");
+          }
         }
 
         if (cancelled || patientResponse === null || doctorResponse === null) {
@@ -161,6 +194,10 @@ export function useSceneSessions() {
 
         applyResponseToScene("patient", patientResponse);
         applyResponseToScene("doctor", doctorResponse);
+        setBootstrapRecoveredScenes(recovered);
+        if (recovered.length > 0) {
+          setRecoveryNotice(SESSION_RECOVERY_NOTICE);
+        }
         setBootstrapStatus("ready");
       } catch (error) {
         if (cancelled) {
@@ -195,8 +232,12 @@ export function useSceneSessions() {
     setActiveScene,
     bootstrapStatus,
     bootstrapError,
+    bootstrapRecoveredScenes,
     patient,
     doctor,
     applyResponseToScene,
+    recoverScene,
+    recoveryNotice,
+    dismissRecoveryNotice,
   };
 }

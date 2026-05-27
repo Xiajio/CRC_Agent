@@ -206,7 +206,26 @@ def get_database_case_detail(patient_id: int) -> dict[str, Any]:
     }
 
 
-def upsert_database_case(record: dict[str, Any]) -> dict[str, Any]:
+def upsert_database_case(record: dict[str, Any], *, mode: str = "full") -> dict[str, Any]:
+    if mode not in {"full", "partial"}:
+        raise ValueError(f"invalid upsert mode: {mode!r}")
+
+    if mode == "full":
+        # Import lazily to avoid a circular dependency on schema module load.
+        from backend.api.schemas.database import REQUIRED_FULL_UPSERT_FIELDS
+
+        missing = [
+            field
+            for field in REQUIRED_FULL_UPSERT_FIELDS
+            if field not in record
+            or record[field] is None
+            or (isinstance(record[field], str) and not record[field].strip())
+        ]
+        if missing:
+            raise ValueError(
+                "missing required fields for full upsert: " + ", ".join(missing)
+            )
+
     upsert_case_record(virtual_db_module.CLASSIFICATION_FILE, record)
     patient_id = int(record["patient_id"])
     db = get_case_database()

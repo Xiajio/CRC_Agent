@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 import type { ApiClient } from "../../app/api/client";
-import type { SessionResponse, SessionState, UploadResponse } from "../../app/api/types";
+import type { Scene, SessionResponse, SessionState, UploadResponse } from "../../app/api/types";
 import {
+  isNotFoundApiError,
   readUploadMaxBytes,
   readWorkspaceErrorMessage,
   uploadTooLargeMessage,
@@ -13,7 +14,11 @@ export type UsePatientUploadsOptions = {
   patientSessionId: string | null;
   setPatientState: Dispatch<SetStateAction<SessionState>>;
   applyPatientResponse: (response: SessionResponse) => void;
+  onSessionExpired?: (scene: Scene) => Promise<SessionResponse | null>;
 };
+
+const SESSION_EXPIRED_UPLOAD_MESSAGE =
+  "后端会话已失效，文件未上传成功。系统已为您创建新会话，请重新选择文件上传。";
 
 export type PatientUploadsController = {
   isUploading: boolean;
@@ -32,6 +37,7 @@ export function usePatientUploads({
   patientSessionId,
   setPatientState,
   applyPatientResponse,
+  onSessionExpired,
 }: UsePatientUploadsOptions): PatientUploadsController {
   const uploadSequenceRef = useRef(0);
   const previousPatientSessionIdRef = useRef(patientSessionId);
@@ -127,7 +133,12 @@ export function usePatientUploads({
         return;
       }
 
-      setErrorMessage(readWorkspaceErrorMessage(error));
+      if (isNotFoundApiError(error) && onSessionExpired) {
+        void onSessionExpired("patient");
+        setErrorMessage(SESSION_EXPIRED_UPLOAD_MESSAGE);
+      } else {
+        setErrorMessage(readWorkspaceErrorMessage(error));
+      }
       setUploadStatus(null);
     } finally {
       if (sequence === uploadSequenceRef.current) {

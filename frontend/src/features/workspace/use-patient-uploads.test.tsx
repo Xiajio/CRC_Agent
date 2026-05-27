@@ -404,6 +404,41 @@ describe("usePatientUploads", () => {
     expect(apiClient.getSession).not.toHaveBeenCalled();
   });
 
+  it("calls onSessionExpired and shows a recovery message when uploadFile returns 404", async () => {
+    const uploadFile = vi.fn(async () => {
+      throw new ApiClientError(404, "Session not found", { detail: "missing" });
+    });
+    const apiClient = buildApiClientStub({ uploadFile });
+    const applyPatientResponse = vi.fn();
+    const onSessionExpired = vi.fn(async () =>
+      makeSessionResponse({ session_id: "recovered-session" }),
+    );
+
+    const patient = makePatientController({
+      ...createInitialSessionState(),
+      sessionId: "patient-session",
+    });
+
+    const { result } = renderHook(() =>
+      usePatientUploads({
+        apiClient,
+        patientSessionId: "patient-session",
+        setPatientState: patient.setState,
+        applyPatientResponse,
+        onSessionExpired,
+      }),
+    );
+
+    const file = new File(["report"], "report.pdf", { type: "application/pdf" });
+    await act(async () => {
+      await result.current.uploadFile(file);
+    });
+
+    expect(onSessionExpired).toHaveBeenCalledWith("patient");
+    expect(result.current.errorMessage).toContain("会话已失效");
+    expect(applyPatientResponse).not.toHaveBeenCalled();
+  });
+
   it("invalidates in-flight upload completion when patient session id changes", async () => {
     const upload = createDeferred<{
       asset_id: string;

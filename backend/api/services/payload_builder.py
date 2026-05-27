@@ -80,10 +80,16 @@ def build_graph_payload(
     chat_request: Any,
     session_meta: SessionMeta,
     state_snapshot: Any,
+    pending_context_messages: list[Any] | None = None,
 ) -> PreparedGraphPayload:
     chat_request_context = _get_value(chat_request, "context", {})
     current_turn_message = _current_turn_message(chat_request)
-    drained_pending_context_messages = list(session_meta.pending_context_messages)
+    should_clear_session_pending = pending_context_messages is None
+    drained_pending_context_messages = (
+        list(session_meta.pending_context_messages)
+        if pending_context_messages is None
+        else list(pending_context_messages)
+    )
     payload_context_messages = [
         _normalize_message(message)
         for message in drained_pending_context_messages
@@ -131,7 +137,8 @@ def build_graph_payload(
             if value is not None:
                 payload[key] = value
 
-    session_meta.pending_context_messages.clear()
+    if should_clear_session_pending:
+        session_meta.pending_context_messages.clear()
     return PreparedGraphPayload(
         payload=payload,
         drained_pending_context_messages=drained_pending_context_messages,

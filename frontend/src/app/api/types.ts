@@ -470,8 +470,11 @@ export interface DatabaseCaseDetailResponse {
   cards: Record<string, JsonObject>;
 }
 
+export type DatabaseUpsertMode = "full" | "partial";
+
 export interface DatabaseUpsertRequest {
   record: JsonObject;
+  mode?: DatabaseUpsertMode;
 }
 
 export interface DatabaseQueryIntentResponse {

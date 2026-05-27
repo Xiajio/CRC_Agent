@@ -17,6 +17,7 @@ import { useRegistryBrowser } from "../features/patient-registry/use-registry-br
 import { usePatientWorkspaceNav } from "../features/workspace/use-patient-workspace-nav";
 import { useSceneSessions } from "../features/workspace/use-scene-sessions";
 import { usePatientUploads } from "../features/workspace/use-patient-uploads";
+import { SessionRecoveryBanner } from "../features/workspace/session-recovery-banner";
 import { useTurnLatencyProbe } from "../features/workspace/use-turn-latency-probe";
 import { useWorkspaceCards } from "../features/workspace/use-workspace-cards";
 import { useWorkspaceStreamingTurn } from "../features/workspace/use-workspace-streaming-turn";
@@ -114,6 +115,9 @@ export function WorkspacePage() {
     patient,
     doctor,
     applyResponseToScene,
+    recoverScene,
+    recoveryNotice,
+    dismissRecoveryNotice,
   } = useSceneSessions();
 
   const [drafts, setDrafts] = useState<SceneDrafts>({
@@ -160,6 +164,7 @@ export function WorkspacePage() {
     patientSessionId: patient.state.sessionId,
     setPatientState: patient.setState,
     applyPatientResponse: (response) => applyResponseToScene("patient", response),
+    onSessionExpired: recoverScene,
   });
   const patientTurn = useWorkspaceStreamingTurn({
     scene: "patient",
@@ -169,6 +174,7 @@ export function WorkspacePage() {
     applySessionResponse: (response) => applyResponseToScene("patient", response),
     traceStoreRef,
     latencyProbe,
+    onSessionExpired: recoverScene,
   });
   const doctorTurn = useWorkspaceStreamingTurn({
     scene: "doctor",
@@ -179,6 +185,7 @@ export function WorkspacePage() {
     traceStoreRef,
     latencyProbe,
     primeInitialState: primeDoctorClinicalWorkflow,
+    onSessionExpired: recoverScene,
   });
 
   const activeSessionController = activeScene === "patient" ? patient : doctor;
@@ -369,7 +376,19 @@ export function WorkspacePage() {
           }
           applyResponseToScene(activeScene, response);
         },
-        () => undefined,
+        (error) => {
+          if (cancelled) {
+            return;
+          }
+          // Session vanished server-side (most likely after a backend restart):
+          // stop polling and let useSceneSessions recover so the user is not
+          // looping on the stale id forever.
+          if (error && (error as { status?: number }).status === 404) {
+            cancelled = true;
+            window.clearInterval(timer);
+            void recoverScene(activeScene);
+          }
+        },
       );
     }, 1500);
 
@@ -385,6 +404,7 @@ export function WorkspacePage() {
     applyResponseToScene,
     bootstrapStatus,
     activeTurn.isStreaming,
+    recoverScene,
   ]);
 
   function handleSceneSwitch(scene: Scene) {
@@ -508,10 +528,16 @@ export function WorkspacePage() {
     />
   );
 
+  const recoveryBanner = recoveryNotice ? (
+    <SessionRecoveryBanner message={recoveryNotice} onDismiss={dismissRecoveryNotice} />
+  ) : null;
+
   if (activeScene === "doctor") {
     return (
-      <DoctorSceneShell
-        toolbar={topNavActions}
+      <>
+        {recoveryBanner}
+        <DoctorSceneShell
+          toolbar={topNavActions}
         onSwitchScene={() => handleSceneSwitch("patient")}
         registryPatientId={registryPatientId}
         caseDatabasePatientId={doctor.state.caseDatabasePatientId}
@@ -544,11 +570,13 @@ export function WorkspacePage() {
           void doctorTurn.submitPrompt(prompt, buildReplayDemoContext("doctor", prompt, context))
         }
       />
+      </>
     );
   }
 
   return (
     <main className="clinical-app-shell clinical-app-shell-patient">
+      {recoveryBanner}
       <ClinicalTopNav
         brandLabel="临床助手"
         navLabel="患者工作台"

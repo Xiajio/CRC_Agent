@@ -103,8 +103,39 @@ class DatabaseCaseDetailResponse(BaseModel):
     cards: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
+UpsertMode = Literal["full", "partial"]
+
+
+REQUIRED_FULL_UPSERT_FIELDS: tuple[str, ...] = (
+    "patient_id",
+    "gender",
+    "age",
+    "histology_type",
+    "tumor_location",
+    "ct_stage",
+    "cn_stage",
+    "clinical_stage",
+    "cea_level",
+    "mmr_status",
+)
+
+
 class DatabaseUpsertRequest(BaseModel):
+    """Upsert a case record.
+
+    ``mode`` controls how missing keys in ``record`` are interpreted:
+
+    - ``"full"`` (default): the client must include every business-required
+      field listed in :data:`REQUIRED_FULL_UPSERT_FIELDS`. Useful for the
+      doctor workbench save button which merges the current detail with the
+      edit buffer before submitting.
+    - ``"partial"``: only ``patient_id`` is required; missing keys leave the
+      stored cell untouched. Empty / ``None`` values explicitly clear the cell
+      where the schema permits.
+    """
+
     record: dict[str, Any]
+    mode: UpsertMode = "full"
 
     model_config = ConfigDict(extra="forbid")
 

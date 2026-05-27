@@ -345,6 +345,7 @@ def store_session_upload(
                 if isinstance(existing_asset, dict):
                     return _response_payload(existing_asset, reused=True, session_id=session_id)
             meta.processed_files.pop(processed_key, None)
+            session_store.touch(session_id)
 
         patient_asset_root = assets_root / str(patient_id)
         stable_original_root = patient_asset_root / sha256 / "original"
@@ -428,6 +429,7 @@ def store_session_upload(
                     "asset_id": asset_id,
                     "record_id": None,
                 }
+                session_store.touch(session_id)
                 session_store.bump_snapshot_version(session_id)
                 return _response_payload(asset_record, reused=bool(upload_result.reused or failed_result.reused), session_id=session_id)
 
@@ -474,6 +476,7 @@ def store_session_upload(
                     "asset_id": asset_id,
                     "record_id": None,
                 }
+                session_store.touch(session_id)
                 session_store.bump_snapshot_version(session_id)
                 return _response_payload(asset_record, reused=bool(upload_result.reused), session_id=session_id)
 
@@ -523,6 +526,7 @@ def store_session_upload(
                 "asset_id": asset_id,
                 "record_id": record_id,
             }
+            session_store.touch(session_id)
             session_store.enqueue_context_message(session_id, context_message)
             session_store.bump_snapshot_version(session_id)
 
@@ -549,6 +553,7 @@ def store_session_upload(
                 meta.pending_context_messages = [
                     message for message in meta.pending_context_messages if message != context_message
                 ]
+            session_store.touch(session_id)
             raise UploadProcessingError(str(exc)) from exc
     finally:
         if acquired_here:

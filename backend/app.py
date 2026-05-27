@@ -30,8 +30,8 @@ from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_context_resolver import PatientContextResolver
 from backend.api.services.patient_registry_service import PatientRegistryService
 from backend.api.services.runtime_paths import resolve_runtime_root
+from backend.api.services.session_store_factory import build_session_store
 from backend.api.services.settings import RuntimeSettings, load_runtime_settings
-from backend.api.services.session_store import InMemorySessionStore
 
 
 @dataclass(slots=True)
@@ -102,9 +102,10 @@ def _build_runtime_metadata(runner_mode: str) -> dict[str, str | None]:
     }
 
 
-def _build_lifespan():
+def _build_lifespan(runtime_settings: RuntimeSettings | None = None):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        runtime_config = runtime_settings or load_runtime_settings()
         settings = load_backend_settings()
         runner_mode = get_runner_mode()
         rag_warmup = should_warm_rag()
@@ -116,7 +117,7 @@ def _build_lifespan():
         patient_registry_service = PatientRegistryService(runtime_root / "patient_registry.db")
         patient_command_service = PatientCommandService(patient_registry_service)
 
-        session_store = InMemorySessionStore()
+        session_store = build_session_store(runtime_config, runtime_root)
         patient_context_resolver = PatientContextResolver(
             patient_registry_service,
             session_store,
@@ -177,6 +178,9 @@ def _build_lifespan():
         try:
             yield
         finally:
+            close_session_store = getattr(session_store, "close", None)
+            if callable(close_session_store):
+                close_session_store()
             if hasattr(app.state, "runtime"):
                 delattr(app.state, "runtime")
 
@@ -188,7 +192,7 @@ def create_app() -> FastAPI:
     runner_mode = get_runner_mode()
     app = FastAPI(
         title="LangG BFF",
-        lifespan=_build_lifespan(),
+        lifespan=_build_lifespan(runtime_settings),
     )
     session_routes.get_runtime_metadata = lambda: _build_runtime_metadata(runner_mode)
     app.add_middleware(BearerAuthMiddleware, settings=runtime_settings)

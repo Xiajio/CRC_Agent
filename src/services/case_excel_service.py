@@ -361,11 +361,30 @@ def _column_for_field(sheet: openpyxl.worksheet.worksheet.Worksheet, field: str)
 
 def _serialize_excel_value(field: str, value: Any) -> Any:
     if field == "risk_factors":
-        return json.dumps(value or [], ensure_ascii=False)
+        if not value:
+            return None
+        return json.dumps(value, ensure_ascii=False)
     return value
 
 
-def upsert_case_record(excel_path: str | Path, data: Mapping[str, Any]) -> None:
+def _set_cell_value(sheet: openpyxl.worksheet.worksheet.Worksheet, row: int, column: int, value: Any) -> None:
+    # openpyxl's Cell(value=...) constructor short-circuits on None and skips the
+    # assignment, which leaves stale data in the spreadsheet. Setting the
+    # property directly guarantees the cell is cleared.
+    sheet.cell(row=row, column=column).value = value
+
+
+def upsert_case_record(
+    excel_path: str | Path,
+    data: Mapping[str, Any],
+) -> None:
+    """Upsert a case row.
+
+    Semantics: partial patch with ``patient_id`` required. Fields present in
+    ``data`` overwrite the existing cell (including clearing to empty when the
+    normalized value is ``None`` / ``""`` / ``[]``). Fields absent from
+    ``data`` are left untouched on the existing row.
+    """
     workbook_path = Path(excel_path)
     normalized, extras = normalize_case_payload(data)
 
@@ -395,11 +414,11 @@ def upsert_case_record(excel_path: str | Path, data: Mapping[str, Any]) -> None:
 
     for field, value in normalized.items():
         column = _column_for_field(sheet, field)
-        sheet.cell(row=target_row, column=column, value=_serialize_excel_value(field, value))
+        _set_cell_value(sheet, target_row, column, _serialize_excel_value(field, value))
 
     for key, value in extras.items():
         column = _ensure_header(sheet, key)
-        sheet.cell(row=target_row, column=column, value=value)
+        _set_cell_value(sheet, target_row, column, value)
 
     workbook_path.parent.mkdir(parents=True, exist_ok=True)
     workbook.save(workbook_path)

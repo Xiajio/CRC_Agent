@@ -34,6 +34,9 @@ tests/backend/*
 !tests/backend/test_patient_context_resolver.py
 !tests/backend/test_patient_event_sourcing.py
 !tests/backend/test_scene_sessions.py
+!tests/backend/test_session_persistence_e2e.py
+!tests/backend/test_session_store_factory.py
+!tests/backend/test_sqlite_session_store.py
 !tests/backend/test_tool_path_security.py
 !tests/backend/test_upload_registry_intake.py
 !tests/e2e/
@@ -101,6 +104,7 @@ Thumbs.db
 # Local documentation drafts and generated reports
 generated_reports/
 docs/*
+!docs/current-architecture-map.md
 !docs/superpowers/
 docs/superpowers/*
 !docs/superpowers/specs/

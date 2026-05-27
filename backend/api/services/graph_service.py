@@ -29,7 +29,7 @@ from backend.api.services.context_maintenance import (
 )
 from backend.api.services.database_service import DatabaseCaseNotFoundError, get_database_case_detail
 from backend.api.services.patient_context_resolver import PatientContextStaleError
-from backend.api.services.payload_builder import build_graph_payload, restore_pending_context_messages
+from backend.api.services.payload_builder import build_graph_payload
 from backend.api.services.session_store import InMemorySessionStore, SessionMeta
 from src.nodes.node_utils import clear_stream_callback, set_stream_callback
 from contextlib import suppress
@@ -680,6 +680,7 @@ class GraphService:
             raise SessionBusyError(f"Session is busy: {session_id}")
 
         patient_version_used: int | None = None
+        drained_pending_context_messages: list[Any] = []
 
         try:
             meta = self._prepare_session_meta(session_id, chat_request, meta)
@@ -704,10 +705,12 @@ class GraphService:
             phase0_trace = self._phase0_trace_from_request(session_id, run_id, chat_request)
             phase1_trace = self._phase1_trace_from_request(session_id, run_id, chat_request, scene=meta.scene)
 
+            drained_pending_context_messages = self._session_store.drain_context_messages(session_id)
             prepared = build_graph_payload(
                 chat_request=chat_request,
                 session_meta=meta,
                 state_snapshot=self.load_agent_state(session_id) or {},
+                pending_context_messages=drained_pending_context_messages,
             )
             patient_version_used = self._patient_version_used(meta, prepared.payload)
             if isinstance(chat_request, Mapping):
@@ -716,6 +719,8 @@ class GraphService:
                     prepared.payload["trace_id"] = trace_id
             case_database_card_events = self._prime_case_database_context(prepared.payload)
         except Exception:
+            if drained_pending_context_messages:
+                self._session_store.restore_context_messages(session_id, drained_pending_context_messages)
             self._session_store.release_run_lock(session_id, run_id)
             raise
 
@@ -842,12 +847,18 @@ class GraphService:
                 if phase1_trace is not None:
                     yield encode_sse_event(phase1_trace.build_summary(status=terminal_status))
             except asyncio.CancelledError:
-                restore_pending_context_messages(meta, prepared.drained_pending_context_messages)
+                self._session_store.restore_context_messages(
+                    session_id,
+                    prepared.drained_pending_context_messages,
+                )
                 restored_pending_context = True
                 terminal_status = "aborted"
                 raise
             except Exception as exc:
-                restore_pending_context_messages(meta, prepared.drained_pending_context_messages)
+                self._session_store.restore_context_messages(
+                    session_id,
+                    prepared.drained_pending_context_messages,
+                )
                 restored_pending_context = True
                 terminal_status = "error"
                 if phase1_trace is not None:
@@ -874,7 +885,10 @@ class GraphService:
                 if stream_callback_token is not None:
                     clear_stream_callback(stream_callback_token)
                 if not success and done_event is None and not restored_pending_context:
-                    restore_pending_context_messages(meta, prepared.drained_pending_context_messages)
+                    self._session_store.restore_context_messages(
+                        session_id,
+                        prepared.drained_pending_context_messages,
+                    )
                 release_run_lock()
                 phase0_trace.log_summary(
                     status=terminal_status,

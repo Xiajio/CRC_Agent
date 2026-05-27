@@ -67,6 +67,34 @@ describe("ConversationPanel latency status", () => {
     expect(screen.queryByText(/\u6cbb\u7597\u65b9\u6848/u)).not.toBeInTheDocument();
   });
 
+  it("localizes human review warning markers from persisted assistant messages", () => {
+    const reviewLabel = "\u9700\u4eba\u5de5\u590d\u6838";
+    const reviewReason =
+      "\u5f53\u524d\u4e3a\u6f14\u793a\u56de\u653e\u5efa\u8bae\uff0c\u5177\u4f53\u6cbb\u7597\u65b9\u6848\u9700\u533b\u751f\u590d\u6838\u3002";
+    const visibleBody = "\u7efc\u5408\u75c5\u4f8b093\u7684\u7ed3\u6784\u5316\u8d44\u6599\u3002";
+
+    renderConversationPanel({
+      messages: [
+        {
+          cursor: "2",
+          type: "ai",
+          content: [
+            "> [!WARNING]",
+            `> HUMAN_REVIEW_REQUIRED: ${reviewReason}`,
+            "",
+            visibleBody,
+          ].join("\n"),
+          assetRefs: [],
+        },
+      ],
+    });
+
+    expect(screen.getByText(new RegExp(`${reviewLabel}\uff1a${reviewReason}`))).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(visibleBody))).toBeInTheDocument();
+    expect(screen.queryByText(/\[!WARNING\]/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/HUMAN_REVIEW_REQUIRED/)).not.toBeInTheDocument();
+  });
+
   it("hides patient-facing reasoning from thinking fields and inline think tags", () => {
     renderConversationPanel({
       messages: [

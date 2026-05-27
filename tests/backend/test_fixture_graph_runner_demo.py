@@ -58,4 +58,5 @@ async def test_demo_doctor_decision_fixture():
     ]
     final_output = ticks[-1]["finalize"]
     assert final_output["requires_human_review"] is True
-    assert "HUMAN_REVIEW_REQUIRED" in final_output["final_response"]
+    assert "\u9700\u4eba\u5de5\u590d\u6838" in final_output["final_response"]
+    assert "HUMAN_REVIEW_REQUIRED" not in final_output["final_response"]
