@@ -76,11 +76,14 @@ tmp/
 .tmp/
 # Root scratch dirs/files left by Python, pip, or pytest temp roots.
 /_tmp/
+/_tmp_run_*.py
 /tmp*
 /pytest-cache-files*
 pytest-*
 codex_pytest_*
 .worktrees/
+codex-runlogs/
+/py-write-root-test.txt
 *.log
 /start.txt
 /_fix_*.txt
