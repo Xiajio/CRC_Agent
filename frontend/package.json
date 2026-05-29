@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:acceptance": "playwright test --config playwright.acceptance.config.ts"
+    "test:e2e:acceptance": "playwright test --config playwright.acceptance.config.ts",
+    "test:e2e:sqlite-session": "node ../scripts/run_sqlite_session_persistence_playwright.cjs"
   },
   "dependencies": {
     "gsap": "3.12.7",

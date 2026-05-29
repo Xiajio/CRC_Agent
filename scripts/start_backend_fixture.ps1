@@ -1,6 +1,8 @@
 param(
   [string]$FixtureCase = "database_case",
-  [switch]$UploadConverterFixture
+  [switch]$UploadConverterFixture,
+  [int]$Port = 8000,
+  [int]$FrontendPort = 4173
 )
 
 $ErrorActionPreference = "Stop"
@@ -19,9 +21,9 @@ $env:AUTH_MODE = "none"
 $env:GRAPH_RUNNER_MODE = "fixture"
 $env:GRAPH_FIXTURE_CASE = $FixtureCase
 $env:RAG_WARMUP = "false"
-$env:FRONTEND_ORIGINS = "http://127.0.0.1:4173"
+$env:FRONTEND_ORIGINS = "http://127.0.0.1:$FrontendPort"
 if ($UploadConverterFixture) {
   $env:UPLOAD_CONVERTER_MODE = "fixture"
 }
 
-& $pythonExe -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+& $pythonExe -m uvicorn backend.app:app --host 127.0.0.1 --port $Port

@@ -18,6 +18,8 @@ if (kind !== "backend" && kind !== "frontend") {
 }
 
 const env = { ...process.env };
+const backendPort = env.LANGG_BACKEND_PORT || "8000";
+const frontendPort = env.LANGG_FRONTEND_PORT || "4173";
 const frontendBearerToken =
   (env.VITE_API_BEARER_TOKEN || "").trim() || (env.API_BEARER_TOKEN || "").trim();
 if (frontendBearerToken) {
@@ -35,6 +37,10 @@ if (kind === "backend") {
     path.join(repoRoot, "scripts", "start_backend_fixture.ps1"),
     "-FixtureCase",
     env.GRAPH_FIXTURE_CASE || "demo_doctor_decision",
+    "-Port",
+    backendPort,
+    "-FrontendPort",
+    frontendPort,
     "-UploadConverterFixture",
   ];
 } else {
@@ -45,6 +51,10 @@ if (kind === "backend") {
     "Bypass",
     "-File",
     path.join(repoRoot, "scripts", "start_frontend.ps1"),
+    "-BackendPort",
+    backendPort,
+    "-FrontendPort",
+    frontendPort,
   ];
 }
 

@@ -1,3 +1,8 @@
+param(
+  [int]$BackendPort = 8000,
+  [int]$FrontendPort = 4173
+)
+
 $ErrorActionPreference = "Stop"
 
 function Resolve-CommandPath {
@@ -40,6 +45,6 @@ $npmCmd = Resolve-CommandPath -PreferredPaths $preferredNpmPaths -CommandNames @
 
 Set-Location $frontendRoot
 
-$env:VITE_API_BASE_URL = "http://127.0.0.1:8000"
+$env:VITE_API_BASE_URL = "http://127.0.0.1:$BackendPort"
 
-& $npmCmd run dev:e2e
+& $npmCmd run dev:e2e -- --port $FrontendPort
