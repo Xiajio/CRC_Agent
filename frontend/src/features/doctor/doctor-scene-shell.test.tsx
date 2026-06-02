@@ -1,5 +1,5 @@
 import type { ReactNode, SetStateAction } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockConversationPanel = vi.hoisted(() => vi.fn());
@@ -234,6 +234,44 @@ describe("DoctorSceneShell", () => {
     const profileSwitch = getDoctorProfileSwitch();
     expect(profileSwitch).toHaveClass("clinical-profile-switch");
     expect(profileSwitch).toHaveTextContent("医生");
+  });
+
+  it("renders the anatomy panel in the consultation sidebar and submits region prompts", () => {
+    const onCardPromptRequest = vi.fn();
+
+    renderDoctorSceneShell({
+      registryPatientId: 7,
+      caseDatabasePatientId: "093",
+      patientRegistry: {
+        boundPatientDetail: {
+          patient_id: 7,
+          status: "active",
+          created_at: "2026-06-02T00:00:00Z",
+          updated_at: "2026-06-02T00:00:00Z",
+          tumor_location: "乙状结肠",
+        },
+        boundPatientAlerts: [],
+        boundPatientRecords: [],
+        isLoadingBoundPatient: false,
+        isBindingPatient: false,
+      } as never,
+      onCardPromptRequest,
+    });
+
+    expect(screen.getByText("解剖定位")).toBeInTheDocument();
+    const sigmoidRegion = screen.getByRole("button", { name: "乙状结肠" });
+    expect(sigmoidRegion).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(sigmoidRegion);
+
+    expect(onCardPromptRequest).toHaveBeenCalledWith(
+      "请针对乙状结肠病灶给出分期与下一步检查建议。",
+      expect.objectContaining({
+        registry_patient_id: 7,
+        case_database_patient_id: "093",
+        anatomy_region_code: "sigmoid_colon",
+      }),
+    );
   });
 
   it("renders the multimodal shell route with the derived patient context", () => {

@@ -44,6 +44,7 @@ async def search_patients(
     payload = service.search_patients(
         patient_id=body.patient_id,
         tumor_location=body.tumor_location,
+        tumor_region_code=body.tumor_region_code,
         mmr_status=body.mmr_status,
         clinical_stage=body.clinical_stage,
         limit=body.limit,

@@ -926,11 +926,15 @@ describe("WorkspacePage patient triage submission wiring", () => {
     const uploadTab = screen.getByRole("button", { name: "上传" });
     expect(profileTab).toHaveAttribute("aria-current", "page");
     expect(uploadTab).not.toBeDisabled();
+    expect(screen.getByTestId("workspace-layout")).not.toHaveClass("clinical-patient-dashboard-no-right");
     expect(screen.getByTestId("workspace-right")).toContainElement(screen.getByTestId("uploads-panel"));
 
     fireEvent.click(uploadTab);
 
     expect(uploadTab).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-no-right");
+    expect(screen.getByTestId("workspace-right")).toHaveClass("clinical-patient-right-column-collapsed");
+    expect(screen.getByTestId("workspace-right")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByTestId("workspace-center")).toContainElement(screen.getByTestId("uploads-panel"));
     fireEvent.click(screen.getByRole("button", { name: /^trigger upload$/i }));
 

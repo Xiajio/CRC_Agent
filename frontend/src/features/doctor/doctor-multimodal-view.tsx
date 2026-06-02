@@ -16,6 +16,7 @@ import {
 } from "../../app/clinical/clinical-event-labels";
 import { compactClinicalEventDetail, formatCriticFeedback } from "../../app/clinical/critic-feedback";
 import { Button, Card } from "../../components/ui";
+import { AnatomyHighlightPanel } from "../anatomy/anatomy-highlight-panel";
 import { ClinicalCardsPanel } from "../cards/clinical-cards-panel";
 import type { CardPatientContext, CardPromptHandler } from "../cards/card-renderers-extended";
 import {
@@ -453,6 +454,13 @@ export function DoctorMultimodalView(props: DoctorMultimodalViewProps) {
           props.patientRegistry.boundPatientDetail,
           props.patientRegistry.isLoadingBoundPatient,
         )}
+        <AnatomyHighlightPanel
+          detail={props.patientRegistry.boundPatientDetail}
+          patientContext={resolvedPatientContext}
+          onPromptRequest={props.onCardPromptRequest}
+          disabled={props.disabled}
+          isStreaming={props.isStreaming}
+        />
         {renderRecordsCard(props.patientRegistry.boundPatientRecords)}
         {renderAlertsCard(props.patientRegistry.boundPatientAlerts)}
       </section>

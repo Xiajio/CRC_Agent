@@ -1,0 +1,116 @@
+import { useCallback, useMemo, useRef, type ReactNode } from "react";
+
+import { useShellReveal } from "../../components/motion/use-shell-reveal";
+import type { CardPatientContext, CardPromptHandler } from "../cards/card-renderers-extended";
+import { Card } from "../../components/ui/card";
+import {
+  resolveAnatomyRegions,
+  regionByCode,
+  type AnatomyPatientDetail,
+  type AnatomyRegion,
+} from "./anatomy-region-map";
+import { ColorectalAnatomyMap } from "./colorectal-anatomy-map";
+
+type AnatomyHighlightPanelProps = {
+  detail: AnatomyPatientDetail | null;
+  patientContext?: CardPatientContext | null;
+  onPromptRequest?: CardPromptHandler;
+  disabled?: boolean;
+  isStreaming?: boolean;
+};
+
+function AnatomyIcon(): ReactNode {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 4c-2 3-2 6 0 9s2 5 0 7" />
+      <path d="M16 4c2 3 2 6 0 9s-2 5 0 7" />
+      <path d="M8 13h8" />
+    </svg>
+  );
+}
+
+function buildRegionPrompt(region: AnatomyRegion): string {
+  return `请针对${region.label}病灶给出分期与下一步检查建议。`;
+}
+
+function buildPromptContext(
+  region: AnatomyRegion,
+  patientContext: CardPatientContext | null | undefined,
+): Record<string, unknown> {
+  return {
+    ...(patientContext ?? {}),
+    anatomy_region_code: region.code,
+    anatomy_region_label: region.label,
+    icd_o_topography: region.icdOTopography,
+  };
+}
+
+function sourceLabel(source: ReturnType<typeof resolveAnatomyRegions>["source"]): string {
+  if (source === "structured") {
+    return "结构化定位";
+  }
+  if (source === "text") {
+    return "文本解析";
+  }
+  return "待确认";
+}
+
+export function AnatomyHighlightPanel({
+  detail,
+  patientContext,
+  onPromptRequest,
+  disabled = false,
+  isStreaming = false,
+}: AnatomyHighlightPanelProps) {
+  const cardRef = useRef<HTMLElement>(null);
+  const resolved = useMemo(() => resolveAnatomyRegions(detail), [detail]);
+  const highlightedRegions = useMemo(
+    () => resolved.regionCodes.map((code) => regionByCode(code)),
+    [resolved.regionCodes],
+  );
+  const canPrompt = Boolean(onPromptRequest) && !disabled && !isStreaming;
+  useShellReveal(cardRef);
+
+  const handleRegionSelect = useCallback((region: AnatomyRegion) => {
+    if (!canPrompt || !onPromptRequest) {
+      return;
+    }
+    onPromptRequest(buildRegionPrompt(region), buildPromptContext(region, patientContext));
+  }, [canPrompt, onPromptRequest, patientContext]);
+
+  return (
+    <Card ref={cardRef} as="section" padding="none" className="clinical-card anatomy-highlight-card" aria-label="解剖定位">
+      <div className="clinical-panel-header">
+        <span className="clinical-panel-icon">{AnatomyIcon()}</span>
+        <h2>解剖定位</h2>
+      </div>
+      <div className="anatomy-highlight-body">
+        <ColorectalAnatomyMap
+          activeRegionCodes={resolved.regionCodes}
+          disabled={!canPrompt}
+          onRegionSelect={handleRegionSelect}
+        />
+        <div className="anatomy-highlight-summary">
+          <p className="anatomy-highlight-kicker">{sourceLabel(resolved.source)}</p>
+          {resolved.summaryLabel ? (
+            <p className="anatomy-highlight-location">{resolved.summaryLabel}</p>
+          ) : (
+            <p className="anatomy-highlight-location anatomy-highlight-muted">暂未定位肿瘤分段</p>
+          )}
+          {highlightedRegions.length > 0 ? (
+            <ul className="anatomy-highlight-legend" aria-label="已高亮区域">
+              {highlightedRegions.map((region) => {
+                return (
+                  <li key={region.code}>
+                    <span aria-hidden="true" />
+                    {region.label}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </div>
+      </div>
+    </Card>
+  );
+}

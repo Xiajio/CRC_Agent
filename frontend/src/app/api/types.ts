@@ -288,6 +288,8 @@ export interface PatientRegistryItem {
   created_by_session_id?: string | null;
   updated_at: string;
   tumor_location?: string | null;
+  tumor_region_code?: string | null;
+  tumor_region_codes?: string[];
   mmr_status?: string | null;
   clinical_stage?: string | null;
 }
@@ -300,6 +302,7 @@ export interface PatientRegistryListResponse {
 export interface PatientRegistrySearchRequest {
   patient_id?: number | null;
   tumor_location?: string | null;
+  tumor_region_code?: string | null;
   mmr_status?: string | null;
   clinical_stage?: string | null;
   limit?: number;
@@ -313,6 +316,8 @@ export interface PatientRegistryDetail extends PatientRegistryItem {
   t_stage?: string | null;
   n_stage?: string | null;
   m_stage?: string | null;
+  tumor_region_code?: string | null;
+  tumor_region_codes?: string[];
 }
 
 export interface PatientRegistryRecord {

@@ -10,6 +10,8 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 
+from backend.api.services.anatomy_region_map import normalize_region_code, resolve_region_codes
+
 EMPTY_VALUES = {"not_provided", "Unknown", "pending_evaluation", None, ""}
 SNAPSHOT_COLUMNS = (
     "chief_complaint",
@@ -87,6 +89,48 @@ def _load_json_mapping(value: Any) -> dict[str, Any]:
         if isinstance(parsed, dict):
             return dict(parsed)
     return {}
+
+
+def _load_json_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return list(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        if isinstance(parsed, list):
+            return list(parsed)
+    return []
+
+
+def _load_region_codes(value: Any) -> list[str]:
+    return [
+        code
+        for code in (normalize_region_code(item) for item in _load_json_list(value))
+        if code is not None
+    ]
+
+
+def _primary_region_code(region_codes: list[str]) -> str | None:
+    if len(region_codes) == 1:
+        return region_codes[0]
+    return None
+
+
+def _region_fields_from_location(tumor_location: Any) -> tuple[str | None, list[str], str]:
+    region_codes = resolve_region_codes(tumor_location)
+    primary_code = _primary_region_code(region_codes)
+    return primary_code, region_codes, json.dumps(region_codes, ensure_ascii=False)
+
+
+def _region_payload_from_row(payload: dict[str, Any]) -> dict[str, Any]:
+    stored_codes = _load_region_codes(payload.pop("tumor_region_codes_json", None))
+    stored_primary = normalize_region_code(payload.get("tumor_region_code"))
+    region_codes = stored_codes or resolve_region_codes(payload.get("tumor_location"))
+    payload["tumor_region_codes"] = region_codes
+    payload["tumor_region_code"] = stored_primary or _primary_region_code(region_codes)
+    return payload
 
 
 def _load_projection_json_mapping(value: Any, column_name: str) -> dict[str, Any]:
@@ -264,6 +308,10 @@ class PatientRegistryService:
         connection.row_factory = sqlite3.Row
         return connection
 
+    @property
+    def db_path(self) -> Path:
+        return self._db_path
+
     def _initialize(self) -> None:
         with self._connect() as connection:
             connection.executescript(
@@ -278,6 +326,8 @@ class PatientRegistryService:
                     age INTEGER,
                     gender TEXT,
                     tumor_location TEXT,
+                    tumor_region_code TEXT,
+                    tumor_region_codes_json TEXT NOT NULL DEFAULT '[]',
                     mmr_status TEXT,
                     clinical_stage TEXT,
                     t_stage TEXT,
@@ -364,6 +414,8 @@ class PatientRegistryService:
                     "patient_number_normalized": "TEXT",
                     "identity_locked": "INTEGER NOT NULL DEFAULT 0",
                     "snapshot_provenance_json": "TEXT NOT NULL DEFAULT '{}'",
+                    "tumor_region_code": "TEXT",
+                    "tumor_region_codes_json": "TEXT NOT NULL DEFAULT '[]'",
                 },
             )
             self._ensure_columns(
@@ -648,6 +700,8 @@ class PatientRegistryService:
                 age,
                 gender,
                 tumor_location,
+                tumor_region_code,
+                tumor_region_codes_json,
                 mmr_status,
                 clinical_stage,
                 t_stage,
@@ -660,7 +714,7 @@ class PatientRegistryService:
         ).fetchone()
         if row is None:
             raise KeyError(f"Patient not found: {patient_id}")
-        payload = dict(row)
+        payload = _region_payload_from_row(dict(row))
         payload["age"] = _normalize_optional_int(payload.get("age"))
         for field in SNAPSHOT_COLUMNS:
             if field == "age":
@@ -1008,6 +1062,18 @@ class PatientRegistryService:
             }
             for field, field_meta in merged_provenance.items()
         }
+        tumor_region_code, tumor_region_codes, tumor_region_codes_json = _region_fields_from_location(
+            merged_snapshot.get("tumor_location"),
+        )
+        location_provenance = _load_json_mapping(final_provenance.get("tumor_location"))
+        for derived_field in ("tumor_region_code", "tumor_region_codes"):
+            if tumor_region_codes and location_provenance:
+                final_provenance[derived_field] = {
+                    **location_provenance,
+                    "derived_from": "tumor_location",
+                }
+            else:
+                final_provenance.pop(derived_field, None)
         connection.execute(
             """
             UPDATE patients
@@ -1017,6 +1083,8 @@ class PatientRegistryService:
                 age = ?,
                 gender = ?,
                 tumor_location = ?,
+                tumor_region_code = ?,
+                tumor_region_codes_json = ?,
                 mmr_status = ?,
                 clinical_stage = ?,
                 t_stage = ?,
@@ -1031,6 +1099,8 @@ class PatientRegistryService:
                 merged_snapshot.get("age"),
                 merged_snapshot.get("gender"),
                 merged_snapshot.get("tumor_location"),
+                tumor_region_code,
+                tumor_region_codes_json,
                 merged_snapshot.get("mmr_status"),
                 merged_snapshot.get("clinical_stage"),
                 merged_snapshot.get("t_stage"),
@@ -1181,6 +1251,8 @@ class PatientRegistryService:
                     created_by_session_id,
                     updated_at,
                     tumor_location,
+                    tumor_region_code,
+                    tumor_region_codes_json,
                     mmr_status,
                     clinical_stage
                 FROM patients
@@ -1189,17 +1261,22 @@ class PatientRegistryService:
                 """,
                 (limit,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [_region_payload_from_row(dict(row)) for row in rows]
 
     def search_patients(
         self,
         *,
         patient_id: int | None = None,
         tumor_location: str | None = None,
+        tumor_region_code: str | None = None,
         mmr_status: str | None = None,
         clinical_stage: str | None = None,
         limit: int = 20,
     ) -> dict[str, Any]:
+        normalized_region_code = normalize_region_code(tumor_region_code)
+        if tumor_region_code and normalized_region_code is None:
+            return {"items": [], "total": 0}
+
         clauses: list[str] = []
         params: list[Any] = []
         if patient_id is not None:
@@ -1217,10 +1294,6 @@ class PatientRegistryService:
 
         where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
         with self._connect() as connection:
-            total_row = connection.execute(
-                f"SELECT COUNT(*) AS total FROM patients {where_sql}",
-                params,
-            ).fetchone()
             rows = connection.execute(
                 f"""
                 SELECT
@@ -1229,18 +1302,27 @@ class PatientRegistryService:
                     created_by_session_id,
                     updated_at,
                     tumor_location,
+                    tumor_region_code,
+                    tumor_region_codes_json,
                     mmr_status,
                     clinical_stage
                 FROM patients
                 {where_sql}
                 ORDER BY updated_at DESC, id DESC
-                LIMIT ?
                 """,
-                [*params, limit],
+                params,
             ).fetchall()
+        items = [_region_payload_from_row(dict(row)) for row in rows]
+        if normalized_region_code is not None:
+            items = [
+                item
+                for item in items
+                if normalized_region_code in item.get("tumor_region_codes", [])
+            ]
+        total = len(items)
         return {
-            "items": [dict(row) for row in rows],
-            "total": int(total_row["total"]) if total_row is not None else 0,
+            "items": items[:limit],
+            "total": total,
         }
 
     def get_patient_summary_message(self, patient_id: int) -> HumanMessage | None:

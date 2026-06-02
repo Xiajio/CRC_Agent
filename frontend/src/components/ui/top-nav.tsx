@@ -51,7 +51,7 @@ export function TopNav({
       data-testid="workspace-toolbar"
     >
       <div className="ui-top-nav-brand clinical-brand-block">
-        {brandIcon}
+        {brandIcon ? <span aria-hidden="true">{brandIcon}</span> : null}
         <span>{brandLabel}</span>
       </div>
       <nav className="ui-top-nav-tabs clinical-nav-tabs" aria-label={navLabel}>
@@ -85,7 +85,7 @@ export function TopNav({
         })}
       </nav>
       {actions ? (
-        <div className="ui-top-nav-actions clinical-scene-switcher" aria-label={actionsLabel}>
+        <div className="ui-top-nav-actions clinical-scene-switcher" role="group" aria-label={actionsLabel}>
           {actions}
         </div>
       ) : null}
@@ -98,8 +98,10 @@ export function TopNav({
               statusTone === "safe" && "ui-status-pill-safe",
               statusTone === "safe" && "clinical-safe-pill",
             ])}
+            role="status"
+            aria-live="polite"
           >
-            <span />
+            <span aria-hidden="true" />
             {statusLabel}
           </span>
         ) : null}
@@ -110,7 +112,11 @@ export function TopNav({
           aria-label={profileAriaLabel}
           onClick={onProfileClick}
         >
-          {profileIcon ? <span className="ui-profile-avatar clinical-avatar">{profileIcon}</span> : null}
+          {profileIcon ? (
+            <span className="ui-profile-avatar clinical-avatar" aria-hidden="true">
+              {profileIcon}
+            </span>
+          ) : null}
           <span className="ui-profile-label clinical-doctor-name">{profileLabel}</span>
           <span className="ui-profile-chevron clinical-chevron" aria-hidden="true">
             v

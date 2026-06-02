@@ -28,6 +28,10 @@ export function panelGridLayoutMode(leftRailOpen: boolean, rightInspectorOpen: b
   return "center-only";
 }
 
+function collapsedPanelAttributes(isOpen: boolean): Record<string, string> {
+  return isOpen ? {} : { "aria-hidden": "true", inert: "" };
+}
+
 export function PanelGrid({
   leftRail,
   centerWorkspace,
@@ -63,7 +67,7 @@ export function PanelGrid({
         ])}
         data-testid="left-rail"
         data-panel-state={leftRailOpen ? "open" : "closed"}
-        aria-hidden={leftRailOpen ? undefined : "true"}
+        {...collapsedPanelAttributes(leftRailOpen)}
       >
         {leftRail}
       </aside>
@@ -84,7 +88,7 @@ export function PanelGrid({
         ])}
         data-testid="right-inspector"
         data-panel-state={rightInspectorOpen ? "open" : "closed"}
-        aria-hidden={rightInspectorOpen ? undefined : "true"}
+        {...collapsedPanelAttributes(rightInspectorOpen)}
       >
         {rightInspector}
       </aside>

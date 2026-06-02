@@ -65,7 +65,7 @@ function renderView(overrides: Partial<Parameters<typeof DoctorMultimodalView>[0
 }
 
 function findActionButtons() {
-  return screen.getAllByRole("button", { name: /.+/ });
+  return MULTIMODAL_ACTIONS.map((action) => screen.getByRole("button", { name: action.title }));
 }
 
 describe("DoctorMultimodalView", () => {
@@ -176,6 +176,44 @@ describe("DoctorMultimodalView", () => {
     expect(onCardPromptRequest).toHaveBeenCalledWith(
       MULTIMODAL_ACTIONS[2].prompt,
       buildMultimodalPromptContext({ registry_patient_id: 42 }),
+    );
+  });
+
+  it("renders the anatomy panel in the multimodal left column and submits region prompts", () => {
+    const onCardPromptRequest = vi.fn();
+
+    renderView({
+      registryPatientId: 42,
+      caseDatabasePatientId: "007",
+      patientContext: { registry_patient_id: 42, case_database_patient_id: "007" },
+      patientRegistry: {
+        boundPatientDetail: {
+          patient_id: 42,
+          status: "active",
+          created_at: "2026-06-02T00:00:00Z",
+          updated_at: "2026-06-02T00:00:00Z",
+          tumor_location: "rectum",
+        },
+        boundPatientRecords: [],
+        boundPatientAlerts: [],
+        isLoadingBoundPatient: false,
+      } as never,
+      onCardPromptRequest,
+    });
+
+    expect(screen.getByText("解剖定位")).toBeInTheDocument();
+    const rectumRegion = screen.getByRole("button", { name: "直肠" });
+    expect(rectumRegion).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(rectumRegion);
+
+    expect(onCardPromptRequest).toHaveBeenCalledWith(
+      "请针对直肠病灶给出分期与下一步检查建议。",
+      expect.objectContaining({
+        registry_patient_id: 42,
+        case_database_patient_id: "007",
+        anatomy_region_code: "rectum",
+      }),
     );
   });
 

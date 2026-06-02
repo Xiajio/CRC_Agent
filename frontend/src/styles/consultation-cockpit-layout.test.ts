@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const css = readFileSync(resolve(process.cwd(), "src/styles/globals.css"), "utf8");
+const tokensCss = readFileSync(resolve(process.cwd(), "src/styles/tokens.css"), "utf8");
 
 function blockFor(selector: string, source = css) {
   return blocksFor(selector, source)[0] ?? "";
@@ -36,19 +37,27 @@ describe("consultation cockpit layout CSS", () => {
   it("gives the base desktop cockpit a dominant consultation center and compact support rails", () => {
     const dashboard = blockFor(".clinical-dashboard");
 
-    expect(dashboard).toContain("minmax(640px, 1fr)");
-    expect(dashboard).toContain("clamp(260px, 18vw, 280px)");
-    expect(dashboard).toContain("clamp(340px, 24vw, 370px)");
-    expect(dashboard).not.toContain("500px");
+    expect(dashboard).toContain("var(--dashboard-left-width) minmax(0, 1fr) var(--dashboard-right-width)");
+    expect(dashboard).toContain("gap: var(--space-3)");
     expect(dashboard).toContain('"left center right"');
     expect(dashboard).toContain('"event event right"');
+
+    expect(blockFor(".clinical-patient-dashboard")).toContain(
+      "var(--dashboard-left-width) minmax(0, 1fr) var(--dashboard-right-width)",
+    );
+    expect(blockFor(".clinical-multimodal-dashboard")).toContain(
+      "var(--dashboard-left-width) minmax(0, 1fr) var(--dashboard-right-width)",
+    );
+    expect(blockFor(".clinical-patient-dashboard-no-right")).toContain(
+      "var(--dashboard-left-width) minmax(0, 1fr)",
+    );
   });
 
   it("keeps the cockpit usable at medium desktop widths without a wide right rail", () => {
     const media1450 = mediaBlockFor("max-width: 1450px");
     const dashboard = blockFor(".clinical-dashboard", media1450);
 
-    expect(dashboard).toContain("280px minmax(580px, 1fr) 340px");
+    expect(dashboard).toContain("var(--dashboard-left-width) minmax(0, 1fr) var(--dashboard-right-width)");
     expect(dashboard).not.toContain("420px");
     expect(dashboard).not.toContain("500px");
   });
@@ -67,26 +76,29 @@ describe("consultation cockpit layout CSS", () => {
     expect(blocksFor(".clinical-conversation-card")).toContainEqual(
       expect.stringContaining("clamp(470px, 60vh, 680px)"),
     );
+    expect(blockFor(".clinical-message-list")).toContain("max-width: 72ch");
+    expect(blockFor(".clinical-message-list")).toContain("margin: 0 auto");
     expect(blockFor(".clinical-event-stream")).toContain("min-height: 0");
     expect(blockFor(".clinical-event-row")).toContain("repeat(4, minmax(0, 1fr))");
     expect(blockFor(".clinical-event-chip p")).toContain("max-height: 3.2em");
   });
 
   it("defines the polished clinical visual system hooks", () => {
-    expect(css).toContain("--clinical-apple-bg: #f5f5f7");
-    expect(css).toContain("--clinical-accent-blue: #0071e3");
-    expect(css).toContain("--clinical-link-blue: #0066cc");
-    expect(css).toContain("--clinical-button-border-shadow");
-    expect(css).toContain("--clinical-glass-ink");
-    expect(css).toContain("--clinical-command-surface");
-    expect(css).toContain("--clinical-command-ink");
-    expect(css).toContain("--clinical-panel-shadow");
+    expect(tokensCss).toContain("--color-primary: #0071e3");
+    expect(tokensCss).toContain("--clinical-primary: var(--color-primary)");
+    expect(tokensCss).toContain("--clinical-apple-bg: var(--color-canvas)");
+    expect(tokensCss).toContain("--shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04)");
+    expect(tokensCss).toContain("--shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.06)");
+    expect(tokensCss).not.toContain("#1466d8");
+    expect(css.match(/^:root\s*\{/gm) ?? []).toHaveLength(0);
+    expect(css).not.toContain("#1466d8");
+    expect(blockFor(".ui-top-nav")).not.toContain("linear-gradient");
     expect(blockFor(".clinical-app-shell")).toContain("var(--clinical-apple-bg)");
     expect(blockFor(".clinical-app-shell")).not.toContain("radial-gradient");
     expect(blockFor(".clinical-top-nav")).toContain("backdrop-filter");
     expect(blockFor(".clinical-top-nav")).toContain("var(--clinical-command-surface)");
     expect(blockFor(".clinical-top-nav")).toContain("color: var(--clinical-command-ink)");
-    expect(blockFor(".clinical-nav-tabs")).toContain("border-radius: 999px");
+    expect(blockFor(".clinical-nav-tabs")).toContain("border-radius: var(--radius-pill)");
     expect(blockFor(".clinical-nav-tab-active")).toContain("var(--clinical-surface)");
     expect(blockFor(".clinical-nav-tab-active")).toContain("var(--clinical-accent-blue)");
     expect(blockFor(".clinical-nav-tab-active")).toContain("var(--clinical-button-border-shadow)");
@@ -98,16 +110,31 @@ describe("consultation cockpit layout CSS", () => {
     );
     expect(blockFor(".clinical-logo-mark circle")).toContain("var(--clinical-accent-blue)");
     expect(blocksFor(".clinical-conversation-card")).toContainEqual(
-      expect.stringContaining("var(--clinical-stage-shadow)"),
+      expect.stringContaining("var(--shadow-pop)"),
     );
-    expect(blocksFor(".clinical-left-column")).toContainEqual(expect.stringContaining("opacity"));
-    expect(blocksFor(".clinical-right-column")).toContainEqual(expect.stringContaining("opacity"));
+    expect(blocksFor(".clinical-left-column").join("\n")).not.toContain("opacity");
+    expect(blocksFor(".clinical-right-column").join("\n")).not.toContain("opacity");
     expect(blockFor(".clinical-empty-state")).toContain("grid-template-columns");
     expect(blockFor(".clinical-empty-state-icon")).toContain("border-radius: 8px");
     expect(blockFor(".clinical-empty-state-icon svg")).toContain("stroke-width");
     expect(blockFor(".clinical-empty-state-icon::before")).toBe("");
     expect(blockFor(".clinical-empty-state-compact")).toContain("padding");
     expect(blockFor(".clinical-conversation-card .clinical-composer-textarea")).toContain("box-shadow");
+  });
+
+  it("uses restrained bubbles, medical cards, and database table polish", () => {
+    expect(blockFor(".ui-message-bubble-assistant")).toContain("background: var(--color-surface)");
+    expect(blockFor(".ui-message-bubble-assistant::before")).toContain("var(--color-primary)");
+    expect(blockFor(".ui-message-bubble-user")).toContain("background: var(--color-surface-muted)");
+    expect(blockFor(".clinical-medical-card")).toContain("min-height: 180px");
+    expect(blockFor(".clinical-medical-card")).toContain("border-radius: var(--radius-lg)");
+    expect(blockFor(".clinical-human-review")).toContain("width: 10px");
+    expect(blockFor(".clinical-human-review")).not.toContain("font-size");
+    expect(blockFor(".database-table th")).toContain("position: sticky");
+    expect(blockFor(".database-table tbody tr:nth-child(even)")).toContain("var(--color-surface-muted)");
+    expect(blockFor(".database-table tbody tr:hover")).toContain("var(--color-primary-soft)");
+    expect(blockFor(".database-table td:nth-child(1)")).toContain("text-align: right");
+    expect(blockFor(".database-table td:nth-child(1)")).toContain("tabular-nums");
   });
 
   it("keeps the Apple-inspired command layer compact on mobile", () => {

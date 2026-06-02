@@ -44,8 +44,11 @@ describe("AppShell, TopNav, and PanelGrid", () => {
     expect(screen.getByTestId("brand-icon")).toBeInTheDocument();
     expect(screen.getByText("LangGraph Clinical Assistant")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Clinical navigation" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Actions" })).toContainElement(
+      screen.getByRole("button", { name: "Reset Scene" }),
+    );
     expect(screen.getByRole("button", { name: "Reset Scene" })).toBeInTheDocument();
-    expect(screen.getByText("SSE Connected")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("SSE Connected");
     expect(screen.getByTestId("profile-icon")).toBeInTheDocument();
     expect(screen.getByText("Workspace body")).toBeInTheDocument();
   });
@@ -99,9 +102,11 @@ describe("AppShell, TopNav, and PanelGrid", () => {
 
     expect(screen.getByTestId("workspace-layout-grid")).toHaveAttribute("data-layout-mode", "no-left");
     expect(screen.getByTestId("left-rail")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("left-rail")).toHaveAttribute("inert");
     expect(screen.getByTestId("left-rail")).toHaveClass("ui-panel-collapsed");
     expect(screen.getByTestId("center-workspace")).toHaveTextContent("Center workspace");
     expect(screen.getByTestId("right-inspector")).not.toHaveAttribute("aria-hidden");
+    expect(screen.getByTestId("right-inspector")).not.toHaveAttribute("inert");
   });
 
   it("uses center-only layout when both side panels are collapsed", () => {
@@ -118,6 +123,8 @@ describe("AppShell, TopNav, and PanelGrid", () => {
     expect(screen.getByTestId("workspace-layout-grid")).toHaveAttribute("data-layout-mode", "center-only");
     expect(screen.getByTestId("left-rail")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByTestId("right-inspector")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByTestId("left-rail")).toHaveAttribute("inert");
+    expect(screen.getByTestId("right-inspector")).toHaveAttribute("inert");
   });
 
   it("keeps the workspace toolbar wrapper without injecting legacy brand content", () => {

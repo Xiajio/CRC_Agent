@@ -574,6 +574,8 @@ export function WorkspacePage() {
     );
   }
 
+  const patientRightRailOpen = patientNav.activeTab === "profile";
+
   return (
     <main className="clinical-app-shell clinical-app-shell-patient">
       {recoveryBanner}
@@ -591,7 +593,13 @@ export function WorkspacePage() {
         onProfileClick={() => handleSceneSwitch("doctor")}
         className="clinical-top-nav-patient"
       />
-      <div className="clinical-patient-dashboard" data-testid="workspace-layout">
+      <div
+        className={[
+          "clinical-patient-dashboard",
+          !patientRightRailOpen && "clinical-patient-dashboard-no-right",
+        ].filter(Boolean).join(" ")}
+        data-testid="workspace-layout"
+      >
         <aside className="clinical-patient-left-column" data-testid="workspace-left-rail">
           <div className="workspace-panel-stack">
             <PatientIdentityPanel
@@ -638,9 +646,17 @@ export function WorkspacePage() {
             )}
           </div>
         </section>
-        <aside className="clinical-patient-right-column" data-testid="workspace-right">
+        <aside
+          className={[
+            "clinical-patient-right-column",
+            !patientRightRailOpen && "clinical-patient-right-column-collapsed",
+          ].filter(Boolean).join(" ")}
+          data-testid="workspace-right"
+          data-panel-state={patientRightRailOpen ? "open" : "closed"}
+          aria-hidden={patientRightRailOpen ? undefined : "true"}
+        >
           <div className="workspace-panel-stack">
-            {patientNav.activeTab === "profile" ? patientUploadsPanel : null}
+            {patientRightRailOpen ? patientUploadsPanel : null}
           </div>
         </aside>
       </div>

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useCallback, useRef, type ReactNode } from "react";
 
 import {
   type ClinicalEventLogEntry,
@@ -19,7 +19,9 @@ import {
 import { compactClinicalEventDetail, formatCriticFeedback } from "../../app/clinical/critic-feedback";
 import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
+import { useViewTransition } from "../../components/motion/use-view-transition";
 import { Card } from "../../components/ui";
+import { AnatomyHighlightPanel } from "../anatomy/anatomy-highlight-panel";
 import { ClinicalCardsPanel } from "../cards/clinical-cards-panel";
 import type { CardPatientContext, CardPromptHandler } from "../cards/card-renderers-extended";
 import { useDatabaseWorkbench } from "../database/use-database-workbench";
@@ -334,7 +336,7 @@ function ClinicalPatientSummary({
           message="暂无患者摘要。"
         />
       )}
-      {isLoading ? <p className="clinical-loading-copy">正在加载患者摘要...</p> : null}
+      {isLoading ? <p className="clinical-loading-copy">正在加载患者摘要…</p> : null}
     </Card>
   );
 }
@@ -378,7 +380,7 @@ function ClinicalUploads({
           />
         )}
       </div>
-      {isLoading ? <p className="clinical-loading-copy">正在加载上传资料...</p> : null}
+      {isLoading ? <p className="clinical-loading-copy">正在加载上传资料…</p> : null}
     </Card>
   );
 }
@@ -488,6 +490,12 @@ export function DoctorSceneShell({
     activeDatabaseSource,
     setActiveDatabaseSource,
   } = useDoctorViewState();
+  const sceneRef = useRef<HTMLElement | null>(null);
+  const setSceneElement = useCallback((element: HTMLElement | null) => {
+    sceneRef.current = element;
+  }, []);
+
+  useViewTransition(sceneRef, activeDoctorTab);
 
   async function handleSetCurrentPatient(patientId: number) {
     const didBind = await onSetCurrentPatient(patientId);
@@ -531,7 +539,7 @@ export function DoctorSceneShell({
 
   if (activeDoctorTab === "database") {
     return (
-      <div className="clinical-app-shell clinical-app-shell-database" data-testid="doctor-scene">
+      <div ref={setSceneElement} className="clinical-app-shell clinical-app-shell-database" data-testid="doctor-scene">
         {topNav}
         <DoctorDatabaseView
           parentToolbar={null}
@@ -564,7 +572,7 @@ export function DoctorSceneShell({
           : undefined;
 
     return (
-      <div className="clinical-app-shell clinical-app-shell-multimodal" data-testid="doctor-scene">
+      <div ref={setSceneElement} className="clinical-app-shell clinical-app-shell-multimodal" data-testid="doctor-scene">
         {topNav}
         <DoctorMultimodalView
           registryPatientId={registryPatientId}
@@ -603,7 +611,7 @@ export function DoctorSceneShell({
         : undefined;
 
   return (
-    <main className="clinical-app-shell" data-testid="doctor-scene">
+    <main ref={setSceneElement} className="clinical-app-shell" data-testid="doctor-scene">
       {topNav}
       <div className="clinical-dashboard">
         <aside className="clinical-left-column">
@@ -612,6 +620,13 @@ export function DoctorSceneShell({
             caseDatabasePatientId={summaryCaseDatabasePatientId}
             detail={summaryPatientDetail}
             isLoading={patientRegistry.isLoadingBoundPatient}
+          />
+          <AnatomyHighlightPanel
+            detail={summaryPatientDetail}
+            patientContext={cardPatientContext}
+            onPromptRequest={onCardPromptRequest}
+            disabled={disabled}
+            isStreaming={isStreaming}
           />
           <ClinicalUploads
             records={patientRegistry.boundPatientRecords}

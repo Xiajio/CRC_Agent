@@ -33,6 +33,9 @@ tests/backend/*
 !tests/backend/test_graph_service_streaming.py
 !tests/backend/test_patient_context_resolver.py
 !tests/backend/test_patient_event_sourcing.py
+!tests/backend/test_patient_registry_anatomy_regions.py
+!tests/backend/test_anatomy_region_map.py
+!tests/backend/test_backfill_tumor_region_codes.py
 !tests/backend/test_scene_sessions.py
 !tests/backend/test_session_persistence_e2e.py
 !tests/backend/test_session_store_factory.py

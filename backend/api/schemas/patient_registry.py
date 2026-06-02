@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class PatientRegistrySearchRequest(BaseModel):
     patient_id: int | None = None
     tumor_location: str | None = None
+    tumor_region_code: str | None = None
     mmr_status: str | None = None
     clinical_stage: str | None = None
     limit: int = Field(default=20, ge=1, le=100)
@@ -22,6 +23,8 @@ class PatientRegistryItem(BaseModel):
     created_by_session_id: str | None = None
     updated_at: str
     tumor_location: str | None = None
+    tumor_region_code: str | None = None
+    tumor_region_codes: list[str] = Field(default_factory=list)
     mmr_status: str | None = None
     clinical_stage: str | None = None
 
@@ -41,6 +44,8 @@ class PatientRegistryDetailResponse(BaseModel):
     age: int | None = None
     gender: str | None = None
     tumor_location: str | None = None
+    tumor_region_code: str | None = None
+    tumor_region_codes: list[str] = Field(default_factory=list)
     mmr_status: str | None = None
     clinical_stage: str | None = None
     t_stage: str | None = None
