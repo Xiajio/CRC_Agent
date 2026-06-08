@@ -14,6 +14,10 @@ const highlightFlashSource = readFileSync(resolve(process.cwd(), "src/components
 const highlightPulseSource = readFileSync(resolve(process.cwd(), "src/components/motion/use-highlight-pulse.ts"), "utf8");
 const viewTransitionSource = readFileSync(resolve(process.cwd(), "src/components/motion/use-view-transition.ts"), "utf8");
 const anatomyMapSource = readFileSync(resolve(process.cwd(), "src/features/anatomy/colorectal-anatomy-map.tsx"), "utf8");
+const wholeBodyOverviewSource = readFileSync(
+  resolve(process.cwd(), "src/features/anatomy/whole-body-anatomy-overview.tsx"),
+  "utf8",
+);
 
 function cssToken(name: string) {
   const match = tokensCss.match(new RegExp(`--${name}:\\s*([^;]+);`));
@@ -24,6 +28,10 @@ function blockFor(selector: string, source = globalsCss) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = source.match(new RegExp(`${escaped}\\s*\\{(?<body>[\\s\\S]*?)\\n\\s*\\}`, "m"));
   return match?.groups?.body ?? "";
+}
+
+function stripStaticSvgStrokeWidth(source: string) {
+  return source.replace(/\s+strokeWidth=\{\d+(?:\.\d+)?\}/g, "");
 }
 
 describe("motion design system", () => {
@@ -55,6 +63,13 @@ describe("motion design system", () => {
     expect(blockFor(".anatomy-map-region")).toContain("opacity var(--motion-duration-feedback)");
     expect(blockFor(".anatomy-map-region")).toContain("transform var(--motion-duration-feedback)");
     expect(blockFor(".anatomy-map-region")).not.toContain("stroke-width 160ms");
+    expect(blockFor(".anatomy-highlight-visuals")).toContain("grid-template-columns");
+    expect(blockFor(".whole-body-anatomy-region")).toContain("opacity var(--motion-duration-feedback)");
+    expect(blockFor(".whole-body-anatomy-region")).toContain("transform var(--motion-duration-feedback)");
+    expect(blockFor(".whole-body-anatomy-region")).not.toContain("stroke-width 160ms");
+    expect(blockFor('.whole-body-anatomy-region[data-active="true"]')).toContain(
+      "transform: scale(var(--motion-highlight-scale))",
+    );
   });
 
   it("keeps GSAP scoped, reduced-motion gated, and free of paint-heavy animation props", () => {
@@ -66,6 +81,7 @@ describe("motion design system", () => {
       highlightPulseSource,
       viewTransitionSource,
       anatomyMapSource,
+      stripStaticSvgStrokeWidth(wholeBodyOverviewSource),
     ].join("\n");
 
     expect(gsapContextSource).toContain("usePrefersReducedMotion");
@@ -74,6 +90,7 @@ describe("motion design system", () => {
     expect(shellRevealSource).toContain("useGsapContext");
     expect(viewTransitionSource).toContain("useGsapContext");
     expect(anatomyMapSource).toContain("useGsapContext");
+    expect(wholeBodyOverviewSource).toContain("useGsapContext");
     expect(highlightFlashSource).toContain("useHighlightPulse");
     expect(highlightPulseSource).toContain("usePrefersReducedMotion");
 

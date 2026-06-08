@@ -1739,12 +1739,104 @@ body {
   padding: 14px 16px 16px;
 }
 
+.anatomy-highlight-visuals {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.58fr) minmax(128px, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
 .anatomy-map-svg {
   display: block;
   width: 100%;
   max-width: 220px;
   margin: 0 auto;
   overflow: visible;
+}
+
+.whole-body-anatomy-overview {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-width: 0;
+}
+
+.whole-body-anatomy-svg {
+  display: block;
+  width: 100%;
+  max-width: 118px;
+  aspect-ratio: 120 / 220;
+  overflow: visible;
+}
+
+.whole-body-anatomy-outline {
+  fill: none;
+  stroke: var(--color-border-strong);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 6;
+}
+
+.whole-body-anatomy-region-halo {
+  fill: var(--clinical-success);
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    opacity var(--motion-duration-feedback) var(--motion-ease-out),
+    transform var(--motion-duration-feedback) var(--motion-ease-out);
+}
+
+.whole-body-anatomy-region-halo[data-active="true"] {
+  opacity: 0.16;
+  transform: scale(var(--motion-highlight-scale));
+}
+
+.whole-body-anatomy-region {
+  fill: color-mix(in srgb, var(--clinical-success) 28%, transparent);
+  cursor: pointer;
+  opacity: 0.64;
+  stroke: color-mix(in srgb, var(--clinical-success) 82%, var(--color-text));
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition:
+    opacity var(--motion-duration-feedback) var(--motion-ease-out),
+    transform var(--motion-duration-feedback) var(--motion-ease-out);
+}
+
+.whole-body-anatomy-region:hover {
+  opacity: 0.92;
+}
+
+.whole-body-anatomy-region:focus-visible {
+  outline: none;
+  stroke: var(--clinical-primary);
+  stroke-width: 3;
+}
+
+.whole-body-anatomy-region[aria-disabled="true"] {
+  cursor: default;
+  fill: var(--color-surface-muted);
+  opacity: 0.5;
+  stroke: var(--color-border-strong);
+}
+
+.whole-body-anatomy-region[data-active="true"] {
+  opacity: 1;
+  transform: scale(var(--motion-highlight-scale));
+}
+
+.whole-body-anatomy-caption {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
 }
 
 .anatomy-map-backdrop {
@@ -3285,5 +3377,11 @@ body {
 
   .clinical-user-area {
     justify-content: flex-start;
+  }
+}
+
+@media (max-width: 480px) {
+  .anatomy-highlight-visuals {
+    grid-template-columns: 1fr;
   }
 }
