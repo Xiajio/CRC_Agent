@@ -10,6 +10,7 @@ import {
   type AnatomyRegion,
 } from "./anatomy-region-map";
 import { ColorectalAnatomyMap } from "./colorectal-anatomy-map";
+import { WholeBodyAnatomyOverview } from "./whole-body-anatomy-overview";
 
 type AnatomyHighlightPanelProps = {
   detail: AnatomyPatientDetail | null;
@@ -45,6 +46,21 @@ function buildPromptContext(
   };
 }
 
+function buildOverviewPrompt(): string {
+  return "请结合腹盆腔/结直肠定位总结病灶位置与下一步检查建议。";
+}
+
+function buildOverviewPromptContext(
+  patientContext: CardPatientContext | null | undefined,
+): Record<string, unknown> {
+  return {
+    ...(patientContext ?? {}),
+    anatomy_region_code: "colorectal_overview",
+    anatomy_region_label: "腹盆腔/结直肠区域",
+    anatomy_region_scope: "whole_body_overview",
+  };
+}
+
 function sourceLabel(source: ReturnType<typeof resolveAnatomyRegions>["source"]): string {
   if (source === "structured") {
     return "结构化定位";
@@ -68,6 +84,7 @@ export function AnatomyHighlightPanel({
     () => resolved.regionCodes.map((code) => regionByCode(code)),
     [resolved.regionCodes],
   );
+  const hasResolvedRegion = resolved.regionCodes.length > 0;
   const canPrompt = Boolean(onPromptRequest) && !disabled && !isStreaming;
   useShellReveal(cardRef);
 
@@ -78,6 +95,13 @@ export function AnatomyHighlightPanel({
     onPromptRequest(buildRegionPrompt(region), buildPromptContext(region, patientContext));
   }, [canPrompt, onPromptRequest, patientContext]);
 
+  const handleOverviewSelect = useCallback(() => {
+    if (!canPrompt || !onPromptRequest || !hasResolvedRegion) {
+      return;
+    }
+    onPromptRequest(buildOverviewPrompt(), buildOverviewPromptContext(patientContext));
+  }, [canPrompt, hasResolvedRegion, onPromptRequest, patientContext]);
+
   return (
     <Card ref={cardRef} as="section" padding="none" className="clinical-card anatomy-highlight-card" aria-label="解剖定位">
       <div className="clinical-panel-header">
@@ -85,11 +109,18 @@ export function AnatomyHighlightPanel({
         <h2>解剖定位</h2>
       </div>
       <div className="anatomy-highlight-body">
-        <ColorectalAnatomyMap
-          activeRegionCodes={resolved.regionCodes}
-          disabled={!canPrompt}
-          onRegionSelect={handleRegionSelect}
-        />
+        <div className="anatomy-highlight-visuals">
+          <WholeBodyAnatomyOverview
+            active={hasResolvedRegion}
+            disabled={!canPrompt}
+            onRegionSelect={handleOverviewSelect}
+          />
+          <ColorectalAnatomyMap
+            activeRegionCodes={resolved.regionCodes}
+            disabled={!canPrompt}
+            onRegionSelect={handleRegionSelect}
+          />
+        </div>
         <div className="anatomy-highlight-summary">
           <p className="anatomy-highlight-kicker">{sourceLabel(resolved.source)}</p>
           {resolved.summaryLabel ? (

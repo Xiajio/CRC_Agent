@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AnatomyHighlightPanel } from "./anatomy-highlight-panel";
 
 describe("AnatomyHighlightPanel", () => {
-  it("highlights the resolved segment and submits a region prompt with patient context", () => {
+  it("highlights the whole-body overview and resolved segment, then submits a region prompt with patient context", () => {
     const onPromptRequest = vi.fn();
 
     render(
@@ -17,9 +17,14 @@ describe("AnatomyHighlightPanel", () => {
     );
 
     expect(screen.getByText("解剖定位")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "人体定位总览" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "结直肠分段示意图" })).toBeInTheDocument();
-    expect(screen.getAllByText("乙状结肠").length).toBeGreaterThan(0);
 
+    const wholeBodyRegion = screen.getByRole("button", { name: "腹盆腔结直肠定位区域" });
+    expect(wholeBodyRegion).toHaveAttribute("aria-pressed", "true");
+    expect(wholeBodyRegion).not.toHaveAttribute("aria-disabled", "true");
+
+    expect(screen.getAllByText("乙状结肠").length).toBeGreaterThan(0);
     const sigmoidButton = screen.getByRole("button", { name: "乙状结肠" });
     expect(sigmoidButton).toHaveAttribute("aria-pressed", "true");
 
@@ -37,11 +42,58 @@ describe("AnatomyHighlightPanel", () => {
     );
   });
 
+  it("submits a whole-body colorectal overview prompt with patient context", () => {
+    const onPromptRequest = vi.fn();
+
+    render(
+      <AnatomyHighlightPanel
+        detail={{ patient_id: 7, tumor_location: "rectum" }}
+        patientContext={{ registry_patient_id: 7, case_database_patient_id: "093" }}
+        onPromptRequest={onPromptRequest}
+      />,
+    );
+
+    const wholeBodyRegion = screen.getByRole("button", { name: "腹盆腔结直肠定位区域" });
+    const expectedPrompt = "请结合腹盆腔/结直肠定位总结病灶位置与下一步检查建议。";
+    const expectedContext = {
+      registry_patient_id: 7,
+      case_database_patient_id: "093",
+      anatomy_region_code: "colorectal_overview",
+      anatomy_region_label: "腹盆腔/结直肠区域",
+      anatomy_region_scope: "whole_body_overview",
+    };
+
+    fireEvent.click(wholeBodyRegion);
+
+    expect(onPromptRequest).toHaveBeenCalledWith(expectedPrompt, expectedContext);
+
+    onPromptRequest.mockClear();
+    fireEvent.keyDown(wholeBodyRegion, { key: "Enter" });
+    expect(onPromptRequest).toHaveBeenCalledWith(expectedPrompt, expectedContext);
+  });
+
+  it("renders an inactive whole-body overview when no location signal is available", () => {
+    const onPromptRequest = vi.fn();
+
+    render(<AnatomyHighlightPanel detail={{ tumor_location: null }} onPromptRequest={onPromptRequest} />);
+
+    const wholeBodyRegion = screen.getByRole("button", { name: "腹盆腔结直肠定位区域" });
+    expect(wholeBodyRegion).toHaveAttribute("aria-pressed", "false");
+    expect(wholeBodyRegion).toHaveAttribute("aria-disabled", "true");
+    expect(wholeBodyRegion).toHaveAttribute("tabindex", "-1");
+    fireEvent.click(wholeBodyRegion);
+    expect(onPromptRequest).not.toHaveBeenCalled();
+    expect(screen.getByText("暂未定位肿瘤分段")).toBeInTheDocument();
+  });
+
   it("renders a broad colon fallback without enabling a fake precise label", () => {
     render(<AnatomyHighlightPanel detail={{ tumor_location: "colon" }} />);
 
     expect(screen.getByText("结肠（未细分）")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "升结肠" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "腹盆腔结直肠定位区域" })).toHaveAttribute("aria-pressed", "true");
+    for (const label of ["盲肠", "升结肠", "肝曲", "横结肠", "脾曲", "降结肠", "乙状结肠"]) {
+      expect(screen.getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true");
+    }
     expect(screen.getByRole("button", { name: "直肠" })).toHaveAttribute("aria-pressed", "false");
   });
 });
