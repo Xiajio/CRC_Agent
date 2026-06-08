@@ -42,7 +42,7 @@ describe("AnatomyHighlightPanel", () => {
     );
   });
 
-  it("submits a whole-body colorectal overview prompt with patient context", () => {
+  it("submits the resolved segment prompt and context from the whole-body overview", () => {
     const onPromptRequest = vi.fn();
 
     render(
@@ -54,13 +54,13 @@ describe("AnatomyHighlightPanel", () => {
     );
 
     const wholeBodyRegion = screen.getByRole("button", { name: "腹盆腔结直肠定位区域" });
-    const expectedPrompt = "请结合腹盆腔/结直肠定位总结病灶位置与下一步检查建议。";
+    const expectedPrompt = "请针对直肠病灶给出分期与下一步检查建议。";
     const expectedContext = {
       registry_patient_id: 7,
       case_database_patient_id: "093",
-      anatomy_region_code: "colorectal_overview",
-      anatomy_region_label: "腹盆腔/结直肠区域",
-      anatomy_region_scope: "whole_body_overview",
+      anatomy_region_code: "rectum",
+      anatomy_region_label: "直肠",
+      icd_o_topography: "C20",
     };
 
     fireEvent.click(wholeBodyRegion);
@@ -70,6 +70,32 @@ describe("AnatomyHighlightPanel", () => {
     onPromptRequest.mockClear();
     fireEvent.keyDown(wholeBodyRegion, { key: "Enter" });
     expect(onPromptRequest).toHaveBeenCalledWith(expectedPrompt, expectedContext);
+  });
+
+  it("uses a deterministic resolved segment prompt for broad colon whole-body fallback", () => {
+    const onPromptRequest = vi.fn();
+
+    render(
+      <AnatomyHighlightPanel
+        detail={{ patient_id: 7, tumor_location: "colon" }}
+        patientContext={{ registry_patient_id: 7 }}
+        onPromptRequest={onPromptRequest}
+      />,
+    );
+
+    const wholeBodyRegion = screen.getByRole("button", { name: "腹盆腔结直肠定位区域" });
+
+    fireEvent.click(wholeBodyRegion);
+
+    expect(onPromptRequest).toHaveBeenCalledWith(
+      "请针对盲肠病灶给出分期与下一步检查建议。",
+      {
+        registry_patient_id: 7,
+        anatomy_region_code: "cecum",
+        anatomy_region_label: "盲肠",
+        icd_o_topography: "C18.0",
+      },
+    );
   });
 
   it("renders an inactive whole-body overview when no location signal is available", () => {

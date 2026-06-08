@@ -46,21 +46,6 @@ function buildPromptContext(
   };
 }
 
-function buildOverviewPrompt(): string {
-  return "请结合腹盆腔/结直肠定位总结病灶位置与下一步检查建议。";
-}
-
-function buildOverviewPromptContext(
-  patientContext: CardPatientContext | null | undefined,
-): Record<string, unknown> {
-  return {
-    ...(patientContext ?? {}),
-    anatomy_region_code: "colorectal_overview",
-    anatomy_region_label: "腹盆腔/结直肠区域",
-    anatomy_region_scope: "whole_body_overview",
-  };
-}
-
 function sourceLabel(source: ReturnType<typeof resolveAnatomyRegions>["source"]): string {
   if (source === "structured") {
     return "结构化定位";
@@ -99,8 +84,13 @@ export function AnatomyHighlightPanel({
     if (!canPrompt || !onPromptRequest || !hasResolvedRegion) {
       return;
     }
-    onPromptRequest(buildOverviewPrompt(), buildOverviewPromptContext(patientContext));
-  }, [canPrompt, hasResolvedRegion, onPromptRequest, patientContext]);
+    const overviewRegionCode = resolved.regionCodes[0];
+    if (!overviewRegionCode) {
+      return;
+    }
+    const overviewRegion = regionByCode(overviewRegionCode);
+    onPromptRequest(buildRegionPrompt(overviewRegion), buildPromptContext(overviewRegion, patientContext));
+  }, [canPrompt, hasResolvedRegion, onPromptRequest, patientContext, resolved.regionCodes]);
 
   return (
     <Card ref={cardRef} as="section" padding="none" className="clinical-card anatomy-highlight-card" aria-label="解剖定位">
