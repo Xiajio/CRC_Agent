@@ -1696,7 +1696,7 @@ body {
   border: 1px solid var(--clinical-border);
   border-radius: var(--radius-lg);
   background: var(--clinical-surface);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-card-resting);
   overflow: hidden;
   transition:
     border-color 160ms ease,
@@ -2024,14 +2024,15 @@ body {
   gap: 10px;
   padding: 0 16px;
   border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface);
+  background: var(--panel-header-surface);
 }
 
 .clinical-panel-header h2 {
   margin: 0;
   color: var(--color-text);
-  font-size: 0.96rem;
-  font-weight: 600;
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .clinical-panel-icon {
