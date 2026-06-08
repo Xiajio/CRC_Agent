@@ -46,6 +46,26 @@ function buildPromptContext(
   };
 }
 
+function buildMultiSegmentOverviewPrompt(summaryLabel: string | null): string {
+  const locationLabel = summaryLabel ?? "多分段结直肠定位";
+  return `请结合${locationLabel}的结直肠定位总结病灶位置与下一步检查建议。`;
+}
+
+function buildMultiSegmentOverviewPromptContext(
+  regions: AnatomyRegion[],
+  summaryLabel: string | null,
+  patientContext: CardPatientContext | null | undefined,
+): Record<string, unknown> {
+  return {
+    ...(patientContext ?? {}),
+    anatomy_region_codes: regions.map((region) => region.code),
+    anatomy_region_labels: regions.map((region) => region.label),
+    icd_o_topographies: regions.map((region) => region.icdOTopography),
+    anatomy_region_scope: "colorectal_multi_segment",
+    anatomy_region_summary: summaryLabel ?? "多分段结直肠定位",
+  };
+}
+
 function sourceLabel(source: ReturnType<typeof resolveAnatomyRegions>["source"]): string {
   if (source === "structured") {
     return "结构化定位";
@@ -84,13 +104,17 @@ export function AnatomyHighlightPanel({
     if (!canPrompt || !onPromptRequest || !hasResolvedRegion) {
       return;
     }
-    const overviewRegionCode = resolved.regionCodes[0];
-    if (!overviewRegionCode) {
+    const overviewRegions = resolved.regionCodes.map((code) => regionByCode(code));
+    if (overviewRegions.length === 1) {
+      const overviewRegion = overviewRegions[0];
+      onPromptRequest(buildRegionPrompt(overviewRegion), buildPromptContext(overviewRegion, patientContext));
       return;
     }
-    const overviewRegion = regionByCode(overviewRegionCode);
-    onPromptRequest(buildRegionPrompt(overviewRegion), buildPromptContext(overviewRegion, patientContext));
-  }, [canPrompt, hasResolvedRegion, onPromptRequest, patientContext, resolved.regionCodes]);
+    onPromptRequest(
+      buildMultiSegmentOverviewPrompt(resolved.summaryLabel),
+      buildMultiSegmentOverviewPromptContext(overviewRegions, resolved.summaryLabel, patientContext),
+    );
+  }, [canPrompt, hasResolvedRegion, onPromptRequest, patientContext, resolved.regionCodes, resolved.summaryLabel]);
 
   return (
     <Card ref={cardRef} as="section" padding="none" className="clinical-card anatomy-highlight-card" aria-label="解剖定位">

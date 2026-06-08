@@ -72,7 +72,7 @@ describe("AnatomyHighlightPanel", () => {
     expect(onPromptRequest).toHaveBeenCalledWith(expectedPrompt, expectedContext);
   });
 
-  it("uses a deterministic resolved segment prompt for broad colon whole-body fallback", () => {
+  it("preserves ambiguous aggregate context for broad colon whole-body fallback", () => {
     const onPromptRequest = vi.fn();
 
     render(
@@ -88,14 +88,27 @@ describe("AnatomyHighlightPanel", () => {
     fireEvent.click(wholeBodyRegion);
 
     expect(onPromptRequest).toHaveBeenCalledWith(
-      "请针对盲肠病灶给出分期与下一步检查建议。",
+      "请结合结肠（未细分）的结直肠定位总结病灶位置与下一步检查建议。",
       {
         registry_patient_id: 7,
-        anatomy_region_code: "cecum",
-        anatomy_region_label: "盲肠",
-        icd_o_topography: "C18.0",
+        anatomy_region_codes: [
+          "cecum",
+          "ascending_colon",
+          "hepatic_flexure",
+          "transverse_colon",
+          "splenic_flexure",
+          "descending_colon",
+          "sigmoid_colon",
+        ],
+        anatomy_region_labels: ["盲肠", "升结肠", "肝曲", "横结肠", "脾曲", "降结肠", "乙状结肠"],
+        icd_o_topographies: ["C18.0", "C18.2", "C18.3", "C18.4", "C18.5", "C18.6", "C18.7"],
+        anatomy_region_scope: "colorectal_multi_segment",
+        anatomy_region_summary: "结肠（未细分）",
       },
     );
+    expect(onPromptRequest.mock.calls[0]?.[1]).not.toHaveProperty("anatomy_region_code");
+    expect(onPromptRequest.mock.calls[0]?.[1]).not.toHaveProperty("anatomy_region_label");
+    expect(onPromptRequest.mock.calls[0]?.[1]).not.toHaveProperty("icd_o_topography");
   });
 
   it("renders an inactive whole-body overview when no location signal is available", () => {
