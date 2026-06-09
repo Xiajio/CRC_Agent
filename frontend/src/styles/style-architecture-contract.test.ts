@@ -102,6 +102,13 @@ function inlineStyleReferences(source: string, fileLabel: string) {
   });
 }
 
+function cssRuleBody(selector: string, source: string) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = source.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`, "m"));
+
+  return match?.[1] ?? "";
+}
+
 describe("style architecture contract", () => {
   it("keeps workspace visual classes out of CSS selectors", () => {
     const globalsCss = read(globalsCssPath);
@@ -140,6 +147,33 @@ describe("style architecture contract", () => {
     expect(bgAccent).not.toBe("");
     expect(panelHeaderSurface).not.toMatch(/gradient\(/i);
     expect(bgAccent).not.toMatch(/gradient\(/i);
+  });
+
+  it("keeps Task 5 structural and metadata treatments neutral", () => {
+    const globalsCss = read(globalsCssPath);
+    const quietMetaSelectors = [
+      ".clinical-runtime-pills .clinical-status-node",
+      ".clinical-reference-tag",
+      ".database-pill",
+    ];
+
+    expect(matchingLines(globalsCss, /\b(?:linear-gradient|radial-gradient)\(/i, globalsCssPath)).toEqual([]);
+
+    for (const selector of quietMetaSelectors) {
+      const body = cssRuleBody(selector, globalsCss);
+
+      expect(body, selector).not.toBe("");
+      expect(body, selector).not.toMatch(
+        /color-primary|clinical-primary|primary-soft|color-success|clinical-success|success-soft|success-border/,
+      );
+    }
+
+    expect(cssRuleBody(".database-distribution-track", globalsCss)).not.toMatch(
+      /color-primary|clinical-primary|primary-soft|rgba\(\s*(?:20,\s*102,\s*216|59,\s*130,\s*246)/,
+    );
+    expect(cssRuleBody(".database-distribution-fill", globalsCss)).not.toMatch(
+      /gradient\(|rgba\(\s*(?:20,\s*102,\s*216|59,\s*130,\s*246)/,
+    );
   });
 
   it("keeps extracted card renderer styles scoped to renderer classes", () => {
