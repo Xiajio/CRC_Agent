@@ -456,6 +456,9 @@ body {
 }
 .clinical-page-shell {
   min-height: 100vh;
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
   background: var(--color-canvas);
   color: var(--color-text);
 }

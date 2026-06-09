@@ -34,6 +34,20 @@ function mediaBlockFor(query: string) {
 }
 
 describe("consultation cockpit layout CSS", () => {
+  it("keeps clinical page shell spacing around toolbar and body content", () => {
+    const shell = blockFor(".clinical-page-shell");
+    const media1100 = mediaBlockFor("max-width: 1100px");
+
+    expect(shell).toContain("min-height: 100vh");
+    expect(shell).toContain("display: grid");
+    expect(shell).toContain("gap: var(--space-3)");
+    expect(shell).toContain("padding: var(--space-4)");
+    expect(shell).toContain("background: var(--color-canvas)");
+    expect(shell).toContain("color: var(--color-text)");
+    expect(blockFor(".clinical-page-shell", media1100)).toContain("padding: var(--space-3)");
+    expect(blockFor(".clinical-app-shell-database .clinical-page-shell")).toContain("padding-top: 12px");
+  });
+
   it("gives the base desktop cockpit a dominant consultation center and compact support rails", () => {
     const dashboard = blockFor(".clinical-dashboard");
 
@@ -79,8 +93,8 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-message-list")).toContain("max-width: 72ch");
     expect(blockFor(".clinical-message-list")).toContain("margin: 0 auto");
     expect(blockFor(".clinical-event-stream")).toContain("min-height: 0");
-    expect(blockFor(".clinical-event-row")).toContain("repeat(2, minmax(0, 1fr))");
-    expect(blockFor(".clinical-event-chip p")).not.toContain("max-height: 3.2em");
+    expect(blockFor(".clinical-event-row")).toContain("repeat(4, minmax(0, 1fr))");
+    expect(blockFor(".clinical-event-chip p")).toContain("max-height: 3.2em");
   });
 
   it("defines the polished clinical visual system hooks", () => {
