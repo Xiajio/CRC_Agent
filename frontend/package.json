@@ -13,6 +13,7 @@
     "lint:styles:layout": "vitest --run src/styles/style-architecture-contract.test.ts src/styles/consultation-cockpit-layout.test.ts src/styles/card-material-boundary.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:acceptance": "playwright test --config playwright.acceptance.config.ts",
+    "test:e2e:visual": "node ../scripts/run_clinical_visual_playwright.cjs",
     "test:e2e:sqlite-session": "node ../scripts/run_sqlite_session_persistence_playwright.cjs"
   },
   "dependencies": {
