@@ -17,21 +17,21 @@ function recordMeta(record: PatientRegistryRecord): string {
 
 export function PatientRecordsPanel({ records, isLoading }: PatientRecordsPanelProps) {
   return (
-    <Card as="section" className="workspace-card">
+    <Card as="section" variant="clinical-panel">
       <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <span style={{ fontSize: "1.2rem" }}>📁</span> 患者病历记录
       </h2>
-      {isLoading ? <p className="workspace-copy" style={{ color: "var(--color-primary)" }}>正在加载病历记录...</p> : null}
+      {isLoading ? <p className="clinical-copy" style={{ color: "var(--color-primary)" }}>正在加载病历记录...</p> : null}
       {!isLoading && records.length === 0 ? (
-        <p className="workspace-copy">暂无病历记录。</p>
+        <p className="clinical-copy">暂无病历记录。</p>
       ) : null}
       {records.length > 0 ? (
-        <ul className="workspace-list" style={{ gap: "10px" }}>
+        <ul className="clinical-list" style={{ gap: "10px" }}>
           {records.map((record) => (
-            <li key={record.record_id} className="workspace-list-item">
+            <li key={record.record_id} className="clinical-list-item">
               <strong style={{ color: "var(--color-primary)" }}>{`记录 #${record.record_id}`}</strong>
-              <p className="workspace-copy workspace-copy-tight">{record.summary_text}</p>
-              <p className="workspace-meta" style={{ marginTop: "8px" }}>{recordMeta(record)}</p>
+              <p className="clinical-copy clinical-copy-tight">{record.summary_text}</p>
+              <p className="clinical-meta-text" style={{ marginTop: "8px" }}>{recordMeta(record)}</p>
             </li>
           ))}
         </ul>

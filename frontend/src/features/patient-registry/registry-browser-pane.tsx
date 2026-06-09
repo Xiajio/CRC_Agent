@@ -87,12 +87,12 @@ export function RegistryBrowserPane({
   const canClearRegistry = registryPatientId === null;
 
   return (
-    <div className="workspace-panel-stack">
-      <Card as="section" className="workspace-card" data-testid="registry-browser-pane">
+    <div className="clinical-panel-stack">
+      <Card as="section" variant="clinical-panel" data-testid="registry-browser-pane">
         <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ fontSize: "1.2rem" }}>🗂️</span> 患者库检索
         </h2>
-        <p className="workspace-copy workspace-copy-tight">
+        <p className="clinical-copy clinical-copy-tight">
           在此处检索并预览患者库中的患者。删除工具仅用于开发环境清理。
         </p>
         <div
@@ -164,20 +164,20 @@ export function RegistryBrowserPane({
           </Button>
         </div>
         {!canClearRegistry ? (
-          <p className="workspace-copy workspace-copy-tight">
+          <p className="clinical-copy clinical-copy-tight">
             清空患者库前请先重置当前的医生会话场景。
           </p>
         ) : null}
-        {error ? <p className="workspace-copy workspace-copy-alert">{error}</p> : null}
+        {error ? <p className="clinical-copy clinical-copy-alert">{error}</p> : null}
         {searchResults.length > 0 ? (
-          <ul className="workspace-list" style={{ gap: "10px", marginTop: "16px" }}>
+          <ul className="clinical-list" style={{ gap: "10px", marginTop: "16px" }}>
             {searchResults.map((item) => {
               const isPreviewed = item.patient_id === previewPatientId;
               const isCurrent = item.patient_id === registryPatientId;
               return (
-                <li key={item.patient_id} className="workspace-list-item">
+                <li key={item.patient_id} className="clinical-list-item">
                   <strong>{`患者 #${item.patient_id}`}</strong>
-                  <p className="workspace-copy workspace-copy-tight">{patientSummary(item)}</p>
+                  <p className="clinical-copy clinical-copy-tight">{patientSummary(item)}</p>
                   <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                     <Button
                       type="button"
@@ -188,7 +188,7 @@ export function RegistryBrowserPane({
                     >
                       {isPreviewed ? `✅ 正在预览 #${item.patient_id}` : `👀 预览 #${item.patient_id}`}
                     </Button>
-                    {isCurrent ? <span className="workspace-stage-badge">当前患者</span> : null}
+                    {isCurrent ? <span className="clinical-stage-badge">当前患者</span> : null}
                   </div>
                 </li>
               );
@@ -196,27 +196,27 @@ export function RegistryBrowserPane({
           </ul>
         ) : null}
         {!isSearching && searchResults.length === 0 ? (
-          <p className="workspace-copy" style={{ marginTop: "16px" }}>
+          <p className="clinical-copy" style={{ marginTop: "16px" }}>
             没有找到匹配当前过滤条件的患者。
           </p>
         ) : null}
       </Card>
 
-      <Card as="section" className="workspace-card" data-testid="registry-preview-panel">
+      <Card as="section" variant="clinical-panel" data-testid="registry-preview-panel">
         <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <span style={{ fontSize: "1.2rem" }}>🔎</span>
           {previewPatientId !== null ? `患者库预览: 患者 #${previewPatientId}` : "患者库预览"}
         </h2>
-        {isLoadingPreview ? <p className="workspace-copy" style={{ color: "var(--color-primary)" }}>正在加载预览...</p> : null}
+        {isLoadingPreview ? <p className="clinical-copy" style={{ color: "var(--color-primary)" }}>正在加载预览...</p> : null}
         {!isLoadingPreview && previewPatientId === null ? (
-          <p className="workspace-copy">
+          <p className="clinical-copy">
             请从最近患者列表或搜索结果中选择一名患者，在绑定前查看其详情。
           </p>
         ) : null}
         {!isLoadingPreview && previewPatientId !== null && summaryItems.length > 0 ? (
-          <ul className="workspace-list" style={{ gap: "8px", marginTop: "12px" }}>
+          <ul className="clinical-list" style={{ gap: "8px", marginTop: "12px" }}>
             {summaryItems.map((item) => (
-              <li key={item} className="workspace-list-item">{item}</li>
+              <li key={item} className="clinical-list-item">{item}</li>
             ))}
           </ul>
         ) : null}
@@ -256,7 +256,7 @@ export function RegistryBrowserPane({
           </Button>
         </div>
         {!canDeletePreview && previewPatientId === registryPatientId && previewPatientId !== null ? (
-          <p className="workspace-copy workspace-copy-tight">
+          <p className="clinical-copy clinical-copy-tight">
             删除此患者记录前，请先重置或更改当前患者。
           </p>
         ) : null}

@@ -1,4 +1,4 @@
-﻿import { WorkspaceLayout } from "../components/layout/workspace-layout";
+import { WorkspaceLayout } from "../components/layout/workspace-layout";
 import { Card, TopNav, type TopNavItem } from "../components/ui";
 import { DatabaseDetailPanel } from "../features/database/database-detail-panel";
 import { DatabaseEditForm } from "../features/database/database-edit-form";
@@ -73,7 +73,7 @@ export function DatabasePage() {
   );
 
   const leftRail = (
-    <section className="workspace-panel-stack">
+    <section className="clinical-panel-stack">
       <DatabaseFiltersPanel
         filters={searchRequest.filters}
         isSearching={isSearching}
@@ -93,7 +93,7 @@ export function DatabasePage() {
       />
       <Card>
         <h2>{"当前筛选"}</h2>
-        <dl className="workspace-definition-list workspace-definition-list-compact">
+        <dl className="clinical-definition-list clinical-definition-list-compact">
           <div>
             <dt>Patient ID</dt>
             <dd>{searchRequest.filters.patient_id ?? "-"}</dd>
@@ -151,7 +151,7 @@ export function DatabasePage() {
   );
 
   const rightInspector = (
-    <section className="workspace-panel-stack">
+    <section className="clinical-panel-stack">
       {isLoadingDetail ? <Card tone="soft">{"正在加载患者详情..."}</Card> : null}
       <DatabaseDetailPanel
         detail={detail}

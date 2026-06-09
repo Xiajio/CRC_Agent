@@ -229,7 +229,7 @@ function renderMessageContent(text: string, thinkText?: string) {
   return (
     <>
       {thinkText ? (
-        <details className="workspace-card-disclosure clinical-thinking-disclosure">
+        <details className="clinical-card-disclosure clinical-thinking-disclosure">
           <summary>推理过程</summary>
           <div>{thinkText}</div>
         </details>
@@ -269,7 +269,7 @@ export function ConversationPanel({
         <h2>对话</h2>
       </div>
 
-      {errorMessage ? <p className="workspace-copy workspace-copy-alert clinical-error-copy">{errorMessage}</p> : null}
+      {errorMessage ? <p className="clinical-copy clinical-copy-alert clinical-error-copy">{errorMessage}</p> : null}
 
       <div className="clinical-conversation-scroll">
         {canLoadHistory ? (
@@ -287,7 +287,7 @@ export function ConversationPanel({
         ) : null}
 
         {messages.length > 0 ? (
-          <ol className="workspace-message-list clinical-message-list">
+          <ol className="clinical-message-list-base clinical-message-list">
             {messages.map((message) => {
               const isUser = message.type !== "ai";
               const { text: normalizedText } = normalizeMessageText(message.content);
@@ -310,14 +310,14 @@ export function ConversationPanel({
                     </div>
                   ) : null}
                   {message.inlineCards?.length ? (
-                    <div className="workspace-inline-card-stack">
+                    <div className="clinical-inline-card-stack">
                       {message.inlineCards.map((card, index) => (
                         <div
                           key={`${message.cursor}-${card.cardType}-${index}`}
-                          className="workspace-inline-card-wrapper"
+                          className="clinical-inline-card-wrapper"
                         >
-                          <div className="workspace-inline-card">
-                            <strong className="workspace-inline-card-title">
+                          <div className="clinical-inline-card">
+                            <strong className="clinical-inline-card-title">
                               {cardTitle(card.cardType, card.payload)}
                             </strong>
                             {renderCardContent({
@@ -350,23 +350,23 @@ export function ConversationPanel({
       </div>
 
       <div className="clinical-composer-region">
-        <div className="workspace-status-row clinical-status-row">
-          <span className="workspace-meta clinical-runtime-label">
+        <div className="clinical-status-row-base clinical-status-row">
+          <span className="clinical-meta-text clinical-runtime-label">
             <span className="clinical-status-pulse" aria-hidden="true" /> 运行状态
           </span>
           <div className="clinical-runtime-pills">
-            <strong className="workspace-status-node" data-testid="status-node">
+            <strong className="clinical-status-node" data-testid="status-node">
               {executionLabel}
             </strong>
             {latencyLabel ? (
-              <strong className="workspace-status-node" data-testid="latency-status">
+              <strong className="clinical-status-node" data-testid="latency-status">
                 {latencyLabel}
               </strong>
             ) : null}
           </div>
         </div>
 
-        <div className="workspace-composer clinical-composer">
+        <div className="clinical-composer-shell clinical-composer">
           <div className="clinical-composer-box">
             <Textarea
               className="clinical-composer-textarea"
@@ -386,7 +386,7 @@ export function ConversationPanel({
             />
             <button
               type="button"
-              className="workspace-composer-send ui-button ui-button-primary"
+              className="clinical-composer-send ui-button ui-button-primary"
               disabled={textareaDisabled || !draft.trim()}
               onClick={onSubmit}
               aria-label="发送消息"

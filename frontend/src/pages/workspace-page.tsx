@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { buildChatLatencyTraceAnalysis, createChatLatencyTraceStore } from "../app/api/chat-latency-trace";
 import type { FrontendMessage, Scene, SessionState } from "../app/api/types";
@@ -484,15 +484,15 @@ export function WorkspacePage() {
   }
 
   if (bootstrapStatus === "loading") {
-    return <main className="clinical-page-shell"><Card className="workspace-card">正在加载工作区...</Card></main>;
+    return <main className="clinical-page-shell"><Card variant="clinical-panel">正在加载工作区...</Card></main>;
   }
 
   if (bootstrapStatus === "error") {
     return (
       <main className="clinical-page-shell">
-        <Card className="workspace-card">
+        <Card variant="clinical-panel">
           <h2>工作区初始化失败</h2>
-          <p className="workspace-copy workspace-copy-alert">{bootstrapError ?? "未知初始化错误。"}</p>
+          <p className="clinical-copy clinical-copy-alert">{bootstrapError ?? "未知初始化错误。"}</p>
         </Card>
       </main>
     );
@@ -601,7 +601,7 @@ export function WorkspacePage() {
         data-testid="workspace-layout"
       >
         <aside className="clinical-patient-left-column" data-testid="workspace-left-rail">
-          <div className="workspace-panel-stack">
+          <div className="clinical-panel-stack">
             <PatientIdentityPanel
               sessionId={patient.state.sessionId}
               patientIdentity={patient.state.patientIdentity ?? null}
@@ -620,7 +620,7 @@ export function WorkspacePage() {
           </div>
         </aside>
         <section className="clinical-patient-center-column" data-testid="workspace-center">
-          <div className="workspace-panel-stack">
+          <div className="clinical-panel-stack">
             {patientNav.activeTab === "upload" ? (
               patientUploadsPanel
             ) : (
@@ -655,7 +655,7 @@ export function WorkspacePage() {
           data-panel-state={patientRightRailOpen ? "open" : "closed"}
           aria-hidden={patientRightRailOpen ? undefined : "true"}
         >
-          <div className="workspace-panel-stack">
+          <div className="clinical-panel-stack">
             {patientRightRailOpen ? patientUploadsPanel : null}
           </div>
         </aside>

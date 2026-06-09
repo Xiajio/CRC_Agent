@@ -68,7 +68,7 @@ export function DatabaseFiltersPanel({
     <Card>
       <div className="database-section-heading">
         <h2>{"结构化筛选"}</h2>
-        <p className="workspace-copy workspace-copy-tight">
+        <p className="clinical-copy clinical-copy-tight">
           {"自然语言解析目前仍只覆盖旧筛选项；家族史、活检确认和 ECOG 区间请在这里手动设置。"}
         </p>
       </div>

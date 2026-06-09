@@ -123,7 +123,7 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-nav-tab-active")).not.toContain("0 1px 4px");
     expect(blockFor(".clinical-reset-button")).toContain("var(--clinical-button-border-shadow)");
     expect(blockFor(".clinical-sse-pill")).toContain("var(--clinical-button-border-shadow)");
-    expect(blockFor(".clinical-conversation-card .workspace-composer-send:hover:not(:disabled)")).toContain(
+    expect(blockFor(".clinical-conversation-card .clinical-composer-send:hover:not(:disabled)")).toContain(
       "transform: none",
     );
     expect(blockFor(".clinical-logo-mark circle")).toContain("var(--clinical-accent-blue)");

@@ -15,20 +15,20 @@ function alertLabel(alert: PatientRegistryAlert): string {
 
 export function PatientRegistryAlertsPanel({ alerts, isLoading }: PatientRegistryAlertsPanelProps) {
   return (
-    <Card as="section" className="workspace-card">
+    <Card as="section" variant="clinical-panel">
       <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <span style={{ fontSize: "1.2rem" }}>⚠️</span> 患者库预警
       </h2>
-      {isLoading ? <p className="workspace-copy" style={{ color: "var(--color-primary)" }}>正在加载预警信息...</p> : null}
+      {isLoading ? <p className="clinical-copy" style={{ color: "var(--color-primary)" }}>正在加载预警信息...</p> : null}
       {!isLoading && alerts.length === 0 ? (
-        <p className="workspace-copy">暂无预警信息。</p>
+        <p className="clinical-copy">暂无预警信息。</p>
       ) : null}
       {alerts.length > 0 ? (
-        <ul className="workspace-list" style={{ gap: "10px" }}>
+        <ul className="clinical-list" style={{ gap: "10px" }}>
           {alerts.map((alert, index) => (
-            <li key={`${alert.kind}-${alert.record_id ?? "none"}-${index}`} className="workspace-list-item" style={{ borderLeft: "4px solid var(--color-warning)" }}>
+            <li key={`${alert.kind}-${alert.record_id ?? "none"}-${index}`} className="clinical-list-item" style={{ borderLeft: "4px solid var(--color-warning)" }}>
               <strong>{alertLabel(alert)}</strong>
-              <p className="workspace-copy workspace-copy-tight">{alert.message}</p>
+              <p className="clinical-copy clinical-copy-tight">{alert.message}</p>
             </li>
           ))}
         </ul>

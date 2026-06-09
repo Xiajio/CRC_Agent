@@ -39,7 +39,7 @@ export function DatabaseResultsTable({
     <Card>
       <div className="database-section-heading database-section-heading-inline">
         <h2>{"病例列表"}</h2>
-        <span className="workspace-stage-badge">{`${total} 条`}</span>
+        <span className="clinical-stage-badge">{`${total} 条`}</span>
       </div>
       <div className="database-table-scroll">
         <table className="database-table">
@@ -99,7 +99,7 @@ export function DatabaseResultsTable({
             ) : (
               <tr>
                 <td colSpan={8}>
-                  <p className="workspace-copy">{"当前筛选条件下暂无病例。"}</p>
+                  <p className="clinical-copy">{"当前筛选条件下暂无病例。"}</p>
                 </td>
               </tr>
             )}
@@ -115,7 +115,7 @@ export function DatabaseResultsTable({
         >
           {"上一页"}
         </Button>
-        <span className="workspace-copy workspace-copy-tight">{`${pagination.page} / ${totalPages}`}</span>
+        <span className="clinical-copy clinical-copy-tight">{`${pagination.page} / ${totalPages}`}</span>
         <Button
           type="button"
           variant="secondary"

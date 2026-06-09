@@ -19,29 +19,29 @@ export function UploadsPanel({
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   return (
-    <Card className="workspace-card" data-testid="uploads-panel">
+    <Card variant="clinical-panel" data-testid="uploads-panel">
       <h2>资料上传</h2>
-      <p className="workspace-copy">已恢复资料：{assetIds.length}</p>
+      <p className="clinical-copy">已恢复资料：{assetIds.length}</p>
       {assetIds.length > 0 ? (
-        <ul className="workspace-list" data-testid="uploaded-assets-list">
+        <ul className="clinical-list" data-testid="uploaded-assets-list">
           {assetIds.map((assetId) => (
-            <li key={assetId} className="workspace-list-item" data-testid={`uploaded-asset-${assetId}`}>
+            <li key={assetId} className="clinical-list-item" data-testid={`uploaded-asset-${assetId}`}>
               <strong data-testid="uploaded-asset-id">{assetId}</strong>
             </li>
           ))}
         </ul>
       ) : (
-        <p className="workspace-copy">当前暂无已上传资料</p>
+        <p className="clinical-copy">当前暂无已上传资料</p>
       )}
       {statusMessage ? (
-        <p className="workspace-copy" data-testid="upload-status">
+        <p className="clinical-copy" data-testid="upload-status">
           {statusMessage}
         </p>
       ) : null}
       <input
         ref={inputRef}
         data-testid="upload-input"
-        className="workspace-upload-input"
+        className="clinical-upload-input"
         type="file"
         disabled={disabled}
         onChange={(event) => {
