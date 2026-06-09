@@ -1657,6 +1657,25 @@ body {
     box-shadow 160ms ease;
 }
 
+.ui-card-clinical-panel.ui-card-soft {
+  background: var(--color-surface-muted);
+}
+
+.ui-card-clinical-panel.ui-card-warning {
+  border-color: var(--color-warning-border);
+  background: var(--color-warning-soft);
+}
+
+.ui-card-clinical-panel.ui-card-danger {
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-soft);
+}
+
+.ui-card-clinical-panel.ui-card-selected {
+  border-color: var(--color-border-strong);
+  background: var(--color-primary-soft);
+}
+
 .ui-card-clinical-panel:hover,
 .clinical-card:hover,
 .clinical-conversation-card:hover {
