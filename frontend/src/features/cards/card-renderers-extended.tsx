@@ -162,7 +162,7 @@ function triageDispositionLabel(value: unknown): string | null {
 
 function renderDisclosure(title: string, payload: JsonObject) {
   return (
-    <details className="workspace-card-disclosure">
+    <details className="clinical-card-disclosure">
       <summary>{title}</summary>
       <pre>{JSON.stringify(payload, null, 2)}</pre>
     </details>
@@ -177,11 +177,11 @@ function renderMetaItems(items: Array<{ label: string; value: string | number | 
   }
 
   return (
-    <dl className="workspace-definition-list workspace-definition-list-compact" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", margin: "8px 0" }}>
+    <dl className="clinical-definition-list clinical-definition-list-compact">
       {visibleItems.map((item) => (
-        <div key={item.label} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          <dt style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 500 }}>{item.label}</dt>
-          <dd style={{ margin: 0, fontSize: "0.875rem", color: "#111827", fontWeight: 500, wordBreak: "break-word" }}>{String(item.value)}</dd>
+        <div key={item.label} className="clinical-definition-item">
+          <dt>{item.label}</dt>
+          <dd>{String(item.value)}</dd>
         </div>
       ))}
     </dl>
@@ -310,11 +310,11 @@ function TriageQuestionCardView({
   };
 
   return (
-    <div className="workspace-card-section">
-      <p className="workspace-copy workspace-copy-tight">{prompt}</p>
-      {helpText ? <p className="workspace-copy workspace-copy-tight">{helpText}</p> : null}
+    <div className="clinical-card-section">
+      <p className="clinical-copy clinical-copy-tight">{prompt}</p>
+      {helpText ? <p className="clinical-copy clinical-copy-tight">{helpText}</p> : null}
       {options.length > 0 ? (
-        <div className="workspace-action-row">
+        <div className="clinical-action-row">
           {options.map((option) => {
             const active = selectedIds.includes(option.id);
             return (
@@ -344,7 +344,7 @@ function TriageQuestionCardView({
         </div>
       ) : null}
       {(otherSelected || selectedOptions.some((option) => option.requiresFreeText)) && !submitted ? (
-        <div className="workspace-card-section">
+        <div className="clinical-card-section">
           <Input
             aria-label={otherLabel}
             type="text"
@@ -377,7 +377,7 @@ function TriageQuestionCardView({
           {submitLabel}
         </Button>
       ) : null}
-      {statusMessage ? <p className="workspace-copy workspace-copy-tight">{statusMessage}</p> : null}
+      {statusMessage ? <p className="clinical-copy clinical-copy-tight">{statusMessage}</p> : null}
     </div>
   );
 }
@@ -405,9 +405,9 @@ function renderTriageCard(payload: JsonObject) {
 
   return (
     <>
-      <div className="workspace-card-section">
-        <p className="workspace-card-kicker">{"\u95e8\u8bca\u5206\u8bca"}</p>
-        <p className="workspace-copy workspace-copy-tight">{summary}</p>
+      <div className="clinical-card-section">
+        <p className="clinical-card-kicker">{"\u95e8\u8bca\u5206\u8bca"}</p>
+        <p className="clinical-copy clinical-copy-tight">{summary}</p>
         {renderMetaItems([
           { label: "\u98ce\u9669\u5206\u7ea7", value: riskLevel },
           { label: "\u5efa\u8bae\u53bb\u5411", value: disposition },
@@ -415,11 +415,11 @@ function renderTriageCard(payload: JsonObject) {
         ])}
       </div>
       {suggestedTests.length > 0 ? (
-        <div className="workspace-card-section">
+        <div className="clinical-card-section">
           <strong>{"\u5efa\u8bae\u68c0\u67e5"}</strong>
-          <ul className="workspace-list">
+          <ul className="clinical-list">
             {suggestedTests.map((item) => (
-              <li key={item} className="workspace-list-item">
+              <li key={item} className="clinical-list-item">
                 {item}
               </li>
             ))}

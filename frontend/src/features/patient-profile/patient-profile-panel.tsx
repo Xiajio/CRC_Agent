@@ -81,19 +81,19 @@ function patientProfileEntries(patientProfile: JsonObject): Array<[string, unkno
 
 export function PatientProfilePanel({ patientProfile }: PatientProfilePanelProps) {
   return (
-    <Card className="workspace-card">
+    <Card variant="clinical-panel">
       <h2>患者画像</h2>
       {patientProfile ? (
-        <dl className="workspace-detail-list">
+        <dl className="clinical-detail-list">
           {patientProfileEntries(patientProfile).map(([key, value]) => (
-            <div key={key} className="workspace-detail-row">
+            <div key={key} className="clinical-detail-row">
               <dt>{fieldLabel(key)}</dt>
               <dd>{formatValue(value)}</dd>
             </div>
           ))}
         </dl>
       ) : (
-        <p className="workspace-copy">等待患者信息加载</p>
+        <p className="clinical-copy">等待患者信息加载</p>
       )}
     </Card>
   );

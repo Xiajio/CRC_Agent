@@ -62,7 +62,7 @@ export function DoctorDatabaseView({
   onSetCurrentCaseDatabasePatient,
 }: DoctorDatabaseViewProps) {
   const toolbar = (
-    <div className="workspace-toolbar-row" style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+    <div className="clinical-toolbar-row" style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
       {parentToolbar}
       <DatabaseSourceToolbar activeSource={activeSource} onSourceChange={onSourceChange} />
     </div>
@@ -99,7 +99,7 @@ export function DoctorDatabaseView({
           />
         )}
         rightInspector={(
-          <div className="workspace-panel-stack">
+          <div className="clinical-panel-stack">
             <DatabaseDetailPanel detail={databaseWorkbench.detail} />
             <DatabaseEditForm
               record={databaseWorkbench.editRecord}

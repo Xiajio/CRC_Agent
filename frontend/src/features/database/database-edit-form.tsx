@@ -36,7 +36,7 @@ export function DatabaseEditForm({ record, isSaving, onFieldChange, onSave }: Da
     <Card>
       <div className="database-section-heading">
         <h2>{"记录编辑"}</h2>
-        <p className="workspace-copy workspace-copy-tight">
+        <p className="clinical-copy clinical-copy-tight">
           {"基于当前虚拟病例库的 Excel 源数据进行单条写回。"}
         </p>
       </div>
@@ -152,7 +152,7 @@ export function DatabaseEditForm({ record, isSaving, onFieldChange, onSave }: Da
           </div>
         </div>
       ) : (
-        <p className="workspace-copy">{"尚未选择可编辑的患者记录。"}</p>
+        <p className="clinical-copy">{"尚未选择可编辑的患者记录。"}</p>
       )}
       <div className="database-action-row">
         <Button type="button" disabled={!record || isSaving} onClick={onSave}>

@@ -534,6 +534,7 @@ export function DoctorSceneShell({
       profileLabel="医生"
       profileAriaLabel={CLINICAL_PATIENT_SCENE_ARIA_LABEL}
       onProfileClick={onSwitchScene}
+      className="clinical-top-nav-doctor"
     />
   );
 

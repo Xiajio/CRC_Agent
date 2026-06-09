@@ -29,23 +29,23 @@ export function RecentPatientsPanel({
   onPreviewPatient,
 }: RecentPatientsPanelProps) {
   return (
-    <Card as="section" className="workspace-card" data-testid="recent-patients-panel">
+    <Card as="section" variant="clinical-panel" data-testid="recent-patients-panel">
       <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
         <span style={{ fontSize: "1.2rem" }}></span> {title}
       </h2>
-      {error ? <p className="workspace-copy workspace-copy-alert">{error}</p> : null}
-      {isLoading ? <p className="workspace-copy" style={{ color: "var(--color-primary)" }}>正在加载最近患者...</p> : null}
-      {!isLoading && items.length === 0 ? <p className="workspace-copy">{emptyMessage}</p> : null}
+      {error ? <p className="clinical-copy clinical-copy-alert">{error}</p> : null}
+      {isLoading ? <p className="clinical-copy" style={{ color: "var(--color-primary)" }}>正在加载最近患者...</p> : null}
+      {!isLoading && items.length === 0 ? <p className="clinical-copy">{emptyMessage}</p> : null}
       {items.length > 0 ? (
         <div style={{ maxHeight: "calc(100vh - 200px)", overflowY: "auto", paddingRight: "8px", marginRight: "-8px" }}>
-          <ul className="workspace-list" style={{ gap: "10px", marginTop: "10px" }}>
+          <ul className="clinical-list" style={{ gap: "10px", marginTop: "10px" }}>
             {items.map((item) => {
               const isPreviewed = previewedPatientId === item.patient_id;
               return (
                 <li key={item.patient_id}>
                   <button
                     type="button"
-                    className={`workspace-list-item ${isPreviewed ? "workspace-step-current" : ""}`}
+                    className={`clinical-list-item ${isPreviewed ? "clinical-step-current" : ""}`}
                     onClick={() => onPreviewPatient(item.patient_id)}
                     disabled={isLoadingPreview}
                     aria-label={`preview patient ${item.patient_id}`}
@@ -66,11 +66,11 @@ export function RecentPatientsPanel({
                       <strong style={{ color: isPreviewed ? "var(--color-primary)" : "inherit", fontSize: "1.05rem" }}>
                         {`患者 #${item.patient_id}`}
                       </strong>
-                      <p className="workspace-copy workspace-copy-tight" style={{ fontSize: "0.85rem", marginTop: "6px" }}>
+                      <p className="clinical-copy clinical-copy-tight" style={{ fontSize: "0.85rem", marginTop: "6px" }}>
                         {patientSummary(item)}
                       </p>
                     </div>
-                    <span className="workspace-meta" style={{ fontSize: "0.85rem" }}>
+                    <span className="clinical-meta-text" style={{ fontSize: "0.85rem" }}>
                       {isPreviewed ? "✅ 正在预览" : "👀 预览患者"}
                     </span>
                   </button>

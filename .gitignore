@@ -50,6 +50,12 @@ tests/e2e/acceptance/*
 !tests/e2e/demo/
 tests/e2e/demo/*
 !tests/e2e/demo/*.ts
+!tests/e2e/visual/
+tests/e2e/visual/*
+!tests/e2e/visual/*.ts
+!tests/e2e/visual/*-snapshots/
+tests/e2e/visual/*-snapshots/*
+!tests/e2e/visual/*-snapshots/*.png
 !tests/fixtures/
 tests/fixtures/*
 !tests/fixtures/acceptance_case_db/

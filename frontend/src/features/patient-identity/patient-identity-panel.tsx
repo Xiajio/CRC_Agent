@@ -191,7 +191,7 @@ export function PatientIdentityPanel({
   return (
     <Card
       as="section"
-      className="workspace-card"
+      variant="clinical-panel"
       style={{ position: "sticky", top: "16px" }}
       data-testid="patient-identity-panel"
       aria-label="患者信息"
@@ -201,7 +201,7 @@ export function PatientIdentityPanel({
 
       {panelState.mode === "empty" ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px", alignItems: "flex-start" }}>
-          <p className="workspace-copy" style={{ margin: 0 }}>目前还没有填写患者信息。</p>
+          <p className="clinical-copy" style={{ margin: 0 }}>目前还没有填写患者信息。</p>
           <Button type="button" variant="primary" onClick={handleStartEditing}>
             填写患者信息
           </Button>
@@ -209,7 +209,7 @@ export function PatientIdentityPanel({
       ) : null}
 
       {panelState.mode === "saved" ? (
-        <div className="workspace-copy">
+        <div className="clinical-copy">
           <p>患者名称：{panelState.patientName || "—"}</p>
           <p>患者编号：{panelState.patientNumber || "—"}</p>
           <p>{LOCKED_MESSAGE}</p>
@@ -224,7 +224,7 @@ export function PatientIdentityPanel({
             void handleSave();
           }}
         >
-          <label className="workspace-field" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <label className="clinical-field" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <span>患者名称</span>
             <Input
               aria-label="患者名称"
@@ -233,7 +233,7 @@ export function PatientIdentityPanel({
               onChange={(event) => handleFieldChange("patientName", event.target.value)}
             />
           </label>
-          <label className="workspace-field" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <label className="clinical-field" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             <span>患者编号</span>
             <Input
               aria-label="患者编号"
@@ -243,7 +243,7 @@ export function PatientIdentityPanel({
             />
           </label>
           {showError ? (
-            <p className="workspace-copy workspace-copy-alert" role="alert">
+            <p className="clinical-copy clinical-copy-alert" role="alert">
               {showError}
             </p>
           ) : null}

@@ -5,6 +5,7 @@ import { createRef } from "react";
 import { describe, expect, it } from "vitest";
 
 import { Button, Card, Input, MessageBubble, Select, Textarea } from ".";
+import type { CardVariant } from ".";
 import { classNames } from "./class-names";
 
 describe("shared UI primitives", () => {
@@ -29,6 +30,7 @@ describe("shared UI primitives", () => {
     expect(cardRef.current).toBe(defaultCard);
     expect(defaultCard.tagName).toBe("DIV");
     expect(defaultCard).toHaveClass("ui-card", "ui-card-padding-md");
+    expect(defaultCard).not.toHaveClass("ui-card-clinical-panel");
     expect(defaultCard).not.toHaveClass("ui-card-surface");
     expect(screen.getByText("Default heading").parentElement).toHaveClass("ui-card-header");
     expect(screen.getByText("Default card")).toHaveClass("ui-card-body");
@@ -52,6 +54,38 @@ describe("shared UI primitives", () => {
       "ui-card-selected",
       "custom-card",
     );
+  });
+
+  it("renders clinical panel card variant without feature material classes", () => {
+    const variant: CardVariant = "clinical-panel";
+
+    render(
+      <Card
+        variant={variant}
+        padding="none"
+        selected
+        tone="danger"
+        className="custom-clinical-panel"
+      >
+        Clinical panel content
+      </Card>,
+    );
+
+    const card = screen.getByText("Clinical panel content").closest(".ui-card");
+    if (!(card instanceof HTMLElement)) {
+      throw new Error("Expected clinical panel content to render inside a ui-card element");
+    }
+
+    expect(card).toHaveClass(
+      "ui-card",
+      "ui-card-clinical-panel",
+      "ui-card-padding-none",
+      "ui-card-danger",
+      "ui-card-selected",
+      "custom-clinical-panel",
+    );
+    expect(card).not.toHaveClass("clinical-card", "workspace-card");
+    expect(card).not.toHaveAttribute("variant");
   });
 
   it("renders button children with default and requested API classes", () => {

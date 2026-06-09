@@ -28,7 +28,7 @@ describe("PatientProfilePanel", () => {
   it("keeps current_patient_id visible only as a compatibility identity", () => {
     render(<PatientProfilePanel patientProfile={{ current_patient_id: "legacy-current" }} />);
 
-    const row = screen.getByText("兼容患者ID").closest(".workspace-detail-row");
+    const row = screen.getByText("兼容患者ID").closest(".clinical-detail-row");
     expect(row).not.toBeNull();
     expect(within(row as HTMLElement).getByText("legacy-current")).toBeInTheDocument();
   });

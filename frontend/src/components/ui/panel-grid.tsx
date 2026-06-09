@@ -49,21 +49,16 @@ export function PanelGrid({
       className={classNames([
         "ui-panel-grid",
         `ui-panel-grid-${layoutMode}`,
-        "workspace-layout",
-        `workspace-layout-${layoutMode}`,
         className,
       ])}
-      data-testid="workspace-layout-grid"
+      data-testid="panel-grid"
       data-layout-mode={layoutMode}
     >
       <aside
         className={classNames([
           "ui-panel",
           "ui-panel-left",
-          "workspace-panel",
-          "workspace-panel-rail",
           !leftRailOpen && "ui-panel-collapsed",
-          !leftRailOpen && "workspace-panel-collapsed",
         ])}
         data-testid="left-rail"
         data-panel-state={leftRailOpen ? "open" : "closed"}
@@ -72,7 +67,7 @@ export function PanelGrid({
         {leftRail}
       </aside>
       <section
-        className="ui-panel ui-panel-center workspace-panel workspace-panel-center"
+        className="ui-panel ui-panel-center"
         data-testid="center-workspace"
       >
         {centerWorkspace}
@@ -81,10 +76,7 @@ export function PanelGrid({
         className={classNames([
           "ui-panel",
           "ui-panel-right",
-          "workspace-panel",
-          "workspace-panel-inspector",
           !rightInspectorOpen && "ui-panel-collapsed",
-          !rightInspectorOpen && "workspace-panel-collapsed",
         ])}
         data-testid="right-inspector"
         data-panel-state={rightInspectorOpen ? "open" : "closed"}

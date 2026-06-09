@@ -34,6 +34,20 @@ function mediaBlockFor(query: string) {
 }
 
 describe("consultation cockpit layout CSS", () => {
+  it("keeps clinical page shell spacing around toolbar and body content", () => {
+    const shell = blockFor(".clinical-page-shell");
+    const media1100 = mediaBlockFor("max-width: 1100px");
+
+    expect(shell).toContain("min-height: 100vh");
+    expect(shell).toContain("display: grid");
+    expect(shell).toContain("gap: var(--space-3)");
+    expect(shell).toContain("padding: var(--space-4)");
+    expect(shell).toContain("background: var(--color-canvas)");
+    expect(shell).toContain("color: var(--color-text)");
+    expect(blockFor(".clinical-page-shell", media1100)).toContain("padding: var(--space-3)");
+    expect(blockFor(".clinical-app-shell-database .clinical-page-shell")).toContain("padding-top: 12px");
+  });
+
   it("gives the base desktop cockpit a dominant consultation center and compact support rails", () => {
     const dashboard = blockFor(".clinical-dashboard");
 
@@ -79,16 +93,21 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-message-list")).toContain("max-width: 72ch");
     expect(blockFor(".clinical-message-list")).toContain("margin: 0 auto");
     expect(blockFor(".clinical-event-stream")).toContain("min-height: 0");
-    expect(blockFor(".clinical-event-row")).toContain("repeat(4, minmax(0, 1fr))");
-    expect(blockFor(".clinical-event-chip p")).toContain("max-height: 3.2em");
+    expect(blockFor(".clinical-event-row")).toContain("repeat(2, minmax(0, 1fr))");
+    expect(blockFor(".clinical-event-chip p")).not.toContain("max-height");
+    expect(blockFor(".clinical-event-chip p")).not.toContain("overflow: hidden");
   });
 
   it("defines the polished clinical visual system hooks", () => {
     expect(tokensCss).toContain("--color-primary: #0071e3");
     expect(tokensCss).toContain("--clinical-primary: var(--color-primary)");
     expect(tokensCss).toContain("--clinical-apple-bg: var(--color-canvas)");
-    expect(tokensCss).toContain("--shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04)");
-    expect(tokensCss).toContain("--shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.06)");
+    expect(tokensCss).toContain(
+      "--shadow-card: 0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06)",
+    );
+    expect(tokensCss).toContain(
+      "--shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.05), 0 12px 32px rgba(0, 0, 0, 0.08)",
+    );
     expect(tokensCss).not.toContain("#1466d8");
     expect(css.match(/^:root\s*\{/gm) ?? []).toHaveLength(0);
     expect(css).not.toContain("#1466d8");
@@ -105,7 +124,7 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-nav-tab-active")).not.toContain("0 1px 4px");
     expect(blockFor(".clinical-reset-button")).toContain("var(--clinical-button-border-shadow)");
     expect(blockFor(".clinical-sse-pill")).toContain("var(--clinical-button-border-shadow)");
-    expect(blockFor(".clinical-conversation-card .workspace-composer-send:hover:not(:disabled)")).toContain(
+    expect(blockFor(".clinical-conversation-card .clinical-composer-send:hover:not(:disabled)")).toContain(
       "transform: none",
     );
     expect(blockFor(".clinical-logo-mark circle")).toContain("var(--clinical-accent-blue)");
@@ -138,11 +157,18 @@ describe("consultation cockpit layout CSS", () => {
   });
 
   it("keeps the Apple-inspired command layer compact on mobile", () => {
-    const media700 = mediaBlockFor("max-width: 700px");
+    const media720 = mediaBlockFor("max-width: 720px");
 
-    expect(blockFor(".clinical-top-nav", media700)).toContain("grid-template-columns: 1fr");
-    expect(blockFor(".clinical-nav-tabs", media700)).toContain("grid-template-columns");
-    expect(blockFor(".clinical-nav-tab", media700)).toContain("min-height");
-    expect(blockFor(".clinical-user-area", media700)).toContain("justify-content: flex-start");
+    expect(blockFor(".clinical-top-nav", media720)).toContain("grid-template-columns: 1fr");
+    expect(blockFor(".clinical-nav-tabs", media720)).toContain("grid-template-columns");
+    expect(blockFor(".clinical-nav-tabs", media720)).toContain("repeat(auto-fit, minmax(108px, 1fr))");
+    expect(blockFor(".clinical-top-nav-doctor .clinical-nav-tabs", media720)).toContain(
+      "repeat(3, minmax(0, 1fr))",
+    );
+    expect(blockFor(".clinical-top-nav-patient .clinical-nav-tabs", media720)).toContain(
+      "repeat(2, minmax(0, 1fr))",
+    );
+    expect(blockFor(".clinical-nav-tab", media720)).toContain("min-height");
+    expect(blockFor(".clinical-user-area", media720)).toContain("justify-content: flex-start");
   });
 });

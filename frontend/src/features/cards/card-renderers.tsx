@@ -1,4 +1,4 @@
-﻿import { useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { JsonObject, JsonValue } from "../../app/api/types";
 import { Button } from "../../components/ui";
@@ -315,11 +315,11 @@ function renderMetaItems(items: Array<{ label: string; value: string | number | 
   }
 
   return (
-    <dl className="workspace-definition-list workspace-definition-list-compact" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", margin: "8px 0" }}>
+    <dl className="clinical-definition-list clinical-definition-list-compact">
       {visibleItems.map((item) => (
-        <div key={item.label} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          <dt style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 500 }}>{item.label}</dt>
-          <dd style={{ margin: 0, fontSize: "0.875rem", color: "#111827", fontWeight: 500, wordBreak: "break-word" }}>{String(item.value)}</dd>
+        <div key={item.label} className="clinical-definition-item">
+          <dt>{item.label}</dt>
+          <dd>{String(item.value)}</dd>
         </div>
       ))}
     </dl>
@@ -332,8 +332,8 @@ function renderConfidenceReviewNotice(show: boolean) {
   }
 
   return (
-    <div className="workspace-confidence-alert" role="status">
-      <span className="workspace-confidence-badge">需人工复核</span>
+    <div className="clinical-confidence-alert" role="status">
+      <span className="clinical-confidence-badge">需人工复核</span>
       <span>模型置信度低于阈值或已被系统标记，请复核原始影像、切片与模型输出。</span>
     </div>
   );
@@ -350,7 +350,7 @@ function renderPromptButtons(
   }
 
   return (
-    <div className="workspace-action-row" style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "16px" }}>
+    <div className="clinical-action-row clinical-action-row-prompts">
       {prompts.map((prompt, index) => (
         <Button
           key={prompt}
@@ -374,7 +374,7 @@ function renderPromptButtons(
 
 function renderDisclosure(title: string, payload: JsonObject) {
   return (
-    <details className="workspace-card-disclosure">
+    <details className="clinical-card-disclosure">
       <summary>{title}</summary>
       <pre>{JSON.stringify(payload, null, 2)}</pre>
     </details>
@@ -412,16 +412,16 @@ function ImagingPreviewGallery({ images }: { images: JsonObject[] }) {
   }
 
   return (
-    <div className="workspace-card-section">
+    <div className="clinical-card-section">
       <strong>影像预览</strong>
-      <div className="workspace-image-preview-frame">
+      <div className="clinical-image-preview-frame">
         <img
           src={selectedSource}
           alt={asString(selectedImage.image_name) ?? "影像预览"}
-          className="workspace-image-preview-main"
+          className="clinical-image-preview-main"
         />
       </div>
-      <div className="workspace-image-strip">
+      <div className="clinical-image-strip">
         {images.map((image, index) => {
           const imageSource = previewImageSrc(image);
           if (!imageSource) {
@@ -434,10 +434,10 @@ function ImagingPreviewGallery({ images }: { images: JsonObject[] }) {
             <button
               key={`${imageName}-${index}`}
               type="button"
-              className={active ? "workspace-image-chip workspace-image-chip-active" : "workspace-image-chip"}
+              className={active ? "clinical-image-chip clinical-image-chip-active" : "clinical-image-chip"}
               onClick={() => setSelectedIndex(index)}
             >
-              <img src={imageSource} alt={imageName} className="workspace-image-chip-thumb" />
+              <img src={imageSource} alt={imageName} className="clinical-image-chip-thumb" />
               <span>{imageName}</span>
             </button>
           );
@@ -451,9 +451,9 @@ function renderPreviewSection(images: JsonObject[], emptyMessage: string) {
   return images.length > 0 ? (
     <ImagingPreviewGallery images={images.slice(0, 8)} />
   ) : (
-    <div className="workspace-card-section">
+    <div className="clinical-card-section">
       <strong>影像预览</strong>
-      <p className="workspace-copy workspace-copy-tight">{emptyMessage}</p>
+      <p className="clinical-copy clinical-copy-tight">{emptyMessage}</p>
     </div>
   );
 }
@@ -480,9 +480,9 @@ function renderValueList(value: unknown) {
   }
 
   return (
-    <ul className="workspace-list">
+    <ul className="clinical-list">
       {items.map((item) => (
-        <li key={item} className="workspace-list-item">
+        <li key={item} className="clinical-list-item">
           {item}
         </li>
       ))}
@@ -519,9 +519,9 @@ function renderMedicalCard(
 
   return (
     <>
-      <div className="workspace-card-section">
-        <p className="workspace-card-kicker">医疗总览</p>
-        <p className="workspace-copy workspace-copy-tight">
+      <div className="clinical-card-section">
+        <p className="clinical-card-kicker">医疗总览</p>
+        <p className="clinical-copy clinical-copy-tight">
           {cardSummary(payload) ?? asString(readValue(patientSummary, "chief_complaint")) ?? "暂无医疗总览摘要。"}
         </p>
         {renderMetaItems([
@@ -533,13 +533,13 @@ function renderMedicalCard(
         ])}
       </div>
       {drafts.length > 0 ? (
-        <div className="workspace-card-section">
+        <div className="clinical-card-section">
           <strong>治疗草案</strong>
-          <ul className="workspace-list">
+          <ul className="clinical-list">
             {drafts.map((item, index) => (
-              <li key={asString(item.name) ?? `draft-${index}`} className="workspace-list-item">
+              <li key={asString(item.name) ?? `draft-${index}`} className="clinical-list-item">
                 <strong>{asString(item.name) ?? `方案 ${index + 1}`}</strong>
-                <p className="workspace-copy workspace-copy-tight">
+                <p className="clinical-copy clinical-copy-tight">
                   {asString(item.details) ?? asString(item.status) ?? "暂无细节。"}
                 </p>
               </li>
@@ -608,21 +608,21 @@ function renderPatientCard(
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <div className="workspace-card-section" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <p className="workspace-card-kicker" style={{ margin: 0, fontSize: "0.75rem", color: "#3b82f6", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>患者画像</p>
-        <strong className="workspace-card-heading" style={{ fontSize: "1.125rem", color: "#111827", margin: "4px 0 12px 0" }}>{`患者 #${patientId}`}</strong>
+    <div className="clinical-card-stack">
+      <div className="clinical-card-section clinical-card-section-stack">
+        <p className="clinical-card-kicker clinical-card-kicker-primary">患者画像</p>
+        <strong className="clinical-card-heading clinical-card-heading-offset">{`患者 #${patientId}`}</strong>
         {renderMetaItems(patientInfoItems)}
       </div>
       {isSelfReport || diagnosisBlock ? (
-        <div className="workspace-card-section" style={{ display: "flex", flexDirection: "column", gap: "12px", borderTop: "1px solid #f3f4f6", paddingTop: "16px" }}>
-          <strong style={{ fontSize: "0.875rem", color: "#374151" }}>诊断信息</strong>
+        <div className="clinical-card-section clinical-card-section-bordered">
+          <strong className="clinical-card-section-title">诊断信息</strong>
           {renderMetaItems(diagnosisItems)}
         </div>
       ) : null}
       {isSelfReport || historyBlock ? (
-        <div className="workspace-card-section" style={{ display: "flex", flexDirection: "column", gap: "12px", borderTop: "1px solid #f3f4f6", paddingTop: "16px" }}>
-          <strong style={{ fontSize: "0.875rem", color: "#374151" }}>基础病史</strong>
+        <div className="clinical-card-section clinical-card-section-bordered">
+          <strong className="clinical-card-section-title">基础病史</strong>
           {renderMetaItems(historyItems)}
         </div>
       ) : null}
@@ -642,10 +642,10 @@ function renderImagingVisualCard(payload: JsonObject) {
 
   return (
     <>
-      <div className="workspace-card-section">
-        <p className="workspace-card-kicker">影像样本</p>
-        <strong className="workspace-card-heading">{`患者 ${folderName}`}</strong>
-        <p className="workspace-copy workspace-copy-tight">{summary}</p>
+      <div className="clinical-card-section">
+        <p className="clinical-card-kicker">影像样本</p>
+        <strong className="clinical-card-heading">{`患者 ${folderName}`}</strong>
+        <p className="clinical-copy clinical-copy-tight">{summary}</p>
         {renderMetaItems([
           { label: "影像总数", value: totalImages > 0 ? `共 ${totalImages} 张影像` : null },
           { label: "预览样本", value: previewCount > 0 ? `${previewCount} 张` : null },
@@ -667,10 +667,10 @@ function renderPathologySlideVisualCard(payload: JsonObject) {
 
   return (
     <>
-      <div className="workspace-card-section">
-        <p className="workspace-card-kicker">病理切片</p>
-        <strong className="workspace-card-heading">{`患者 ${folderName}`}</strong>
-        <p className="workspace-copy workspace-copy-tight">
+      <div className="clinical-card-section">
+        <p className="clinical-card-kicker">病理切片</p>
+        <strong className="clinical-card-heading">{`患者 ${folderName}`}</strong>
+        <p className="clinical-copy clinical-copy-tight">
           {cardSummary(payload) ?? "已整理病理切片预览，可按需继续查看。"}
         </p>
         {renderMetaItems([
@@ -713,10 +713,10 @@ function renderTumorDetectionVisualCard(
 
   return (
     <>
-      <div className="workspace-card-section">
-        <p className="workspace-card-kicker">肿瘤检测</p>
-        <strong className="workspace-card-heading">{`患者 ${patientId}`}</strong>
-        <p className="workspace-copy workspace-copy-tight">
+      <div className="clinical-card-section">
+        <p className="clinical-card-kicker">肿瘤检测</p>
+        <strong className="clinical-card-heading">{`患者 ${patientId}`}</strong>
+        <p className="clinical-copy clinical-copy-tight">
           {cardSummary(payload) ?? "已完成影像肿瘤检测，可继续查看详细评估。"}
         </p>
         {renderMetaItems([
@@ -749,10 +749,10 @@ function renderPathologyCard(payload: JsonObject) {
 
   return (
     <>
-      <div className="workspace-card-section">
-        <p className="workspace-card-kicker">病理报告</p>
-        <strong className="workspace-card-heading">{`患者 ${patientId}`}</strong>
-        <p className="workspace-copy workspace-copy-tight">
+      <div className="clinical-card-section">
+        <p className="clinical-card-kicker">病理报告</p>
+        <strong className="clinical-card-heading">{`患者 ${patientId}`}</strong>
+        <p className="clinical-copy clinical-copy-tight">
           {cardSummary(payload) ?? "病理切片分析结果已生成。"}
         </p>
         {renderMetaItems([
@@ -778,10 +778,10 @@ function renderRadiomicsVisualCard(payload: JsonObject) {
 
   return (
     <>
-      <div className="workspace-card-section">
-        <p className="workspace-card-kicker">影像组学报告</p>
-        <strong className="workspace-card-heading">{`患者 ${patientId}`}</strong>
-        <p className="workspace-copy workspace-copy-tight">
+      <div className="clinical-card-section">
+        <p className="clinical-card-kicker">影像组学报告</p>
+        <strong className="clinical-card-heading">{`患者 ${patientId}`}</strong>
+        <p className="clinical-copy clinical-copy-tight">
           {cardSummary(payload) ?? "已完成影像组学分析。"}
         </p>
         {renderMetaItems([
@@ -810,17 +810,17 @@ function renderDecisionCard(payload: JsonObject) {
 
   return (
     <>
-      <div className="workspace-card-section">
-        <p className="workspace-card-kicker">治疗决策</p>
-        <p className="workspace-copy workspace-copy-tight">{summary}</p>
+      <div className="clinical-card-section">
+        <p className="clinical-card-kicker">治疗决策</p>
+        <p className="clinical-copy clinical-copy-tight">{summary}</p>
         {renderMetaItems([{ label: "分期结论", value: asString(data.staging_conclusion) ?? asString(data.staging) }])}
       </div>
       {goals.length > 0 ? (
-        <div className="workspace-card-section">
+        <div className="clinical-card-section">
           <strong>治疗目标</strong>
-          <ul className="workspace-list">
+          <ul className="clinical-list">
             {goals.map((goal, index) => (
-              <li key={`goal-${index}`} className="workspace-list-item">
+              <li key={`goal-${index}`} className="clinical-list-item">
                 {String(goal)}
               </li>
             ))}
@@ -828,15 +828,15 @@ function renderDecisionCard(payload: JsonObject) {
         </div>
       ) : null}
       {plans.length > 0 ? (
-        <div className="workspace-card-section">
+        <div className="clinical-card-section">
           <strong>治疗计划</strong>
-          <ul className="workspace-list">
+          <ul className="clinical-list">
             {plans.map((plan, index) => (
-              <li key={`plan-${index}`} className="workspace-list-item">
+              <li key={`plan-${index}`} className="clinical-list-item">
                 <strong>
                   {asString(plan.phase) ?? asString(plan.title) ?? asString(plan.step) ?? asString(plan.name) ?? `阶段 ${index + 1}`}
                 </strong>
-                <p className="workspace-copy workspace-copy-tight">
+                <p className="clinical-copy clinical-copy-tight">
                   {asString(plan.regimen) ?? asString(plan.content) ?? asString(plan.rationale) ?? asString(plan.reasoning) ?? asString(plan.details) ?? "暂无说明。"}
                 </p>
               </li>
@@ -845,11 +845,11 @@ function renderDecisionCard(payload: JsonObject) {
         </div>
       ) : null}
       {followUp.length > 0 ? (
-        <div className="workspace-card-section">
+        <div className="clinical-card-section">
           <strong>随访计划</strong>
-          <ul className="workspace-list">
+          <ul className="clinical-list">
             {followUp.map((item, index) => (
-              <li key={`follow-${index}`} className="workspace-list-item">
+              <li key={`follow-${index}`} className="clinical-list-item">
                 {item}
               </li>
             ))}
@@ -857,11 +857,11 @@ function renderDecisionCard(payload: JsonObject) {
         </div>
       ) : null}
       {considerations.length > 0 ? (
-        <div className="workspace-card-section">
+        <div className="clinical-card-section">
           <strong>关键考虑点</strong>
-          <ul className="workspace-list">
+          <ul className="clinical-list">
             {considerations.map((item, index) => (
-              <li key={`consideration-${index}`} className="workspace-list-item">
+              <li key={`consideration-${index}`} className="clinical-list-item">
                 {String(item)}
               </li>
             ))}
@@ -892,7 +892,7 @@ function renderTriageCard(payload: JsonObject) {
 
   return (
     <>
-      {summary ? <p className="workspace-copy workspace-copy-tight">{summary}</p> : null}
+      {summary ? <p className="clinical-copy clinical-copy-tight">{summary}</p> : null}
       {renderMetaItems([
         { label: "风险等级", value: riskLevel },
         { label: "建议去向", value: disposition },
@@ -900,7 +900,7 @@ function renderTriageCard(payload: JsonObject) {
         { label: "症状归类", value: symptomFocus },
       ])}
       {suggestedTests ? (
-        <div className="workspace-card-section">
+        <div className="clinical-card-section">
           <strong>建议检查</strong>
           {suggestedTests}
         </div>
@@ -915,7 +915,7 @@ function renderGenericCard(payload: JsonObject) {
   if (summary) {
     return (
       <>
-        <p className="workspace-copy workspace-copy-tight">{summary}</p>
+        <p className="clinical-copy clinical-copy-tight">{summary}</p>
         {renderDisclosure("查看原始数据", payload)}
       </>
     );

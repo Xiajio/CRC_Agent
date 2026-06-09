@@ -21,8 +21,8 @@ export function WorkspaceLayout({
 }: WorkspaceLayoutProps) {
   return (
     <AppShell
-      className="workspace-shell"
-      topNav={toolbar ? <div className="workspace-toolbar">{toolbar}</div> : undefined}
+      className="clinical-page-shell"
+      topNav={toolbar ? <div className="clinical-toolbar">{toolbar}</div> : undefined}
       bodyClassName="ui-app-body-flush"
     >
       <PanelGrid
