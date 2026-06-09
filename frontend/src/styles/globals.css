@@ -1644,6 +1644,7 @@ body {
   min-width: 0;
 }
 
+.ui-card-clinical-panel,
 .clinical-card,
 .clinical-conversation-card {
   border: 1px solid var(--clinical-border);
@@ -1656,6 +1657,7 @@ body {
     box-shadow 160ms ease;
 }
 
+.ui-card-clinical-panel:hover,
 .clinical-card:hover,
 .clinical-conversation-card:hover {
   border-color: var(--color-border-strong);
