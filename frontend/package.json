@@ -9,6 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest",
+    "lint:styles": "vitest --run src/styles/style-architecture-contract.test.ts",
+    "lint:styles:layout": "vitest --run src/styles/style-architecture-contract.test.ts src/styles/consultation-cockpit-layout.test.ts src/styles/card-material-boundary.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:acceptance": "playwright test --config playwright.acceptance.config.ts",
     "test:e2e:sqlite-session": "node ../scripts/run_sqlite_session_persistence_playwright.cjs"
