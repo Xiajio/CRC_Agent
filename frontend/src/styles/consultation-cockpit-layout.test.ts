@@ -161,6 +161,10 @@ describe("consultation cockpit layout CSS", () => {
 
     expect(blockFor(".clinical-top-nav", media720)).toContain("grid-template-columns: 1fr");
     expect(blockFor(".clinical-nav-tabs", media720)).toContain("grid-template-columns");
+    expect(blockFor(".clinical-nav-tabs", media720)).toContain("repeat(3, minmax(0, 1fr))");
+    expect(blockFor(".clinical-top-nav-patient .clinical-nav-tabs", media720)).toContain(
+      "repeat(2, minmax(0, 1fr))",
+    );
     expect(blockFor(".clinical-nav-tab", media720)).toContain("min-height");
     expect(blockFor(".clinical-user-area", media720)).toContain("justify-content: flex-start");
   });
