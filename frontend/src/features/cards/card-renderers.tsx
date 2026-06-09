@@ -350,7 +350,7 @@ function renderPromptButtons(
   }
 
   return (
-    <div className="clinical-action-row">
+    <div className="clinical-action-row clinical-action-row-prompts">
       {prompts.map((prompt, index) => (
         <Button
           key={prompt}

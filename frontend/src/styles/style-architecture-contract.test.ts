@@ -142,6 +142,18 @@ describe("style architecture contract", () => {
     expect(bgAccent).not.toMatch(/gradient\(/i);
   });
 
+  it("keeps extracted card renderer styles scoped to renderer classes", () => {
+    const globalsCss = read(globalsCssPath);
+    const baseCardRenderer = read(resolve(process.cwd(), "src/features/cards/card-renderers.tsx"));
+
+    expect(globalsCss).not.toMatch(/\.clinical-definition-list-compact\s+dt\b/);
+    expect(globalsCss).not.toMatch(/\.clinical-definition-list-compact\s+dd\b/);
+    expect(globalsCss).toContain(".clinical-definition-item dt");
+    expect(globalsCss).toContain(".clinical-definition-item dd");
+    expect(globalsCss).toContain(".clinical-action-row-prompts");
+    expect(baseCardRenderer).toContain('className="clinical-action-row clinical-action-row-prompts"');
+  });
+
   it("keeps card renderer visuals out of inline styles", () => {
     const cardRendererFiles = [
       resolve(process.cwd(), "src/features/cards/card-renderers.tsx"),

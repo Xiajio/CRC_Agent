@@ -708,12 +708,12 @@ body {
   gap: var(--space-1);
 }
 
-.clinical-definition-list-compact dt {
+.clinical-definition-item dt {
   color: var(--color-text-muted);
   font-weight: 500;
 }
 
-.clinical-definition-list-compact dd {
+.clinical-definition-item dd {
   margin: 0;
   color: var(--color-text);
   font-size: var(--font-md);
@@ -724,6 +724,11 @@ body {
 .clinical-action-row {
   display: flex;
   flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.clinical-action-row-prompts {
   gap: var(--space-2);
   margin-top: var(--space-4);
 }
