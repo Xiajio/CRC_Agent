@@ -32,9 +32,10 @@ function nonTestTsxFiles() {
 
 function workspaceCssSelectors(source: string) {
   return [...source.matchAll(/([^{}]+)\{/g)]
-    .map((match) => match[1].trim())
-    .filter((prelude) => prelude.includes(".workspace-"))
-    .flatMap((prelude) => prelude.split(",").map((selector) => selector.trim()))
+    .flatMap((match) => {
+      const number = lineNumberAt(source, match.index ?? 0);
+      return match[1].split(",").map((selector) => `${number}: ${selector.trim()}`);
+    })
     .filter((selector) => selector.includes(".workspace-"));
 }
 
@@ -42,35 +43,22 @@ function lineNumberAt(source: string, index: number) {
   return source.slice(0, index).split(/\r?\n/).length;
 }
 
-function firstLine(source: string) {
-  return source.split(/\r?\n/)[0].trim();
-}
-
-function hasQuotedWorkspaceClassToken(block: string) {
-  return /["'`][^"'`]*\bworkspace-[a-z0-9-]+[^"'`]*["'`]/.test(block);
+function isAllowedWorkspaceReference(line: string) {
+  return (
+    /^\s*import\b/.test(line) ||
+    /\bfrom\s*["'][^"']*(?:\/|\\)workspace(?:\/|\\)/.test(line) ||
+    /(?:\/|\\)features(?:\/|\\)workspace(?:\/|\\)/.test(line) ||
+    /data-testid|aria-describedby|getByTestId|queryByTestId|findByTestId/.test(line)
+  );
 }
 
 function workspaceVisualClassReferences(source: string) {
-  const references: { line: string; number: number }[] = [];
-
-  const addMatches = (pattern: RegExp, predicate: (block: string) => boolean = hasQuotedWorkspaceClassToken) => {
-    for (const match of source.matchAll(pattern)) {
-      const block = match[0];
-      if (!predicate(block)) continue;
-      references.push({
-        line: firstLine(block),
-        number: lineNumberAt(source, match.index ?? 0),
-      });
-    }
-  };
-
-  addMatches(/className\s*=\s*"[^"]*\bworkspace-[^"]*"/g, () => true);
-  addMatches(/className\s*=\s*'[^']*\bworkspace-[^']*'/g, () => true);
-  addMatches(/className\s*=\s*\{[\s\S]*?\}/g);
-  addMatches(/classNames\s*\([\s\S]*?\)/g);
-  addMatches(/closest\(["']\.workspace-[^"']+["']\)/g, () => true);
-
-  return references;
+  return source
+    .split(/\r?\n/)
+    .map((line, index) => ({ line, number: index + 1 }))
+    .filter(({ line }) => /workspace-[a-z0-9-]+/.test(line))
+    .filter(({ line }) => !isAllowedWorkspaceReference(line))
+    .filter(({ line }) => /["'`][^"'`]*workspace-[a-z0-9-]+[^"'`]*["'`]|closest\(["']\.workspace-/.test(line));
 }
 
 function customPropertyValue(name: string, source: string) {
@@ -99,17 +87,21 @@ describe("style architecture contract", () => {
     const globalsCss = read(globalsCssPath);
 
     expect(globalsCss.match(/#[0-9a-fA-F]{6}/g) ?? []).toEqual([]);
-    expect(globalsCss.match(/font-size:\s*0\.\d+rem/g) ?? []).toEqual([]);
-    expect(globalsCss.match(/font-weight:\s*(650|750|760|800)\b/g) ?? []).toEqual([]);
-    expect(globalsCss.match(/border-radius:\s*(14|16|18|22)px/g) ?? []).toEqual([]);
-    expect(globalsCss.match(/padding(?:-[a-z]+)?:[^;\n]*(9px|10px|14px|18px|22px)/g) ?? []).toEqual([]);
+    expect(globalsCss.match(/font-size\s*:\s*0\.\d+rem/g) ?? []).toEqual([]);
+    expect(globalsCss.match(/font-weight\s*:\s*(650|750|760|800)\b/g) ?? []).toEqual([]);
+    expect(globalsCss.match(/border-radius\s*:\s*(14|16|18|22)px/g) ?? []).toEqual([]);
+    expect(globalsCss.match(/padding(?:-[a-z]+)?\s*:[^;\n]*(9px|10px|14px|18px|22px)/g) ?? []).toEqual([]);
   });
 
   it("keeps structural gradients out of tokens", () => {
     const tokensCss = read(tokensCssPath);
+    const panelHeaderSurface = customPropertyValue("--panel-header-surface", tokensCss);
+    const bgAccent = customPropertyValue("--bg-accent", tokensCss);
 
-    expect(customPropertyValue("--panel-header-surface", tokensCss)).not.toMatch(/gradient\(/);
-    expect(customPropertyValue("--bg-accent", tokensCss)).not.toMatch(/gradient\(/);
+    expect(panelHeaderSurface).not.toBe("");
+    expect(bgAccent).not.toBe("");
+    expect(panelHeaderSurface).not.toMatch(/gradient\(/);
+    expect(bgAccent).not.toMatch(/gradient\(/);
   });
 
   it("keeps card renderer visuals out of inline styles", () => {
