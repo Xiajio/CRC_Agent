@@ -100,7 +100,11 @@ describe("AppShell, TopNav, and PanelGrid", () => {
       />,
     );
 
-    expect(screen.getByTestId("workspace-layout-grid")).toHaveAttribute("data-layout-mode", "no-left");
+    expect(screen.getByTestId("panel-grid")).toHaveAttribute("data-layout-mode", "no-left");
+    expect(screen.getByTestId("panel-grid")).toHaveClass("ui-panel-grid");
+    expect(screen.getByTestId("panel-grid").className).not.toContain("workspace-layout");
+    expect(screen.getByTestId("left-rail").className).not.toContain("workspace-panel");
+    expect(screen.getByTestId("right-inspector").className).not.toContain("workspace-panel");
     expect(screen.getByTestId("left-rail")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByTestId("left-rail")).toHaveAttribute("inert");
     expect(screen.getByTestId("left-rail")).toHaveClass("ui-panel-collapsed");
@@ -120,7 +124,11 @@ describe("AppShell, TopNav, and PanelGrid", () => {
       />,
     );
 
-    expect(screen.getByTestId("workspace-layout-grid")).toHaveAttribute("data-layout-mode", "center-only");
+    expect(screen.getByTestId("panel-grid")).toHaveAttribute("data-layout-mode", "center-only");
+    expect(screen.getByTestId("panel-grid")).toHaveClass("ui-panel-grid");
+    expect(screen.getByTestId("panel-grid").className).not.toContain("workspace-layout");
+    expect(screen.getByTestId("left-rail").className).not.toContain("workspace-panel");
+    expect(screen.getByTestId("right-inspector").className).not.toContain("workspace-panel");
     expect(screen.getByTestId("left-rail")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByTestId("right-inspector")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByTestId("left-rail")).toHaveAttribute("inert");
@@ -137,7 +145,7 @@ describe("AppShell, TopNav, and PanelGrid", () => {
       />,
     );
 
-    const toolbar = container.querySelector(".workspace-toolbar");
+    const toolbar = container.querySelector(".clinical-toolbar");
     expect(toolbar).not.toBeNull();
     expect(toolbar).toHaveTextContent("Toolbar content");
     expect(toolbar?.querySelector(".workspace-brand")).toBeNull();

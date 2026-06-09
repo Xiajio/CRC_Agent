@@ -27,7 +27,7 @@ describe("DatabasePage", () => {
       expect(screen.queryByText("正在同步数据库工作台...")).not.toBeInTheDocument();
     });
 
-    expect(screen.getByTestId("workspace-layout-grid")).toHaveAttribute("data-layout-mode", "full");
+    expect(screen.getByTestId("panel-grid")).toHaveAttribute("data-layout-mode", "full");
     expect(screen.getByTestId("left-rail")).toBeVisible();
     expect(screen.getByTestId("center-workspace")).toBeVisible();
     expect(screen.getByTestId("right-inspector")).toBeVisible();

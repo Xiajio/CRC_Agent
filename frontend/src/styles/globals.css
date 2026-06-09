@@ -454,37 +454,14 @@ body {
   color: var(--color-primary);
   font-size: var(--font-md);
 }
-.workspace-layout {
-  display: grid;
-  grid-template-areas: "left center right";
-  grid-template-columns: 280px minmax(0, 1fr) 320px;
-  gap: 18px;
-}
-
-.workspace-layout-no-left {
-  grid-template-areas: "center right";
-  grid-template-columns: minmax(0, 1fr) 320px;
-}
-
-.workspace-layout-no-right {
-  grid-template-areas: "left center";
-  grid-template-columns: 280px minmax(0, 1fr);
-}
-
-.workspace-layout-center-only {
-  grid-template-areas: "center";
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.workspace-shell {
+.clinical-page-shell {
   min-height: 100vh;
-  display: grid;
-  gap: 12px;
-  padding: 18px;
+  background: var(--color-canvas);
+  color: var(--color-text);
 }
 
-.workspace-toolbar {
-  display: block;
+.clinical-toolbar {
+  display: contents;
 }
 
 .workspace-global-header {
@@ -631,33 +608,6 @@ body {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
-}
-
-.workspace-panel {
-  min-height: 0;
-}
-
-.workspace-panel-rail,
-.workspace-panel-inspector {
-  align-self: start;
-}
-
-.workspace-panel-rail {
-  grid-area: left;
-}
-
-.workspace-panel-center {
-  display: flex;
-  flex-direction: column;
-  grid-area: center;
-}
-
-.workspace-panel-inspector {
-  grid-area: right;
-}
-
-.workspace-panel-collapsed {
-  display: none;
 }
 
 .workspace-center-stack {
@@ -1342,11 +1292,11 @@ body {
 }
 
 @media (max-width: 1100px) {
-  .workspace-shell {
-    padding: 14px;
+  .clinical-page-shell {
+    padding: var(--space-3);
   }
 
-  .workspace-layout {
+  .ui-panel-grid {
     grid-template-areas: "center";
     grid-template-columns: 1fr;
   }
@@ -1374,7 +1324,7 @@ body {
   background: var(--clinical-apple-bg);
 }
 
-.clinical-app-shell-database .workspace-shell {
+.clinical-app-shell-database .clinical-page-shell {
   padding-top: 12px;
 }
 
