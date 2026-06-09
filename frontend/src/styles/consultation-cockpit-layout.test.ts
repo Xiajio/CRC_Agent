@@ -87,8 +87,12 @@ describe("consultation cockpit layout CSS", () => {
     expect(tokensCss).toContain("--color-primary: #0071e3");
     expect(tokensCss).toContain("--clinical-primary: var(--color-primary)");
     expect(tokensCss).toContain("--clinical-apple-bg: var(--color-canvas)");
-    expect(tokensCss).toContain("--shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04)");
-    expect(tokensCss).toContain("--shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.06)");
+    expect(tokensCss).toContain(
+      "--shadow-card: 0 0 0 0.5px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06)",
+    );
+    expect(tokensCss).toContain(
+      "--shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.05), 0 12px 32px rgba(0, 0, 0, 0.08)",
+    );
     expect(tokensCss).not.toContain("#1466d8");
     expect(css.match(/^:root\s*\{/gm) ?? []).toHaveLength(0);
     expect(css).not.toContain("#1466d8");
