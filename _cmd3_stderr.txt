@@ -1,8 +1,0 @@
-FINDSTR: 无法打开 egg-info
-FINDSTR: 无法打开 tmp_patient
-FINDSTR: 无法打开 .tmp
-FINDSTR: 无法打开 pytest
-FINDSTR: 无法打开 cache
-FINDSTR: 无法打开 node_modules
-FINDSTR: 无法打开 dist
-FINDSTR: 无法打开 log\ 
