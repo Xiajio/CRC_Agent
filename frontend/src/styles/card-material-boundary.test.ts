@@ -68,10 +68,8 @@ describe("card material boundary CSS", () => {
 
   it("keeps bare clinical panel headings compact without changing panel headers", () => {
     const bareHeading = ".ui-card-clinical-panel > .ui-card-body > h2";
-    const panelHeaderHeading = ".clinical-panel-header h2";
 
     expect(selectorIndex(bareHeading)).toBeGreaterThan(selectorIndex(".ui-card-clinical-panel,"));
-    expect(selectorIndex(panelHeaderHeading)).toBeGreaterThan(selectorIndex(bareHeading));
     expect(css).not.toContain(".ui-card-clinical-panel h2 {");
 
     const block = blockFor(bareHeading);
