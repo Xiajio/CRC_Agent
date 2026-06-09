@@ -2808,8 +2808,8 @@ body {
 
 .clinical-event-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-3);
 }
 
@@ -2862,8 +2862,6 @@ body {
   color: var(--color-text-muted);
   font-size: var(--font-xs);
   line-height: 1.5;
-  max-height: 3.2em;
-  overflow: hidden;
   overflow-wrap: anywhere;
 }
 
@@ -2973,6 +2971,29 @@ body {
 }
 
 @media (max-width: 720px) {
+  .clinical-top-nav {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: var(--space-3) var(--space-4) var(--space-3);
+  }
+
+  .clinical-nav-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    height: auto;
+  }
+
+  .clinical-nav-tab {
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 8px;
+  }
+
+  .clinical-user-area {
+    justify-content: flex-start;
+  }
+
   .clinical-dashboard {
     padding: 8px;
     gap: 8px;
@@ -3028,30 +3049,5 @@ body {
   .clinical-reference-open {
     justify-self: start;
     grid-column: 2;
-  }
-}
-
-@media (max-width: 700px) {
-  .clinical-top-nav {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    padding: var(--space-3) var(--space-4) var(--space-3);
-  }
-
-  .clinical-nav-tabs {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    width: 100%;
-    height: auto;
-  }
-
-  .clinical-nav-tab {
-    min-width: 0;
-    min-height: 36px;
-    padding: 0 8px;
-  }
-
-  .clinical-user-area {
-    justify-content: flex-start;
   }
 }

@@ -94,7 +94,8 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-message-list")).toContain("margin: 0 auto");
     expect(blockFor(".clinical-event-stream")).toContain("min-height: 0");
     expect(blockFor(".clinical-event-row")).toContain("repeat(2, minmax(0, 1fr))");
-    expect(blockFor(".clinical-event-chip p")).not.toContain("max-height: 3.2em");
+    expect(blockFor(".clinical-event-chip p")).not.toContain("max-height");
+    expect(blockFor(".clinical-event-chip p")).not.toContain("overflow: hidden");
   });
 
   it("defines the polished clinical visual system hooks", () => {
@@ -156,11 +157,11 @@ describe("consultation cockpit layout CSS", () => {
   });
 
   it("keeps the Apple-inspired command layer compact on mobile", () => {
-    const media700 = mediaBlockFor("max-width: 700px");
+    const media720 = mediaBlockFor("max-width: 720px");
 
-    expect(blockFor(".clinical-top-nav", media700)).toContain("grid-template-columns: 1fr");
-    expect(blockFor(".clinical-nav-tabs", media700)).toContain("grid-template-columns");
-    expect(blockFor(".clinical-nav-tab", media700)).toContain("min-height");
-    expect(blockFor(".clinical-user-area", media700)).toContain("justify-content: flex-start");
+    expect(blockFor(".clinical-top-nav", media720)).toContain("grid-template-columns: 1fr");
+    expect(blockFor(".clinical-nav-tabs", media720)).toContain("grid-template-columns");
+    expect(blockFor(".clinical-nav-tab", media720)).toContain("min-height");
+    expect(blockFor(".clinical-user-area", media720)).toContain("justify-content: flex-start");
   });
 });
