@@ -1407,6 +1407,14 @@ body {
   box-shadow: var(--shadow-pop);
 }
 
+.ui-card-clinical-panel > .ui-card-body > h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-base);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .clinical-card {
   padding: 0;
 }

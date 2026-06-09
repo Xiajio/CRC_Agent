@@ -65,4 +65,18 @@ describe("card material boundary CSS", () => {
     expect(hoverBlock).toContain("border-color: var(--color-border-strong);");
     expect(hoverBlock).toContain("box-shadow: var(--shadow-pop);");
   });
+
+  it("keeps bare clinical panel headings compact without changing panel headers", () => {
+    const bareHeading = ".ui-card-clinical-panel > .ui-card-body > h2";
+    const panelHeaderHeading = ".clinical-panel-header h2";
+
+    expect(selectorIndex(bareHeading)).toBeGreaterThan(selectorIndex(".ui-card-clinical-panel,"));
+    expect(selectorIndex(panelHeaderHeading)).toBeGreaterThan(selectorIndex(bareHeading));
+    expect(css).not.toContain(".ui-card-clinical-panel h2 {");
+
+    const block = blockFor(bareHeading);
+    expect(block).toContain("margin: 0;");
+    expect(block).toContain("font-size: var(--font-base);");
+    expect(block).toContain("letter-spacing: 0.02em;");
+  });
 });
