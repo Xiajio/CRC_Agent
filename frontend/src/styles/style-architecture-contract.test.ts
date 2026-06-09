@@ -92,7 +92,14 @@ function matchingLines(source: string, regex: RegExp, fileLabel: string) {
 }
 
 function inlineStyleReferences(source: string, fileLabel: string) {
-  return matchingLines(source, /\bstyle\s*=\s*\{/, fileLabel);
+  return [...source.matchAll(/\bstyle\s*=\s*(?:\{|\r?\n)/g)].map((match) => {
+    const index = match.index ?? 0;
+    const number = lineNumberAt(source, index);
+    const lineStart = source.lastIndexOf("\n", index) + 1;
+    const lineEnd = source.indexOf("\n", index);
+    const line = source.slice(lineStart, lineEnd === -1 ? source.length : lineEnd).trim();
+    return `${fileLabel}:${number}: ${line}`;
+  });
 }
 
 describe("style architecture contract", () => {
