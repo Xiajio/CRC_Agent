@@ -2979,9 +2979,13 @@ body {
 
   .clinical-nav-tabs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
     width: 100%;
     height: auto;
+  }
+
+  .clinical-top-nav-doctor .clinical-nav-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .clinical-top-nav-patient .clinical-nav-tabs {
