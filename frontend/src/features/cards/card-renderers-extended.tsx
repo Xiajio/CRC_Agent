@@ -177,11 +177,11 @@ function renderMetaItems(items: Array<{ label: string; value: string | number | 
   }
 
   return (
-    <dl className="clinical-definition-list clinical-definition-list-compact" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", margin: "8px 0" }}>
+    <dl className="clinical-definition-list clinical-definition-list-compact">
       {visibleItems.map((item) => (
-        <div key={item.label} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          <dt style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 500 }}>{item.label}</dt>
-          <dd style={{ margin: 0, fontSize: "0.875rem", color: "#111827", fontWeight: 500, wordBreak: "break-word" }}>{String(item.value)}</dd>
+        <div key={item.label} className="clinical-definition-item">
+          <dt>{item.label}</dt>
+          <dd>{String(item.value)}</dd>
         </div>
       ))}
     </dl>

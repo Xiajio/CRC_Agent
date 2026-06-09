@@ -315,11 +315,11 @@ function renderMetaItems(items: Array<{ label: string; value: string | number | 
   }
 
   return (
-    <dl className="clinical-definition-list clinical-definition-list-compact" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 16px", margin: "8px 0" }}>
+    <dl className="clinical-definition-list clinical-definition-list-compact">
       {visibleItems.map((item) => (
-        <div key={item.label} style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          <dt style={{ fontSize: "0.75rem", color: "#6b7280", fontWeight: 500 }}>{item.label}</dt>
-          <dd style={{ margin: 0, fontSize: "0.875rem", color: "#111827", fontWeight: 500, wordBreak: "break-word" }}>{String(item.value)}</dd>
+        <div key={item.label} className="clinical-definition-item">
+          <dt>{item.label}</dt>
+          <dd>{String(item.value)}</dd>
         </div>
       ))}
     </dl>
@@ -350,7 +350,7 @@ function renderPromptButtons(
   }
 
   return (
-    <div className="clinical-action-row" style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "16px" }}>
+    <div className="clinical-action-row">
       {prompts.map((prompt, index) => (
         <Button
           key={prompt}
@@ -608,21 +608,21 @@ function renderPatientCard(
   ];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-      <div className="clinical-card-section" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        <p className="clinical-card-kicker" style={{ margin: 0, fontSize: "0.75rem", color: "#3b82f6", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>患者画像</p>
-        <strong className="clinical-card-heading" style={{ fontSize: "1.125rem", color: "#111827", margin: "4px 0 12px 0" }}>{`患者 #${patientId}`}</strong>
+    <div className="clinical-card-stack">
+      <div className="clinical-card-section clinical-card-section-stack">
+        <p className="clinical-card-kicker clinical-card-kicker-primary">患者画像</p>
+        <strong className="clinical-card-heading clinical-card-heading-offset">{`患者 #${patientId}`}</strong>
         {renderMetaItems(patientInfoItems)}
       </div>
       {isSelfReport || diagnosisBlock ? (
-        <div className="clinical-card-section" style={{ display: "flex", flexDirection: "column", gap: "12px", borderTop: "1px solid #f3f4f6", paddingTop: "16px" }}>
-          <strong style={{ fontSize: "0.875rem", color: "#374151" }}>诊断信息</strong>
+        <div className="clinical-card-section clinical-card-section-bordered">
+          <strong className="clinical-card-section-title">诊断信息</strong>
           {renderMetaItems(diagnosisItems)}
         </div>
       ) : null}
       {isSelfReport || historyBlock ? (
-        <div className="clinical-card-section" style={{ display: "flex", flexDirection: "column", gap: "12px", borderTop: "1px solid #f3f4f6", paddingTop: "16px" }}>
-          <strong style={{ fontSize: "0.875rem", color: "#374151" }}>基础病史</strong>
+        <div className="clinical-card-section clinical-card-section-bordered">
+          <strong className="clinical-card-section-title">基础病史</strong>
           {renderMetaItems(historyItems)}
         </div>
       ) : null}
