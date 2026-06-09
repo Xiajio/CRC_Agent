@@ -484,12 +484,12 @@ export function WorkspacePage() {
   }
 
   if (bootstrapStatus === "loading") {
-    return <main className="workspace-shell"><Card className="workspace-card">正在加载工作区...</Card></main>;
+    return <main className="clinical-page-shell"><Card className="workspace-card">正在加载工作区...</Card></main>;
   }
 
   if (bootstrapStatus === "error") {
     return (
-      <main className="workspace-shell">
+      <main className="clinical-page-shell">
         <Card className="workspace-card">
           <h2>工作区初始化失败</h2>
           <p className="workspace-copy workspace-copy-alert">{bootstrapError ?? "未知初始化错误。"}</p>
