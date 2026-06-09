@@ -79,8 +79,8 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-message-list")).toContain("max-width: 72ch");
     expect(blockFor(".clinical-message-list")).toContain("margin: 0 auto");
     expect(blockFor(".clinical-event-stream")).toContain("min-height: 0");
-    expect(blockFor(".clinical-event-row")).toContain("repeat(4, minmax(0, 1fr))");
-    expect(blockFor(".clinical-event-chip p")).toContain("max-height: 3.2em");
+    expect(blockFor(".clinical-event-row")).toContain("repeat(2, minmax(0, 1fr))");
+    expect(blockFor(".clinical-event-chip p")).not.toContain("max-height: 3.2em");
   });
 
   it("defines the polished clinical visual system hooks", () => {
