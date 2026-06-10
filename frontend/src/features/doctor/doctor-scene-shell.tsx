@@ -1,4 +1,4 @@
-import { useCallback, useRef, type ReactNode } from "react";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 
 import {
   type ClinicalEventLogEntry,
@@ -403,51 +403,77 @@ function ClinicalEventStream({
   events: ClinicalEventLogEntry[];
   critic?: JsonObject | null;
 }) {
+  const [isExpanded, setIsExpanded] = useState(true);
   const requiresHumanReview = criticRequiresHumanReview(critic);
   const reviewFeedback = formatCriticFeedback(critic?.feedback);
   const reviewVerdict = formatClinicalCriticVerdict(critic?.verdict);
   return (
-    <Card as="section" padding="none" className="clinical-card clinical-event-stream">
-      <ClinicalPanelHeader icon={<SmallIcon name="event" />} title="事件流" />
-      {requiresHumanReview ? (
-        <div className="clinical-review-warning" role="status">
-          <div className="clinical-review-warning-head">
-            <strong>{CLINICAL_HUMAN_REVIEW_LABEL}</strong>
-            {reviewVerdict ? <span>{reviewVerdict}</span> : null}
-          </div>
-          <p className="clinical-review-feedback">{reviewFeedback}</p>
-        </div>
+    <Card
+      as="section"
+      padding="none"
+      className="clinical-card clinical-event-stream"
+      data-expanded={isExpanded}
+    >
+      <div className="clinical-panel-header clinical-event-console-header">
+        <span className="clinical-panel-icon">
+          <SmallIcon name="event" />
+        </span>
+        <h2>事件流</h2>
+        <span className="clinical-event-console-meta">
+          {events.length > 0 ? `${events.length} 条事件` : "暂无事件"}
+        </span>
+        <button
+          type="button"
+          className="clinical-event-console-toggle"
+          aria-expanded={isExpanded}
+          onClick={() => setIsExpanded((current) => !current)}
+        >
+          {isExpanded ? "收起事件流" : "展开事件流"}
+        </button>
+      </div>
+      {isExpanded ? (
+        <>
+          {requiresHumanReview ? (
+            <div className="clinical-review-warning" role="status">
+              <div className="clinical-review-warning-head">
+                <strong>{CLINICAL_HUMAN_REVIEW_LABEL}</strong>
+                {reviewVerdict ? <span>{reviewVerdict}</span> : null}
+              </div>
+              <p className="clinical-review-feedback">{reviewFeedback}</p>
+            </div>
+          ) : null}
+          {events.length > 0 ? (
+            <div className="clinical-event-row">
+              {events.map((event) => {
+                const rawDetail = event.kind === "critic"
+                  ? compactClinicalEventDetail(event.detail)
+                  : event.detail;
+                const detail = formatClinicalEventDetail(rawDetail);
+                return (
+                  <article
+                    key={event.id}
+                    className={`clinical-event-chip clinical-event-chip-${event.tone}`}
+                  >
+                    <div>
+                      <strong>{formatClinicalEventTitle(event)}</strong>
+                      <span>{formatClinicalEventKind(event.kind)}</span>
+                    </div>
+                    {detail ? <p>{detail}</p> : null}
+                    {event.requiresHumanReview ? <p>{CLINICAL_HUMAN_REVIEW_LABEL}</p> : null}
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <ClinicalEmptyState
+              compact
+              icon="events"
+              title="事件流待启动"
+              message="暂无事件。"
+            />
+          )}
+        </>
       ) : null}
-      {events.length > 0 ? (
-        <div className="clinical-event-row">
-          {events.map((event) => {
-            const rawDetail = event.kind === "critic"
-              ? compactClinicalEventDetail(event.detail)
-              : event.detail;
-            const detail = formatClinicalEventDetail(rawDetail);
-            return (
-              <article
-                key={event.id}
-                className={`clinical-event-chip clinical-event-chip-${event.tone}`}
-              >
-                <div>
-                  <strong>{formatClinicalEventTitle(event)}</strong>
-                  <span>{formatClinicalEventKind(event.kind)}</span>
-                </div>
-                {detail ? <p>{detail}</p> : null}
-                {event.requiresHumanReview ? <p>{CLINICAL_HUMAN_REVIEW_LABEL}</p> : null}
-              </article>
-            );
-          })}
-        </div>
-      ) : (
-        <ClinicalEmptyState
-          compact
-          icon="events"
-          title="事件流待启动"
-          message="暂无事件。"
-        />
-      )}
     </Card>
   );
 }

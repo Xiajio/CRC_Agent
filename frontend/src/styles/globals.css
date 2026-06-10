@@ -85,7 +85,7 @@ body {
   gap: var(--space-4);
   padding: 0 var(--space-8);
   border-bottom: 1px solid var(--color-border-soft);
-  background: rgba(250, 250, 252, 0.86);
+  background: var(--clinical-command-surface);
   color: var(--color-text);
   box-shadow: var(--shadow-control);
   backdrop-filter: blur(18px) saturate(1.35);
@@ -211,7 +211,7 @@ body {
 
 .ui-profile-switch:hover .ui-profile-avatar,
 .ui-profile-switch:focus-visible .ui-profile-avatar {
-  box-shadow: 0 0 0 4px rgba(20, 102, 216, 0.22);
+  box-shadow: 0 0 0 4px var(--focus-ring-strong);
 }
 
 .ui-profile-avatar {
@@ -346,9 +346,9 @@ body {
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-1);
-  border: 1px solid rgba(219, 231, 243, 0.6);
+  border: 1px solid var(--color-border-soft);
   border-radius: var(--radius-lg);
-  background: rgba(255,255,255,0.12);
+  background: color-mix(in srgb, var(--color-surface) 12%, transparent);
 }
 
 .ui-field {
@@ -391,7 +391,7 @@ body {
 .ui-textarea:focus-visible {
   outline: none;
   border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(20, 102, 216, 0.16);
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .ui-card-header {
@@ -472,9 +472,9 @@ body {
   font-weight: 600;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
-  background: rgba(20, 102, 216, 0.08);
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
   color: var(--color-primary);
-  border: 1px solid rgba(20, 102, 216, 0.12);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .animate-spin {
@@ -555,10 +555,10 @@ body {
 }
 
 .clinical-list-item {
-  border: 1px solid rgba(20, 102, 216, 0.12);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
   border-radius: var(--radius-lg);
   padding: var(--space-3) var(--space-4);
-  background: rgba(255, 255, 255, 0.82);
+  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
 }
 
 .clinical-inline-card-stack {
@@ -572,11 +572,11 @@ body {
 }
 
 .clinical-inline-card {
-  border: 1px solid rgba(20, 102, 216, 0.15);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 15%, transparent);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 4px 12px rgba(23, 43, 77, 0.05);
+  background: color-mix(in srgb, var(--color-surface) 95%, transparent);
+  box-shadow: var(--shadow-card);
 }
 
 .clinical-inline-card-title {
@@ -584,7 +584,7 @@ body {
   margin-bottom: 12px;
   font-size: var(--font-base);
   color: var(--color-primary);
-  border-bottom: 1px solid rgba(20, 102, 216, 0.1);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-primary) 10%, transparent);
   padding-bottom: 8px;
 }
 
@@ -612,7 +612,7 @@ body {
 }
 
 .clinical-step-current {
-  border-color: rgba(20, 102, 216, 0.24);
+  border-color: color-mix(in srgb, var(--color-primary) 24%, transparent);
   background: var(--color-primary-soft);
 }
 
@@ -678,9 +678,9 @@ body {
   align-items: flex-start;
   gap: 8px;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid rgba(180, 83, 9, 0.24);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 24%, transparent);
   border-radius: var(--radius-lg);
-  background: rgba(255, 251, 235, 0.86);
+  background: var(--color-warning-soft);
   color: var(--color-warning);
   font-size: var(--font-md);
   line-height: 1.5;
@@ -690,7 +690,7 @@ body {
   flex: 0 0 auto;
   padding: 2px 7px;
   border-radius: var(--radius-sm);
-  background: rgba(180, 83, 9, 0.12);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
   color: var(--color-warning);
   font-size: var(--font-xs);
   font-weight: 700;
@@ -735,9 +735,9 @@ body {
 
 .clinical-card-disclosure {
   margin-top: var(--space-5);
-  border: 1px solid rgba(20, 102, 216, 0.12);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.74);
+  background: color-mix(in srgb, var(--color-surface) 74%, transparent);
   overflow: hidden;
 }
 
@@ -761,9 +761,9 @@ body {
   display: flex;
   justify-content: center;
   padding: 12px;
-  border: 1px solid rgba(20, 102, 216, 0.12);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
   border-radius: var(--radius-lg);
-  background: rgba(255, 255, 255, 0.78);
+  background: color-mix(in srgb, var(--color-surface) 78%, transparent);
 }
 
 .clinical-image-preview-main {
@@ -782,17 +782,17 @@ body {
   display: grid;
   gap: 6px;
   justify-items: center;
-  border: 1px solid rgba(20, 102, 216, 0.12);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
   border-radius: var(--radius-lg);
   padding: 8px;
-  background: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
   color: inherit;
   font: inherit;
   font-size: var(--font-xs);
 }
 
 .clinical-image-chip-active {
-  border-color: rgba(20, 102, 216, 0.28);
+  border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
   background: var(--color-primary-soft);
 }
 
@@ -847,7 +847,7 @@ body {
 }
 
 .clinical-composer-send:disabled {
-  background: rgba(20, 102, 216, 0.2);
+  background: color-mix(in srgb, var(--color-primary) 32%, transparent);
   color: rgba(255, 255, 255, 0.8);
   cursor: not-allowed;
 }
@@ -1155,13 +1155,13 @@ body {
 }
 
 .clinical-logo-mark line {
-  stroke: rgba(29, 29, 31, 0.24);
+  stroke: color-mix(in srgb, var(--color-text) 24%, transparent);
   stroke-width: 2;
 }
 
 .clinical-logo-mark circle {
   fill: var(--clinical-accent-blue);
-  stroke: rgba(255, 255, 255, 0.88);
+  stroke: color-mix(in srgb, var(--color-surface) 88%, transparent);
   stroke-width: 1.5;
 }
 
@@ -1174,8 +1174,8 @@ body {
   border: 1px solid var(--color-border-soft);
   border-radius: var(--radius-pill);
   padding: 3px;
-  background: rgba(255, 255, 255, 0.58);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 1px 2px rgba(0, 0, 0, 0.04);
+  background: color-mix(in srgb, var(--color-surface) 58%, transparent);
+  box-shadow: var(--clinical-tabs-shadow);
   min-width: 0;
 }
 
@@ -1196,7 +1196,7 @@ body {
 }
 
 .clinical-nav-tab:hover {
-  background: rgba(255, 255, 255, 0.82);
+  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
   color: var(--clinical-command-ink);
 }
 
@@ -1255,15 +1255,15 @@ body {
 
 .clinical-profile-switch:hover .clinical-avatar,
 .clinical-profile-switch:focus-visible .clinical-avatar {
-  box-shadow: 0 0 0 4px rgba(0, 113, 227, 0.14);
+  box-shadow: 0 0 0 4px var(--focus-ring);
 }
 
 .clinical-reset-button {
   min-height: 34px;
-  border: 1px solid rgba(0, 0, 0, 0.12);
+  border: 1px solid color-mix(in srgb, var(--color-text) 12%, transparent);
   border-radius: 7px;
   padding: 0 12px;
-  background: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
   color: var(--clinical-apple-ink);
   font: inherit;
   font-size: var(--font-xs);
@@ -1273,11 +1273,11 @@ body {
 }
 
 .clinical-reset-button:hover {
-  background: rgba(255, 255, 255, 0.82);
+  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
 }
 
 .clinical-safe-pill {
-  border-color: rgba(38, 220, 131, 0.55);
+  border-color: color-mix(in srgb, var(--color-success) 55%, transparent);
 }
 
 .clinical-sse-pill {
@@ -1306,7 +1306,7 @@ body {
 .clinical-top-divider {
   width: 1px;
   height: 32px;
-  background: rgba(0, 0, 0, 0.12);
+  background: color-mix(in srgb, var(--color-text) 12%, transparent);
 }
 
 .clinical-avatar {
@@ -1347,7 +1347,7 @@ body {
   grid-template-columns: var(--dashboard-left-width) minmax(0, 1fr) var(--dashboard-right-width);
   grid-template-areas:
     "left center right"
-    "event event right";
+    "event event event";
   gap: var(--space-3);
   padding: var(--space-3);
   align-items: start;
@@ -2143,7 +2143,7 @@ body {
   justify-content: center;
   width: 20px;
   height: 20px;
-  border: 1px solid rgba(36, 166, 106, 0.6);
+  border: 1px solid color-mix(in srgb, var(--color-success) 60%, transparent);
   border-radius: var(--radius-pill);
   color: var(--clinical-success);
 }
@@ -2269,7 +2269,7 @@ body {
   height: 8px;
   border-radius: 999px;
   background: var(--clinical-success);
-  box-shadow: 0 0 0 4px rgba(36, 166, 106, 0.12);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-success) 12%, transparent);
 }
 
 .clinical-runtime-pills {
@@ -2474,7 +2474,7 @@ body {
 }
 
 .clinical-medical-card-selected {
-  outline: 2px solid rgba(20, 102, 216, 0.28);
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 28%, transparent);
   outline-offset: 2px;
 }
 
@@ -2676,7 +2676,7 @@ body {
 
 .clinical-roadmap-step-in_progress .clinical-roadmap-dot {
   border-color: var(--clinical-primary);
-  box-shadow: 0 0 0 4px rgba(20, 102, 216, 0.12);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .clinical-roadmap-label {
@@ -2700,7 +2700,7 @@ body {
 .clinical-roadmap-step-blocked .clinical-roadmap-dot {
   border-color: var(--clinical-warning);
   background: var(--color-surface-soft);
-  box-shadow: 0 0 0 4px rgba(240, 100, 35, 0.12);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-warning) 12%, transparent);
 }
 
 .clinical-roadmap-step-blocked .clinical-roadmap-status {
@@ -2852,7 +2852,7 @@ body {
   gap: 6px;
   margin: 12px 16px;
   padding: var(--space-2) var(--space-3);
-  border: 1px solid rgba(240, 100, 35, 0.28);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 28%, transparent);
   border-radius: 8px;
   background: var(--color-surface-soft);
   color: var(--color-warning);
@@ -2898,9 +2898,46 @@ body {
   min-height: 0;
 }
 
+.clinical-event-console-header {
+  gap: var(--space-2);
+}
+
+.clinical-event-console-header h2 {
+  margin-right: var(--space-2);
+}
+
+.clinical-event-console-meta {
+  margin-left: auto;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.clinical-event-console-toggle {
+  flex: 0 0 auto;
+  min-height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-3);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--font-xs);
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 160ms ease, color 160ms ease;
+}
+
+.clinical-event-console-toggle:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
 .clinical-event-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-3);
 }
@@ -3155,4 +3192,130 @@ body {
   .anatomy-highlight-visuals {
     grid-template-columns: 1fr;
   }
+}
+
+/* ============================================================
+ * 医生端「临床驾驶舱」主题（data-theme="doctor-cockpit"）
+ * 颜色全部来自 tokens.css 的主题覆盖；这里只放结构性差异：
+ * 下划线式导航指示、等宽数据字段、控制台式事件流。
+ * ============================================================ */
+
+[data-theme="doctor-cockpit"] .clinical-nav-tabs {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+[data-theme="doctor-cockpit"] .clinical-nav-tab {
+  border-radius: var(--radius-md);
+}
+
+[data-theme="doctor-cockpit"] .clinical-nav-tab:hover {
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+}
+
+[data-theme="doctor-cockpit"] .clinical-nav-tab-active,
+[data-theme="doctor-cockpit"] .clinical-nav-tab-active:hover {
+  background: var(--color-primary-soft);
+  box-shadow: inset 0 -2px 0 var(--color-primary);
+  color: var(--color-primary);
+}
+
+[data-theme="doctor-cockpit"] .ui-top-nav-tab-active {
+  background: var(--color-primary-soft);
+}
+
+/* 仪表盘数据字段：等宽数字 + 等宽字体 */
+[data-theme="doctor-cockpit"] .clinical-summary-row dd,
+[data-theme="doctor-cockpit"] .clinical-stage-badge,
+[data-theme="doctor-cockpit"] .clinical-plan-index,
+[data-theme="doctor-cockpit"] .clinical-reference-number,
+[data-theme="doctor-cockpit"] .database-pagination,
+[data-theme="doctor-cockpit"] .database-table td {
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="doctor-cockpit"] .clinical-summary-row dd {
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+}
+
+[data-theme="doctor-cockpit"] .clinical-plan-index,
+[data-theme="doctor-cockpit"] .clinical-reference-number {
+  font-family: var(--font-mono);
+}
+
+[data-theme="doctor-cockpit"] .clinical-roadmap-status {
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  letter-spacing: 0.04em;
+}
+
+[data-theme="doctor-cockpit"] .clinical-roadmap-step-in_progress .clinical-roadmap-dot {
+  background: color-mix(in srgb, var(--color-primary) 35%, var(--color-surface));
+}
+
+/* 事件流：终端式控制台 */
+[data-theme="doctor-cockpit"] .clinical-event-stream {
+  background: var(--color-canvas);
+}
+
+[data-theme="doctor-cockpit"] .clinical-event-console-meta,
+[data-theme="doctor-cockpit"] .clinical-event-chip strong,
+[data-theme="doctor-cockpit"] .clinical-event-chip span,
+[data-theme="doctor-cockpit"] .clinical-event-chip p,
+[data-theme="doctor-cockpit"] .clinical-runtime-pills .clinical-status-node {
+  font-family: var(--font-mono);
+}
+
+[data-theme="doctor-cockpit"] .clinical-event-chip {
+  background: color-mix(in srgb, var(--color-surface) 65%, var(--color-canvas));
+}
+
+[data-theme="doctor-cockpit"] .clinical-event-chip div {
+  border-bottom-color: var(--color-border-soft);
+}
+
+/* 深色玻璃命令栏上的分隔与描边微调 */
+[data-theme="doctor-cockpit"] .clinical-top-divider {
+  background: var(--clinical-glass-border);
+}
+
+[data-theme="doctor-cockpit"] .clinical-logo-mark line {
+  stroke: color-mix(in srgb, var(--color-text) 32%, transparent);
+}
+
+[data-theme="doctor-cockpit"] .clinical-avatar {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+}
+
+/* ============================================================
+ * 患者端「柔和疗愈」主题（data-theme="patient-care"）
+ * 青绿强调 + 更圆润的气泡与输入区，降低信息压迫感。
+ * ============================================================ */
+
+[data-theme="patient-care"] .ui-message-bubble {
+  border-radius: var(--radius-lg);
+}
+
+[data-theme="patient-care"] .clinical-conversation-card .clinical-composer-textarea {
+  border-radius: var(--radius-lg);
+}
+
+[data-theme="patient-care"] .clinical-nav-tab-active {
+  color: var(--color-primary);
+}
+
+[data-theme="patient-care"] .clinical-panel-icon {
+  border-radius: var(--radius-pill);
+}
+
+[data-theme="patient-care"] .clinical-empty-state-icon {
+  border-radius: var(--radius-pill);
+}
+
+[data-theme="patient-care"] .ui-message-avatar {
+  background: var(--color-primary-soft);
+  border-color: transparent;
 }

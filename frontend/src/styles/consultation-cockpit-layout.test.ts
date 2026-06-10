@@ -54,7 +54,7 @@ describe("consultation cockpit layout CSS", () => {
     expect(dashboard).toContain("var(--dashboard-left-width) minmax(0, 1fr) var(--dashboard-right-width)");
     expect(dashboard).toContain("gap: var(--space-3)");
     expect(dashboard).toContain('"left center right"');
-    expect(dashboard).toContain('"event event right"');
+    expect(dashboard).toContain('"event event event"');
 
     expect(blockFor(".clinical-patient-dashboard")).toContain(
       "var(--dashboard-left-width) minmax(0, 1fr) var(--dashboard-right-width)",
@@ -93,9 +93,34 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-message-list")).toContain("max-width: 72ch");
     expect(blockFor(".clinical-message-list")).toContain("margin: 0 auto");
     expect(blockFor(".clinical-event-stream")).toContain("min-height: 0");
-    expect(blockFor(".clinical-event-row")).toContain("repeat(2, minmax(0, 1fr))");
+    expect(blockFor(".clinical-event-row")).toContain("repeat(auto-fill, minmax(280px, 1fr))");
     expect(blockFor(".clinical-event-chip p")).not.toContain("max-height");
     expect(blockFor(".clinical-event-chip p")).not.toContain("overflow: hidden");
+  });
+
+  it("ships a collapsible console-style event stream", () => {
+    expect(blockFor(".clinical-event-console-meta")).toContain("font-family: var(--font-mono)");
+    expect(blockFor(".clinical-event-console-meta")).toContain("margin-left: auto");
+    expect(blockFor(".clinical-event-console-toggle")).toContain("cursor: pointer");
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-stream')).toContain(
+      "background: var(--color-canvas)",
+    );
+  });
+
+  it("defines the dual scene themes on the document root", () => {
+    expect(tokensCss).toContain(':root[data-theme="doctor-cockpit"]');
+    expect(tokensCss).toContain(':root[data-theme="patient-care"]');
+
+    const cockpit = blockFor(':root[data-theme="doctor-cockpit"]', tokensCss);
+    expect(cockpit).toContain("color-scheme: dark");
+    expect(cockpit).toContain("--color-canvas: #0b1220");
+    expect(cockpit).toContain("--color-primary: #5aa9ff");
+    expect(cockpit).toContain("--dashboard-left-width: 280px");
+
+    const care = blockFor(':root[data-theme="patient-care"]', tokensCss);
+    expect(care).toContain("color-scheme: light");
+    expect(care).toContain("--color-primary: #0e8074");
+    expect(care).toContain("--dashboard-left-width: 260px");
   });
 
   it("defines the polished clinical visual system hooks", () => {

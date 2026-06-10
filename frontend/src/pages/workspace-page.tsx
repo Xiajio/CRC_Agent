@@ -5,6 +5,7 @@ import type { FrontendMessage, Scene, SessionState } from "../app/api/types";
 import { useApiClient } from "../app/providers";
 import { ConversationPanel } from "../features/chat/conversation-panel";
 import { ClinicalTopNav } from "../components/layout/clinical-top-nav";
+import { useDocumentTheme } from "../components/layout/use-document-theme";
 import { Card } from "../components/ui";
 import { DoctorSceneShell } from "../features/doctor/doctor-scene-shell";
 import type { CardPatientContext } from "../features/cards/card-renderers-extended";
@@ -119,6 +120,8 @@ export function WorkspacePage() {
     recoveryNotice,
     dismissRecoveryNotice,
   } = useSceneSessions();
+
+  useDocumentTheme(activeScene === "doctor" ? "doctor-cockpit" : "patient-care");
 
   const [drafts, setDrafts] = useState<SceneDrafts>({
     patient: "",

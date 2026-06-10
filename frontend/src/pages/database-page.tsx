@@ -1,4 +1,5 @@
 import { WorkspaceLayout } from "../components/layout/workspace-layout";
+import { useDocumentTheme } from "../components/layout/use-document-theme";
 import { Card, TopNav, type TopNavItem } from "../components/ui";
 import { DatabaseDetailPanel } from "../features/database/database-detail-panel";
 import { DatabaseEditForm } from "../features/database/database-edit-form";
@@ -22,6 +23,7 @@ function triStateLabel(value: boolean | null | undefined): string {
 }
 
 export function DatabasePage() {
+  useDocumentTheme("doctor-cockpit");
   const {
     stats,
     searchRequest,

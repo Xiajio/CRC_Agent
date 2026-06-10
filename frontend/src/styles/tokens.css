@@ -98,4 +98,87 @@
   --dashboard-left-width: 300px;
   --dashboard-right-width: 340px;
   --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Noto Sans SC", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Noto Sans Mono", monospace;
+  --focus-ring: color-mix(in srgb, var(--color-primary) 16%, transparent);
+  --focus-ring-strong: color-mix(in srgb, var(--color-primary) 24%, transparent);
+  --clinical-tabs-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+/*
+ * 医生端「临床驾驶舱」深色主题。
+ * 仅覆盖基础令牌；:root 中的派生令牌（var() 别名 / color-mix）在 html 元素上
+ * 与这些覆盖一起求值，因此整套视觉会自动跟随切换。
+ */
+:root[data-theme="doctor-cockpit"] {
+  color-scheme: dark;
+  --color-canvas: #0b1220;
+  --color-surface: #131c2e;
+  --color-surface-muted: #1a2539;
+  --color-primary: #5aa9ff;
+  --color-primary-hover: #7cbcff;
+  --color-primary-soft: #182a45;
+  --color-navy: #e7edf7;
+  --color-navy-soft: #c5d2e6;
+  --color-text: #e7edf7;
+  --color-text-muted: #9fb0c7;
+  --color-text-subtle: #8093ad;
+  --color-border: #283a57;
+  --color-border-soft: rgba(173, 196, 230, 0.12);
+  --color-border-strong: #3b5074;
+  --color-success: #45d695;
+  --color-success-soft: color-mix(in srgb, var(--color-success) 14%, var(--color-canvas));
+  --color-warning: #f2b04a;
+  --color-warning-soft: color-mix(in srgb, var(--color-warning) 14%, var(--color-canvas));
+  --color-danger: #ff7d8e;
+  --color-danger-soft: color-mix(in srgb, var(--color-danger) 13%, var(--color-canvas));
+  --shadow-card: 0 0 0 1px rgba(4, 9, 18, 0.55), 0 4px 12px rgba(2, 6, 14, 0.45);
+  --shadow-card-resting: 0 0 0 1px rgba(4, 9, 18, 0.55), 0 6px 18px rgba(2, 6, 14, 0.4);
+  --shadow-pop: 0 0 0 1px rgba(4, 9, 18, 0.6), 0 12px 32px rgba(2, 6, 14, 0.55);
+  --shadow-control: 0 1px 0 rgba(2, 6, 14, 0.45);
+  --panel-header-surface: #162138;
+  --clinical-link-blue: #79b8ff;
+  --clinical-ink-soft: rgba(231, 237, 247, 0.72);
+  --clinical-glass-ink: rgba(231, 237, 247, 0.88);
+  --clinical-glass-border: rgba(173, 196, 230, 0.14);
+  --clinical-command-surface: rgba(9, 15, 27, 0.84);
+  --clinical-command-surface-strong: rgba(12, 19, 33, 0.94);
+  --clinical-command-muted: rgba(231, 237, 247, 0.6);
+  --clinical-button-border-shadow: inset 0 0 0 1px rgba(173, 196, 230, 0.18), inset 0 1px 0 rgba(173, 196, 230, 0.07);
+  --clinical-tabs-shadow: inset 0 1px 0 rgba(173, 196, 230, 0.08), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --dashboard-left-width: 280px;
+}
+
+/*
+ * 患者端「柔和疗愈」浅色主题：青绿强调 + 更圆润的面板。
+ */
+:root[data-theme="patient-care"] {
+  color-scheme: light;
+  --color-canvas: #eef5f2;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f0f6f4;
+  --color-primary: #0e8074;
+  --color-primary-hover: #0a6e63;
+  --color-primary-soft: #e2f1ee;
+  --color-navy: #16302b;
+  --color-navy-soft: #2a4a43;
+  --color-text: #16302b;
+  --color-text-muted: #54695f;
+  --color-text-subtle: #74897f;
+  --color-border: #d3e0db;
+  --color-border-soft: rgba(22, 48, 43, 0.08);
+  --color-border-strong: #b9ccc5;
+  --color-success: #1f9d61;
+  --color-danger: #c93b52;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --shadow-card: 0 0 0 0.5px rgba(22, 48, 43, 0.04), 0 4px 14px rgba(22, 48, 43, 0.05);
+  --shadow-card-resting: 0 0 0 0.5px rgba(22, 48, 43, 0.04), 0 6px 20px rgba(22, 48, 43, 0.045);
+  --shadow-pop: 0 0 0 0.5px rgba(22, 48, 43, 0.05), 0 12px 32px rgba(22, 48, 43, 0.07);
+  --clinical-link-blue: #0c6b61;
+  --clinical-ink-soft: rgba(22, 48, 43, 0.72);
+  --clinical-glass-ink: rgba(250, 253, 252, 0.86);
+  --clinical-command-surface: rgba(250, 253, 252, 0.86);
+  --clinical-command-surface-strong: rgba(255, 255, 255, 0.92);
+  --clinical-command-muted: rgba(22, 48, 43, 0.64);
+  --dashboard-left-width: 260px;
 }
