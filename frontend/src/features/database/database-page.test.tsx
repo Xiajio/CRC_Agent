@@ -27,6 +27,18 @@ describe("DatabasePage", () => {
       expect(screen.queryByText("正在同步数据库工作台...")).not.toBeInTheDocument();
     });
 
+    const databaseScene = screen.getByTestId("database-scene");
+    expect(databaseScene).toHaveClass(
+      "clinical-app-shell",
+      "clinical-app-shell-doctor",
+      "clinical-app-shell-database",
+    );
+    expect(screen.getByTestId("workspace-toolbar")).toHaveClass(
+      "ui-top-nav",
+      "clinical-top-nav",
+      "clinical-top-nav-doctor",
+    );
+
     expect(screen.getByTestId("panel-grid")).toHaveAttribute("data-layout-mode", "full");
     expect(screen.getByTestId("left-rail")).toBeVisible();
     expect(screen.getByTestId("center-workspace")).toBeVisible();

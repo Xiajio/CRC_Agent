@@ -59,6 +59,7 @@ export function DatabasePage() {
   const toolbar = (
     <TopNav
       activeKey="database"
+      className="clinical-top-nav clinical-top-nav-doctor"
       brandLabel="亿铸科技 -- 虚拟数据库控制台"
       items={DATABASE_NAV_ITEMS}
       navLabel="数据库导航"
@@ -171,13 +172,18 @@ export function DatabasePage() {
   );
 
   return (
-    <WorkspaceLayout
-      toolbar={toolbar}
-      leftRail={leftRail}
-      centerWorkspace={centerWorkspace}
-      rightInspector={rightInspector}
-      leftRailOpen
-      rightInspectorOpen
-    />
+    <div
+      className="clinical-app-shell clinical-app-shell-doctor clinical-app-shell-database"
+      data-testid="database-scene"
+    >
+      <WorkspaceLayout
+        toolbar={toolbar}
+        leftRail={leftRail}
+        centerWorkspace={centerWorkspace}
+        rightInspector={rightInspector}
+        leftRailOpen
+        rightInspectorOpen
+      />
+    </div>
   );
 }
