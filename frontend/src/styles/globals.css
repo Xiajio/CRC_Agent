@@ -3568,25 +3568,139 @@ body {
   box-shadow: none;
 }
 
-/* 事件流：终端式控制台 */
+[data-theme="doctor-cockpit"] .clinical-empty-note,
+[data-theme="doctor-cockpit"] .clinical-empty-state-message,
+[data-theme="doctor-cockpit"] .clinical-multimodal-empty-state p,
+[data-theme="doctor-cockpit"] .clinical-card-empty-state p,
+[data-theme="doctor-cockpit"] .clinical-meta-text {
+  color: var(--color-text-muted);
+}
+
+[data-theme="doctor-cockpit"] .clinical-roadmap-list::before {
+  background: var(--color-border-soft);
+}
+
+[data-theme="doctor-cockpit"] .clinical-roadmap-dot {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-muted);
+}
+
+[data-theme="doctor-cockpit"] .clinical-roadmap-step-completed .clinical-roadmap-dot {
+  border-color: var(--color-success);
+  background: var(--color-success);
+}
+
+[data-theme="doctor-cockpit"] .clinical-roadmap-step-completed .clinical-roadmap-status {
+  color: var(--color-text-muted);
+}
+
+[data-theme="doctor-cockpit"] .clinical-roadmap-step-in_progress .clinical-roadmap-status {
+  color: var(--color-primary);
+}
+
+[data-theme="doctor-cockpit"] .clinical-plan-row {
+  border-color: transparent;
+  background: var(--color-surface-muted);
+}
+
+[data-theme="doctor-cockpit"] .clinical-plan-head {
+  color: var(--color-text-muted);
+}
+
+[data-theme="doctor-cockpit"] .clinical-plan-index,
+[data-theme="doctor-cockpit"] .clinical-plan-status {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text-muted);
+}
+
+[data-theme="doctor-cockpit"] .clinical-plan-status-completed {
+  background: rgba(69, 214, 149, 0.1);
+  color: var(--color-text-muted);
+}
+
+[data-theme="doctor-cockpit"] .clinical-plan-status-in_progress {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
 [data-theme="doctor-cockpit"] .clinical-event-stream {
   background: var(--color-canvas);
 }
 
+[data-theme="doctor-cockpit"] .clinical-event-chip {
+  border-color: transparent;
+  background: var(--color-surface);
+}
+
+[data-theme="doctor-cockpit"] .clinical-event-chip-success {
+  background: rgba(69, 214, 149, 0.1);
+}
+
+[data-theme="doctor-cockpit"] .clinical-event-chip-warning {
+  background: rgba(242, 176, 74, 0.12);
+}
+
+[data-theme="doctor-cockpit"] .clinical-event-chip-error {
+  background: rgba(255, 125, 142, 0.12);
+}
+
+[data-theme="doctor-cockpit"] .clinical-event-chip div {
+  border-bottom-color: var(--color-border-soft);
+}
+
+[data-theme="doctor-cockpit"] .clinical-event-chip strong {
+  color: var(--color-text);
+}
+
+[data-theme="doctor-cockpit"] .clinical-event-chip span,
+[data-theme="doctor-cockpit"] .clinical-event-chip p {
+  color: var(--color-text-muted);
+}
+
+[data-theme="doctor-cockpit"] .database-table th {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+[data-theme="doctor-cockpit"] .database-table td {
+  color: var(--color-text);
+}
+
+[data-theme="doctor-cockpit"] .database-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="doctor-cockpit"] .database-table tbody tr:hover {
+  background: rgba(77, 141, 255, 0.12);
+}
+
+[data-theme="doctor-cockpit"] .database-pill,
+[data-theme="doctor-cockpit"] .database-pagination,
+[data-theme="doctor-cockpit"] .database-field {
+  border-color: transparent;
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+}
+
+[data-theme="doctor-cockpit"] .clinical-multimodal-card {
+  border-color: transparent;
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+[data-theme="doctor-cockpit"] .clinical-multimodal-status,
+[data-theme="doctor-cockpit"] .clinical-multimodal-definition-row dt,
+[data-theme="doctor-cockpit"] .clinical-multimodal-definition-row dd {
+  color: var(--color-text-muted);
+}
+
+/* 事件流：终端式控制台 */
 [data-theme="doctor-cockpit"] .clinical-event-console-meta,
 [data-theme="doctor-cockpit"] .clinical-event-chip strong,
 [data-theme="doctor-cockpit"] .clinical-event-chip span,
 [data-theme="doctor-cockpit"] .clinical-event-chip p,
 [data-theme="doctor-cockpit"] .clinical-runtime-pills .clinical-status-node {
   font-family: var(--font-mono);
-}
-
-[data-theme="doctor-cockpit"] .clinical-event-chip {
-  background: color-mix(in srgb, var(--color-surface) 65%, var(--color-canvas));
-}
-
-[data-theme="doctor-cockpit"] .clinical-event-chip div {
-  border-bottom-color: var(--color-border-soft);
 }
 
 /* 深色玻璃命令栏上的分隔与描边微调 */

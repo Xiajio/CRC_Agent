@@ -228,6 +228,26 @@ describe("consultation cockpit layout CSS", () => {
     ).toContain("box-shadow: none");
   });
 
+  it("keeps doctor workflow database and multimodal surfaces in the dark elevation system", () => {
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-roadmap-list::before')).toContain(
+      "background: var(--color-border-soft)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-roadmap-step-completed .clinical-roadmap-status')).toContain(
+      "color: var(--color-text-muted)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-row')).toContain("border-color: transparent");
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-status-completed')).toContain(
+      "color: var(--color-text-muted)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-chip')).toContain("border-color: transparent");
+    expect(blockFor('[data-theme="doctor-cockpit"] .database-table tbody tr:hover')).toContain(
+      "rgba(77, 141, 255, 0.12)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-multimodal-card')).toContain(
+      "border-color: transparent",
+    );
+  });
+
   it("defines the polished clinical visual system hooks", () => {
     expect(tokensCss).toContain("--color-primary: #0071e3");
     expect(tokensCss).toContain("--clinical-primary: var(--color-primary)");
