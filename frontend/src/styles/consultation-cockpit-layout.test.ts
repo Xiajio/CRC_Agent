@@ -190,9 +190,20 @@ describe("consultation cockpit layout CSS", () => {
   });
 
   it("sharpens the patient assistant layout and light theme surfaces", () => {
-    expect(blockFor(".clinical-patient-dashboard-assistant")).toContain("minmax(0, min(860px, 100%))");
-    expect(blockFor(".clinical-patient-dashboard-profile")).toContain("minmax(0, min(860px, 100%))");
-    expect(blockFor(".clinical-patient-dashboard-upload")).toContain("minmax(0, min(860px, 100%))");
+    const media1450 = mediaBlockFor("max-width: 1450px");
+
+    expect(blockFor(".clinical-patient-dashboard.clinical-patient-dashboard-assistant")).toContain(
+      "minmax(0, min(860px, 100%))",
+    );
+    expect(blockFor(".clinical-patient-dashboard.clinical-patient-dashboard-profile")).toContain(
+      "minmax(0, min(860px, 100%))",
+    );
+    expect(blockFor(".clinical-patient-dashboard.clinical-patient-dashboard-upload")).toContain(
+      "minmax(0, min(860px, 100%))",
+    );
+    expect(blockFor(".clinical-patient-dashboard-assistant", media1450)).toContain(
+      "minmax(0, min(860px, 100%))",
+    );
     expect(blockFor(".clinical-patient-left-column-collapsed")).toContain("display: none");
     expect(blockFor(".patient-assistant-home")).toContain("text-align: center");
     expect(blockFor('[data-theme="patient-care"] .clinical-conversation-card')).toContain("box-shadow: none");

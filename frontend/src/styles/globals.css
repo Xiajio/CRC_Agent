@@ -1381,7 +1381,7 @@ body {
   grid-template-columns: var(--dashboard-left-width) minmax(0, 1fr);
 }
 
-.clinical-patient-dashboard-assistant {
+.clinical-patient-dashboard.clinical-patient-dashboard-assistant {
   grid-template-columns: minmax(0, min(860px, 100%));
   justify-content: center;
   width: 100%;
@@ -1389,7 +1389,7 @@ body {
   margin: 0 auto;
 }
 
-.clinical-patient-dashboard-profile {
+.clinical-patient-dashboard.clinical-patient-dashboard-profile {
   grid-template-columns: minmax(0, min(860px, 100%));
   justify-content: center;
   width: 100%;
@@ -1397,7 +1397,7 @@ body {
   margin: 0 auto;
 }
 
-.clinical-patient-dashboard-upload {
+.clinical-patient-dashboard.clinical-patient-dashboard-upload {
   grid-template-columns: minmax(0, min(860px, 100%));
   justify-content: center;
   width: 100%;
@@ -3193,6 +3193,21 @@ body {
 
   .clinical-patient-dashboard-no-right {
     grid-template-columns: var(--dashboard-left-width) minmax(0, 1fr);
+  }
+
+  .clinical-patient-dashboard-assistant {
+    grid-template-columns: minmax(0, min(860px, 100%));
+    justify-content: center;
+  }
+
+  .clinical-patient-dashboard-profile {
+    grid-template-columns: minmax(0, min(860px, 100%));
+    justify-content: center;
+  }
+
+  .clinical-patient-dashboard-upload {
+    grid-template-columns: minmax(0, min(860px, 100%));
+    justify-content: center;
   }
 
   .clinical-nav-tab {
