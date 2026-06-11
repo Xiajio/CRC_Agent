@@ -15,7 +15,12 @@ import { UploadsPanel } from "../features/uploads/uploads-panel";
 import { useDatabaseWorkbench } from "../features/database/use-database-workbench";
 import { usePatientRegistry } from "../features/patient-registry/use-patient-registry";
 import { useRegistryBrowser } from "../features/patient-registry/use-registry-browser";
-import { usePatientWorkspaceNav } from "../features/workspace/use-patient-workspace-nav";
+import {
+  PATIENT_ASSISTANT_TAB,
+  PATIENT_PROFILE_TAB,
+  PATIENT_UPLOAD_TAB,
+  usePatientWorkspaceNav,
+} from "../features/workspace/use-patient-workspace-nav";
 import { useSceneSessions } from "../features/workspace/use-scene-sessions";
 import { usePatientUploads } from "../features/workspace/use-patient-uploads";
 import { SessionRecoveryBanner } from "../features/workspace/session-recovery-banner";
@@ -33,6 +38,24 @@ import {
 } from "../features/workspace/workspace-flow-utils";
 
 type SceneDrafts = Record<Scene, string>;
+
+const PATIENT_ASSISTANT_QUICK_ACTIONS = [
+  {
+    id: "explain-report",
+    label: "解释检查报告",
+    prompt: "请帮我解释检查报告，说明关键指标、异常项和下一步需要补充的信息。",
+  },
+  {
+    id: "add-symptoms",
+    label: "补充病情信息",
+    prompt: "我想补充病情信息，请引导我说明症状、持续时间和既往检查。",
+  },
+  {
+    id: "treatment-options",
+    label: "了解治疗建议",
+    prompt: "我想了解治疗建议，请用患者能理解的语言说明不同方案的区别。",
+  },
+];
 
 type ChatLatencyDebugSurface = {
   readonly latestTrace: unknown;
@@ -577,7 +600,67 @@ export function WorkspacePage() {
     );
   }
 
-  const patientRightRailOpen = patientNav.activeTab === "profile";
+  const patientActiveTab = patientNav.activeTab;
+  const patientIsAssistant = patientActiveTab === PATIENT_ASSISTANT_TAB;
+  const patientIsProfile = patientActiveTab === PATIENT_PROFILE_TAB;
+  const patientIsUpload = patientActiveTab === PATIENT_UPLOAD_TAB;
+
+  const patientProfilePanel = (
+    <div className="clinical-panel-stack clinical-patient-profile-stack">
+      <PatientIdentityPanel
+        sessionId={patient.state.sessionId}
+        patientIdentity={patient.state.patientIdentity ?? null}
+        onSaved={(identity) => {
+          patient.setState((current) => ({
+            ...current,
+            patientIdentity: identity,
+          }));
+        }}
+      />
+      <PatientBackgroundPanel
+        title="患者背景信息"
+        emptyMessage="当前暂无患者背景信息"
+        cards={workspaceCards.patientVisibleCards}
+      />
+    </div>
+  );
+
+  const patientAssistantPanel = (
+    <ConversationPanel
+      messages={patient.state.messages}
+      draft={activeDraft}
+      activeTriageQuestionId={workspaceCards.activePatientTriageQuestionId}
+      statusNode={patient.state.statusNode}
+      isStreaming={patientTurn.isStreaming}
+      isLoadingHistory={patientTurn.isLoadingHistory}
+      canLoadHistory={Boolean(patient.state.messagesNextBeforeCursor)}
+      disabled={patientTurn.isStreaming || patientUploads.isUploading}
+      errorMessage={activeError}
+      latencyStatus={patientLatencyStatus}
+      emptyStateVariant="patient-assistant"
+      quickActions={PATIENT_ASSISTANT_QUICK_ACTIONS}
+      onQuickActionSelect={(prompt) => updateDraft("patient", prompt)}
+      onUploadRequest={() => patientNav.selectTab(PATIENT_UPLOAD_TAB)}
+      onLoadHistory={() => void patientTurn.loadMessageHistory()}
+      onDraftChange={(value) => updateDraft("patient", value)}
+      onSubmit={() => void submitPrompt()}
+      patientContext={patientPatientContext}
+      onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
+        void patientTurn.submitPrompt(prompt, buildReplayDemoContext("patient", prompt, context))
+      }
+    />
+  );
+
+  const patientCenterContent = patientIsUpload
+    ? patientUploadsPanel
+    : patientIsProfile
+      ? patientProfilePanel
+      : patientAssistantPanel;
+  const patientPanelError = activeError && !patientIsAssistant ? (
+    <p className="clinical-copy clinical-copy-alert clinical-error-copy" data-testid="patient-active-error">
+      {activeError}
+    </p>
+  ) : null;
 
   return (
     <main className="clinical-app-shell clinical-app-shell-patient">
@@ -600,69 +683,28 @@ export function WorkspacePage() {
       <div
         className={[
           "clinical-patient-dashboard",
-          !patientRightRailOpen && "clinical-patient-dashboard-no-right",
+          `clinical-patient-dashboard-${patientActiveTab}`,
+          patientIsAssistant && "clinical-patient-dashboard-assistant-home",
         ].filter(Boolean).join(" ")}
         data-testid="workspace-layout"
       >
-        <aside className="clinical-patient-left-column" data-testid="workspace-left-rail">
-          <div className="clinical-panel-stack">
-            <PatientIdentityPanel
-              sessionId={patient.state.sessionId}
-              patientIdentity={patient.state.patientIdentity ?? null}
-              onSaved={(identity) => {
-                patient.setState((current) => ({
-                  ...current,
-                  patientIdentity: identity,
-                }));
-              }}
-            />
-            <PatientBackgroundPanel
-              title="患者背景信息"
-              emptyMessage="当前暂无患者背景信息"
-              cards={workspaceCards.patientVisibleCards}
-            />
-          </div>
-        </aside>
+        <aside
+          className="clinical-patient-left-column clinical-patient-left-column-collapsed"
+          data-testid="workspace-left-rail"
+          aria-hidden="true"
+        />
         <section className="clinical-patient-center-column" data-testid="workspace-center">
           <div className="clinical-panel-stack">
-            {patientNav.activeTab === "upload" ? (
-              patientUploadsPanel
-            ) : (
-              <ConversationPanel
-                messages={patient.state.messages}
-                draft={activeDraft}
-                activeTriageQuestionId={workspaceCards.activePatientTriageQuestionId}
-                statusNode={patient.state.statusNode}
-                isStreaming={patientTurn.isStreaming}
-                isLoadingHistory={patientTurn.isLoadingHistory}
-                canLoadHistory={Boolean(patient.state.messagesNextBeforeCursor)}
-                disabled={patientTurn.isStreaming || patientUploads.isUploading}
-                errorMessage={activeError}
-                latencyStatus={patientLatencyStatus}
-                onLoadHistory={() => void patientTurn.loadMessageHistory()}
-                onDraftChange={(value) => updateDraft("patient", value)}
-                onSubmit={() => void submitPrompt()}
-                patientContext={patientPatientContext}
-                onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
-                  void patientTurn.submitPrompt(prompt, buildReplayDemoContext("patient", prompt, context))
-                }
-              />
-            )}
+            {patientPanelError}
+            {patientCenterContent}
           </div>
         </section>
         <aside
-          className={[
-            "clinical-patient-right-column",
-            !patientRightRailOpen && "clinical-patient-right-column-collapsed",
-          ].filter(Boolean).join(" ")}
+          className="clinical-patient-right-column clinical-patient-right-column-collapsed"
           data-testid="workspace-right"
-          data-panel-state={patientRightRailOpen ? "open" : "closed"}
-          aria-hidden={patientRightRailOpen ? undefined : "true"}
-        >
-          <div className="clinical-panel-stack">
-            {patientRightRailOpen ? patientUploadsPanel : null}
-          </div>
-        </aside>
+          data-panel-state="closed"
+          aria-hidden="true"
+        />
       </div>
     </main>
   );

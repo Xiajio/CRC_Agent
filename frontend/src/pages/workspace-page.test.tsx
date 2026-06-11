@@ -182,6 +182,10 @@ vi.mock("../features/chat/conversation-panel", () => ({
     patientContext,
     errorMessage,
     latencyStatus,
+    emptyStateVariant,
+    quickActions,
+    onQuickActionSelect,
+    onUploadRequest,
   }: {
     draft: string;
     onDraftChange: (value: string) => void;
@@ -190,14 +194,31 @@ vi.mock("../features/chat/conversation-panel", () => ({
     patientContext?: Record<string, unknown>;
     errorMessage?: string | null;
     latencyStatus?: { kind: "streaming" } | { kind: "completed"; uiCompleteMs: number } | null;
+    emptyStateVariant?: "clinical" | "patient-assistant";
+    quickActions?: { id: string; label: string; prompt: string }[];
+    onQuickActionSelect?: (prompt: string) => void;
+    onUploadRequest?: () => void;
   }) => (
     <section data-testid="mock-conversation-panel">
       <output data-testid="composer-draft">{draft}</output>
       <output data-testid="conversation-error">{errorMessage ?? ""}</output>
+      <output data-testid="empty-state-variant">{emptyStateVariant ?? "clinical"}</output>
       <output data-testid="latency-kind">{latencyStatus?.kind ?? "idle"}</output>
       <output data-testid="latency-ms">
         {latencyStatus && "uiCompleteMs" in latencyStatus ? latencyStatus.uiCompleteMs : ""}
       </output>
+      {quickActions?.map((action) => (
+        <button
+          key={action.id}
+          type="button"
+          onClick={() => onQuickActionSelect?.(action.prompt)}
+        >
+          {action.label}
+        </button>
+      ))}
+      <button type="button" onClick={onUploadRequest}>
+        upload from assistant home
+      </button>
       <button type="button" onClick={() => onDraftChange("typed composer")}>
         set composer draft
       </button>
@@ -514,6 +535,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
+    fireEvent.click(screen.getByRole("button", { name: "上传报告" }));
     fireEvent.click(await screen.findByRole("button", { name: /trigger upload/i }));
 
     await waitFor(() => expect(apiClient.uploadFile).toHaveBeenCalledTimes(1));
@@ -532,6 +554,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
         derived: { record_id: 1 },
       },
     });
+    fireEvent.click(screen.getByRole("button", { name: "我的资料" }));
     expect(lastPatientBackgroundProps?.cards).toEqual({
       patient_card: {
         type: "patient_card",
@@ -546,11 +569,12 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
+    fireEvent.click(screen.getByRole("button", { name: "上传报告" }));
     fireEvent.click(await screen.findByRole("button", { name: /trigger oversized upload/i }));
 
     expect(uploadFile).not.toHaveBeenCalled();
     expect(screen.getByTestId("uploads-panel")).toHaveAttribute("data-disabled", "false");
-    expect(screen.getByTestId("conversation-error")).toHaveTextContent(
+    expect(screen.getByTestId("patient-active-error")).toHaveTextContent(
       "文件过大，最大上传大小为 25 MB。",
     );
   });
@@ -567,11 +591,12 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
+    fireEvent.click(screen.getByRole("button", { name: "上传报告" }));
     fireEvent.click(await screen.findByRole("button", { name: /^trigger upload$/i }));
 
     await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(screen.getByTestId("conversation-error")).toHaveTextContent(
+      expect(screen.getByTestId("patient-active-error")).toHaveTextContent(
         "文件过大，最大上传大小为 25 MB。",
       ),
     );
@@ -785,8 +810,8 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
-    await screen.findByTestId("patient-background-panel");
-    expect(lastPatientBackgroundProps?.cards).toEqual({});
+    expect(screen.getByTestId("workspace-left-rail")).toHaveClass("clinical-patient-left-column-collapsed");
+    expect(screen.queryByTestId("patient-background-panel")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /set card draft/i }));
     expect(screen.getByTestId("composer-draft")).toHaveTextContent("draft for card");
@@ -873,10 +898,15 @@ describe("WorkspacePage patient triage submission wiring", () => {
     const navButtons = within(navigation).getAllByRole("button");
 
     expect(screen.getByText("临床助手")).toBeInTheDocument();
-    expect(navButtons.map((navButton) => navButton.textContent)).toEqual(["资料填写", "上传"]);
+    expect(navButtons.map((navButton) => navButton.textContent)).toEqual(["问助手", "我的资料", "上传报告"]);
+    expect(screen.getByRole("button", { name: "问助手" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("empty-state-variant")).toHaveTextContent("patient-assistant");
+    expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-assistant");
     expect(screen.queryByRole("button", { name: "症状" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "照护计划" })).not.toBeInTheDocument();
     expect(screen.getByText("安全会话")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "我的资料" }));
     expect(lastPatientBackgroundProps).toMatchObject({
       title: "患者背景信息",
       emptyMessage: "当前暂无患者背景信息",
@@ -887,13 +917,13 @@ describe("WorkspacePage patient triage submission wiring", () => {
     renderWorkspaceWithSceneSessions(buildApiClientStub());
 
     const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
-    expect(navButtons).toHaveLength(2);
+    expect(navButtons).toHaveLength(3);
     for (const navButton of navButtons) {
       expect(navButton).not.toBeDisabled();
     }
   });
 
-  it("switches the patient top nav between profile and upload workspaces while keeping upload usable", async () => {
+  it("keeps patient profile and upload reachable without making them the default layout", async () => {
     const uploadFile = vi.fn(async () => ({
       asset_id: "1",
       asset_url: "/api/sessions/patient-session/assets/1",
@@ -922,17 +952,26 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
-    const profileTab = screen.getByRole("button", { name: "资料填写" });
-    const uploadTab = screen.getByRole("button", { name: "上传" });
-    expect(profileTab).toHaveAttribute("aria-current", "page");
+    const assistantTab = screen.getByRole("button", { name: "问助手" });
+    const profileTab = screen.getByRole("button", { name: "我的资料" });
+    const uploadTab = screen.getByRole("button", { name: "上传报告" });
+    expect(assistantTab).toHaveAttribute("aria-current", "page");
     expect(uploadTab).not.toBeDisabled();
-    expect(screen.getByTestId("workspace-layout")).not.toHaveClass("clinical-patient-dashboard-no-right");
-    expect(screen.getByTestId("workspace-right")).toContainElement(screen.getByTestId("uploads-panel"));
+    expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-assistant");
+    expect(screen.getByTestId("workspace-left-rail")).toHaveClass("clinical-patient-left-column-collapsed");
+    expect(screen.getByTestId("workspace-right")).toHaveClass("clinical-patient-right-column-collapsed");
+
+    fireEvent.click(profileTab);
+
+    expect(profileTab).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-profile");
+    expect(screen.getByTestId("patient-identity-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("patient-background-panel")).toBeInTheDocument();
 
     fireEvent.click(uploadTab);
 
     expect(uploadTab).toHaveAttribute("aria-current", "page");
-    expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-no-right");
+    expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-upload");
     expect(screen.getByTestId("workspace-right")).toHaveClass("clinical-patient-right-column-collapsed");
     expect(screen.getByTestId("workspace-right")).toHaveAttribute("aria-hidden", "true");
     expect(screen.getByTestId("workspace-center")).toContainElement(screen.getByTestId("uploads-panel"));
@@ -940,12 +979,19 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     await waitFor(() => expect(uploadFile).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(getSession).toHaveBeenCalledWith("patient-session"));
+  });
 
-    fireEvent.click(profileTab);
+  it("prefills patient assistant quick actions and can switch to upload", () => {
+    const apiClient = buildApiClientStub();
+    makeSceneSessions();
+    renderWorkspace(apiClient);
 
-    expect(profileTab).toHaveAttribute("aria-current", "page");
-    expect(screen.getByTestId("patient-identity-panel")).toBeInTheDocument();
-    expect(screen.getByTestId("patient-background-panel")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "解释检查报告" }));
+    expect(screen.getByTestId("composer-draft")).toHaveTextContent("请帮我解释检查报告");
+
+    fireEvent.click(screen.getByRole("button", { name: "upload from assistant home" }));
+    expect(screen.getByRole("button", { name: "上传报告" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-upload");
   });
 
   it("keeps upload progress and success status copy in UTF-8 Chinese", async () => {
@@ -991,6 +1037,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
+    fireEvent.click(screen.getByRole("button", { name: "上传报告" }));
     fireEvent.click(screen.getByRole("button", { name: /^trigger upload$/i }));
 
     await waitFor(() => expect(lastUploadsPanelProps?.statusMessage).toBe("正在上传 report.pdf..."));
@@ -1712,6 +1759,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
 
     renderWorkspaceWithSceneSessions(apiClient);
 
+    fireEvent.click(screen.getByRole("button", { name: "我的资料" }));
     await waitFor(() =>
       expect(screen.getByText("患者名称：王小明")).toBeInTheDocument(),
     );
