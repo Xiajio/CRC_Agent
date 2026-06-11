@@ -30,6 +30,49 @@ describe("ConversationPanel latency status", () => {
     expect(screen.getByTestId("clinical-empty-state")).toHaveTextContent("暂无对话");
   });
 
+  it("renders a patient assistant home when requested and no messages exist", () => {
+    renderConversationPanel({
+      emptyStateVariant: "patient-assistant",
+      quickActions: [
+        { id: "explain-report", label: "解释检查报告", prompt: "请帮我解释检查报告。" },
+        { id: "symptoms", label: "补充病情信息", prompt: "我想补充病情信息。" },
+      ],
+    });
+
+    expect(screen.getByTestId("patient-assistant-home")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "今天想了解哪方面情况？" })).toBeInTheDocument();
+    expect(screen.getByText("描述你的问题，或上传报告让助手帮你解释。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "解释检查报告" })).toBeInTheDocument();
+    expect(screen.queryByText("暂无对话")).not.toBeInTheDocument();
+  });
+
+  it("prefills a patient quick action through the prompt callback", () => {
+    const onQuickActionSelect = vi.fn();
+
+    renderConversationPanel({
+      emptyStateVariant: "patient-assistant",
+      quickActions: [
+        { id: "treatment", label: "了解治疗建议", prompt: "我想了解治疗建议。" },
+      ],
+      onQuickActionSelect,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "了解治疗建议" }));
+    expect(onQuickActionSelect).toHaveBeenCalledWith("我想了解治疗建议。");
+  });
+
+  it("calls the upload request callback from the patient assistant home", () => {
+    const onUploadRequest = vi.fn();
+
+    renderConversationPanel({
+      emptyStateVariant: "patient-assistant",
+      onUploadRequest,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "上传报告" }));
+    expect(onUploadRequest).toHaveBeenCalledTimes(1);
+  });
+
   it("renders messages and composer with shared UI classes", () => {
     renderConversationPanel({
       messages: [

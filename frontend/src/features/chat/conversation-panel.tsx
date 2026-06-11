@@ -19,6 +19,12 @@ export type ConversationLatencyStatus =
       uiCompleteMs: number;
     };
 
+export type PatientAssistantQuickAction = {
+  id: string;
+  label: string;
+  prompt: string;
+};
+
 type ConversationPanelProps = {
   messages: FrontendMessage[];
   draft: string;
@@ -36,6 +42,10 @@ type ConversationPanelProps = {
   onCardPromptRequest?: CardPromptHandler;
   patientContext?: CardPatientContext | null;
   activeTriageQuestionId?: string | null;
+  emptyStateVariant?: "clinical" | "patient-assistant";
+  quickActions?: PatientAssistantQuickAction[];
+  onQuickActionSelect?: (prompt: string) => void;
+  onUploadRequest?: () => void;
   showThinking?: boolean;
 };
 
@@ -239,6 +249,45 @@ function renderMessageContent(text: string, thinkText?: string) {
   );
 }
 
+function renderPatientAssistantHome({
+  quickActions,
+  onQuickActionSelect,
+  onUploadRequest,
+}: {
+  quickActions: PatientAssistantQuickAction[];
+  onQuickActionSelect?: (prompt: string) => void;
+  onUploadRequest?: () => void;
+}) {
+  return (
+    <div className="patient-assistant-home" data-testid="patient-assistant-home">
+      <div className="patient-assistant-copy">
+        <span className="patient-assistant-kicker">患者助手</span>
+        <h2>今天想了解哪方面情况？</h2>
+        <p>描述你的问题，或上传报告让助手帮你解释。</p>
+      </div>
+      <div className="patient-assistant-quick-actions" aria-label="常用问题">
+        {quickActions.map((action) => (
+          <button
+            key={action.id}
+            type="button"
+            className="patient-assistant-quick-action"
+            onClick={() => onQuickActionSelect?.(action.prompt)}
+          >
+            {action.label}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="patient-assistant-quick-action patient-assistant-upload-action"
+          onClick={onUploadRequest}
+        >
+          上传报告
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ConversationPanel({
   messages,
   draft,
@@ -256,6 +305,10 @@ export function ConversationPanel({
   onCardPromptRequest,
   patientContext,
   activeTriageQuestionId,
+  emptyStateVariant = "clinical",
+  quickActions = [],
+  onQuickActionSelect,
+  onUploadRequest,
   showThinking = false,
 }: ConversationPanelProps) {
   const executionLabel = executionStatusLabel(statusNode, isStreaming);
@@ -339,6 +392,12 @@ export function ConversationPanel({
               );
             })}
           </ol>
+        ) : emptyStateVariant === "patient-assistant" ? (
+          renderPatientAssistantHome({
+            quickActions,
+            onQuickActionSelect,
+            onUploadRequest,
+          })
         ) : (
           <ClinicalEmptyState
             icon="chat"
