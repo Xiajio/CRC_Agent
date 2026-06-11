@@ -119,7 +119,14 @@ describe("consultation cockpit layout CSS", () => {
 
     const care = blockFor(':root[data-theme="patient-care"]', tokensCss);
     expect(care).toContain("color-scheme: light");
-    expect(care).toContain("--color-primary: #0e8074");
+    expect(care).toContain("--color-canvas: #ffffff");
+    expect(care).toContain("--color-surface-muted: #f8f9fa");
+    expect(care).toContain("--color-primary: #087f6f");
+    expect(care).toContain("--color-text: #111827");
+    expect(care).toContain("--color-text-muted: #4b5563");
+    expect(care).toContain("--color-border: #e5e7eb");
+    expect(care).toContain("--shadow-card: 0 1px 3px rgba(0, 0, 0, 0.05)");
+    expect(care).toContain("--shadow-card-resting: none");
     expect(care).toContain("--dashboard-left-width: 260px");
   });
 
@@ -182,6 +189,21 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".database-table td:nth-child(1)")).toContain("tabular-nums");
   });
 
+  it("sharpens the patient assistant layout and light theme surfaces", () => {
+    expect(blockFor(".clinical-patient-dashboard-assistant")).toContain("minmax(0, min(860px, 100%))");
+    expect(blockFor(".clinical-patient-dashboard-profile")).toContain("minmax(0, min(860px, 100%))");
+    expect(blockFor(".clinical-patient-dashboard-upload")).toContain("minmax(0, min(860px, 100%))");
+    expect(blockFor(".clinical-patient-left-column-collapsed")).toContain("display: none");
+    expect(blockFor(".patient-assistant-home")).toContain("text-align: center");
+    expect(blockFor('[data-theme="patient-care"] .clinical-conversation-card')).toContain("box-shadow: none");
+    expect(blockFor('[data-theme="patient-care"] .clinical-conversation-card')).toContain(
+      "border: 1px solid var(--color-border)",
+    );
+    expect(blockFor('[data-theme="patient-care"] .clinical-conversation-card .clinical-composer-textarea')).toContain(
+      "color: var(--color-text)",
+    );
+  });
+
   it("keeps the Apple-inspired command layer compact on mobile", () => {
     const media720 = mediaBlockFor("max-width: 720px");
 
@@ -192,7 +214,7 @@ describe("consultation cockpit layout CSS", () => {
       "repeat(3, minmax(0, 1fr))",
     );
     expect(blockFor(".clinical-top-nav-patient .clinical-nav-tabs", media720)).toContain(
-      "repeat(2, minmax(0, 1fr))",
+      "repeat(3, minmax(0, 1fr))",
     );
     expect(blockFor(".clinical-nav-tab", media720)).toContain("min-height");
     expect(blockFor(".clinical-user-area", media720)).toContain("justify-content: flex-start");
