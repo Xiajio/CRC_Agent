@@ -113,8 +113,16 @@ describe("consultation cockpit layout CSS", () => {
 
     const cockpit = blockFor(':root[data-theme="doctor-cockpit"]', tokensCss);
     expect(cockpit).toContain("color-scheme: dark");
-    expect(cockpit).toContain("--color-canvas: #0b1220");
-    expect(cockpit).toContain("--color-primary: #5aa9ff");
+    expect(cockpit).toContain("--color-canvas: #090a0f");
+    expect(cockpit).toContain("--color-surface: #12141c");
+    expect(cockpit).toContain("--color-surface-muted: #1a1d26");
+    expect(cockpit).toContain("--color-primary: #4d8dff");
+    expect(cockpit).toContain("--color-primary-soft: rgba(77, 141, 255, 0.14)");
+    expect(cockpit).toContain("--color-text: #eaf2ff");
+    expect(cockpit).toContain("--color-text-muted: rgba(255, 255, 255, 0.56)");
+    expect(cockpit).toContain("--color-border: rgba(255, 255, 255, 0.08)");
+    expect(cockpit).toContain("--shadow-card-resting: none");
+    expect(cockpit).toContain("--clinical-glass-border: rgba(255, 255, 255, 0.06)");
     expect(cockpit).toContain("--dashboard-left-width: 280px");
 
     const care = blockFor(':root[data-theme="patient-care"]', tokensCss);
