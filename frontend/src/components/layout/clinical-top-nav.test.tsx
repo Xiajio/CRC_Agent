@@ -32,6 +32,9 @@ describe("ClinicalTopNav", () => {
     );
 
     expect(screen.getByText("LangGraph Clinical Assistant")).toBeInTheDocument();
+    const companyLogo = screen.getByRole("img", { name: "亿铸科技公司标识" });
+    expect(companyLogo).toBeInTheDocument();
+    expect(companyLogo).toHaveAttribute("src", expect.stringContaining("yizhu-company-logo-dark"));
     expect(screen.getByRole("navigation", { name: "Clinical navigation" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Consultation" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("button", { name: "患者场景" })).toHaveClass("clinical-profile-switch");
@@ -67,5 +70,28 @@ describe("ClinicalTopNav", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Patient Database" }));
     expect(onSelect).toHaveBeenCalledWith("database");
+  });
+
+  it("can render the patient-care light company logo variant", () => {
+    render(
+      <ClinicalTopNav
+        brandLabel="LangGraph Clinical Assistant"
+        brandLogoVariant="light"
+        navLabel="Clinical navigation"
+        items={navItems}
+        activeKey="consultation"
+        onSelect={vi.fn()}
+        statusLabel="Safe Mode"
+        statusTone="safe"
+        profileLabel="Patient"
+        profileAriaLabel="医生场景"
+        className="clinical-top-nav-patient"
+      />,
+    );
+
+    expect(screen.getByRole("img", { name: "亿铸科技公司标识" })).toHaveAttribute(
+      "src",
+      expect.stringContaining("yizhu-company-logo-light"),
+    );
   });
 });

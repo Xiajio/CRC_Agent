@@ -1,24 +1,21 @@
 import type { ReactNode } from "react";
 
+import yizhuCompanyLogo from "../../assets/brand/yizhu-company-logo-dark.webp";
+import yizhuCompanyLogoLight from "../../assets/brand/yizhu-company-logo-light.webp";
 import { TopNav, type TopNavItem } from "../ui";
 
 export type ClinicalNavItem = TopNavItem;
+type BrandLogoVariant = "dark" | "light";
 
-export function ClinicalNodeLogo() {
+export function CompanyBrandLogo({ variant = "dark" }: { variant?: BrandLogoVariant }) {
+  const logoSrc = variant === "light" ? yizhuCompanyLogoLight : yizhuCompanyLogo;
+
   return (
-    <svg className="clinical-logo-mark" viewBox="0 0 40 40" aria-hidden="true">
-      <line x1="12" y1="10" x2="28" y2="8" />
-      <line x1="12" y1="10" x2="9" y2="26" />
-      <line x1="28" y1="8" x2="31" y2="25" />
-      <line x1="9" y1="26" x2="22" y2="32" />
-      <line x1="31" y1="25" x2="22" y2="32" />
-      <line x1="12" y1="10" x2="31" y2="25" />
-      <circle cx="12" cy="10" r="4" />
-      <circle cx="28" cy="8" r="4" />
-      <circle cx="9" cy="26" r="4" />
-      <circle cx="31" cy="25" r="4" />
-      <circle cx="22" cy="32" r="4" />
-    </svg>
+    <img
+      className="clinical-company-logo"
+      src={logoSrc}
+      alt="亿铸科技公司标识"
+    />
   );
 }
 
@@ -33,6 +30,7 @@ export function ClinicalUserIcon() {
 
 type ClinicalTopNavProps = {
   brandLabel: string;
+  brandLogoVariant?: BrandLogoVariant;
   navLabel: string;
   items: ClinicalNavItem[];
   activeKey: string;
@@ -49,6 +47,7 @@ type ClinicalTopNavProps = {
 
 export function ClinicalTopNav({
   brandLabel,
+  brandLogoVariant = "dark",
   navLabel,
   items,
   activeKey,
@@ -65,7 +64,7 @@ export function ClinicalTopNav({
   return (
     <TopNav
       brandLabel={brandLabel}
-      brandIcon={<ClinicalNodeLogo />}
+      brandIcon={<CompanyBrandLogo variant={brandLogoVariant} />}
       navLabel={navLabel}
       items={items}
       activeKey={activeKey}

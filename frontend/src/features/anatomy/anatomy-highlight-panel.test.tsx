@@ -17,8 +17,8 @@ describe("AnatomyHighlightPanel", () => {
     );
 
     expect(screen.getByText("解剖定位")).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "人体定位总览" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "结直肠分段示意图" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "结直肠解剖定位示意图" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "结直肠解剖热区" })).toBeInTheDocument();
 
     const wholeBodyRegion = screen.getByRole("button", { name: "腹盆腔结直肠定位区域" });
     expect(wholeBodyRegion).toHaveAttribute("aria-pressed", "true");

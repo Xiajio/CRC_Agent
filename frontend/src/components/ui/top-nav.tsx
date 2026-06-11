@@ -51,8 +51,8 @@ export function TopNav({
       data-testid="workspace-toolbar"
     >
       <div className="ui-top-nav-brand clinical-brand-block">
-        {brandIcon ? <span aria-hidden="true">{brandIcon}</span> : null}
-        <span>{brandLabel}</span>
+        {brandIcon ? <span className="ui-top-nav-brand-icon">{brandIcon}</span> : null}
+        <span className="ui-top-nav-brand-label">{brandLabel}</span>
       </div>
       <nav className="ui-top-nav-tabs clinical-nav-tabs" aria-label={navLabel}>
         {items.map((item) => {

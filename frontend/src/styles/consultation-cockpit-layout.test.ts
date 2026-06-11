@@ -152,7 +152,8 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-conversation-card .clinical-composer-send:hover:not(:disabled)")).toContain(
       "transform: none",
     );
-    expect(blockFor(".clinical-logo-mark circle")).toContain("var(--clinical-accent-blue)");
+    expect(blockFor(".clinical-company-logo")).toContain("height: 44px");
+    expect(blockFor(".clinical-company-logo")).toContain("object-fit: contain");
     expect(blocksFor(".clinical-conversation-card")).toContainEqual(
       expect.stringContaining("var(--shadow-pop)"),
     );

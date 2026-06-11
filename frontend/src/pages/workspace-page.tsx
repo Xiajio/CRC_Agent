@@ -584,6 +584,7 @@ export function WorkspacePage() {
       {recoveryBanner}
       <ClinicalTopNav
         brandLabel="临床助手"
+        brandLogoVariant="light"
         navLabel="患者工作台"
         items={patientNav.navItems}
         activeKey={patientNav.activeTab}
