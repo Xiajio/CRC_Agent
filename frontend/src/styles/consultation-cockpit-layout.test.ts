@@ -156,6 +156,25 @@ describe("consultation cockpit layout CSS", () => {
     );
   });
 
+  it("removes hard borders from doctor cockpit major cards", () => {
+    expect(blockFor('[data-theme="doctor-cockpit"] .ui-card-clinical-panel')).toContain(
+      "border-color: transparent",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .ui-card-clinical-panel')).toContain(
+      "background: var(--color-surface)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-card')).toContain("border-color: transparent");
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card')).toContain(
+      "background: #151821",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card')).toContain(
+      "border-color: transparent",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card:hover')).toContain(
+      "box-shadow: none",
+    );
+  });
+
   it("defines the polished clinical visual system hooks", () => {
     expect(tokensCss).toContain("--color-primary: #0071e3");
     expect(tokensCss).toContain("--clinical-primary: var(--color-primary)");

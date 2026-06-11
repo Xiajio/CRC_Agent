@@ -3463,6 +3463,46 @@ body {
   background: color-mix(in srgb, var(--color-primary) 35%, var(--color-surface));
 }
 
+[data-theme="doctor-cockpit"] .ui-card-clinical-panel {
+  border-color: transparent;
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+[data-theme="doctor-cockpit"] .clinical-card {
+  border-color: transparent;
+  background: var(--color-surface);
+  box-shadow: none;
+}
+
+[data-theme="doctor-cockpit"] .clinical-conversation-card {
+  border-color: transparent;
+  background: #151821;
+  box-shadow: none;
+}
+
+[data-theme="doctor-cockpit"] .ui-card-clinical-panel:hover,
+[data-theme="doctor-cockpit"] .clinical-card:hover,
+[data-theme="doctor-cockpit"] .clinical-conversation-card:hover {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+[data-theme="doctor-cockpit"] .ui-card-clinical-panel.ui-card-soft {
+  background: var(--color-surface-muted);
+}
+
+[data-theme="doctor-cockpit"] .ui-card-clinical-panel.ui-card-selected {
+  border-color: transparent;
+  background: var(--color-primary-soft);
+}
+
+[data-theme="doctor-cockpit"] .clinical-panel-header,
+[data-theme="doctor-cockpit"] .clinical-card-section-bordered,
+[data-theme="doctor-cockpit"] .clinical-multimodal-card .clinical-panel-header {
+  border-color: var(--color-border-soft);
+}
+
 /* 事件流：终端式控制台 */
 [data-theme="doctor-cockpit"] .clinical-event-stream {
   background: var(--color-canvas);
