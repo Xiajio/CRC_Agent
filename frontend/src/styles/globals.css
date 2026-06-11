@@ -3590,6 +3590,10 @@ body {
   background: var(--color-success);
 }
 
+[data-theme="doctor-cockpit"] .clinical-roadmap-step-completed .clinical-roadmap-dot::after {
+  display: none;
+}
+
 [data-theme="doctor-cockpit"] .clinical-roadmap-step-completed .clinical-roadmap-status {
   color: var(--color-text-muted);
 }

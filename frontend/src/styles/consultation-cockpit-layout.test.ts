@@ -229,22 +229,156 @@ describe("consultation cockpit layout CSS", () => {
   });
 
   it("keeps doctor workflow database and multimodal surfaces in the dark elevation system", () => {
+    expect(css).toContain(
+      [
+        '[data-theme="doctor-cockpit"] .clinical-empty-note,',
+        '[data-theme="doctor-cockpit"] .clinical-empty-state-message,',
+        '[data-theme="doctor-cockpit"] .clinical-multimodal-empty-state p,',
+        '[data-theme="doctor-cockpit"] .clinical-card-empty-state p,',
+        '[data-theme="doctor-cockpit"] .clinical-meta-text',
+      ].join("\n"),
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-meta-text')).toContain(
+      "color: var(--color-text-muted)",
+    );
+
     expect(blockFor('[data-theme="doctor-cockpit"] .clinical-roadmap-list::before')).toContain(
       "background: var(--color-border-soft)",
     );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-roadmap-dot')).toContain(
+      "border-color: var(--color-border-strong)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-roadmap-dot')).toContain(
+      "background: var(--color-surface-muted)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-roadmap-step-completed .clinical-roadmap-dot')).toContain(
+      "border-color: var(--color-success)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-roadmap-step-completed .clinical-roadmap-dot')).toContain(
+      "background: var(--color-success)",
+    );
+    expect(
+      blockFor('[data-theme="doctor-cockpit"] .clinical-roadmap-step-completed .clinical-roadmap-dot::after'),
+    ).toContain("display: none");
     expect(blockFor('[data-theme="doctor-cockpit"] .clinical-roadmap-step-completed .clinical-roadmap-status')).toContain(
       "color: var(--color-text-muted)",
     );
-    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-row')).toContain("border-color: transparent");
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-roadmap-step-in_progress .clinical-roadmap-status')).toContain(
+      "color: var(--color-primary)",
+    );
+
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-row')).toContain(
+      "border-color: transparent",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-row')).toContain(
+      "background: var(--color-surface-muted)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-head')).toContain(
+      "color: var(--color-text-muted)",
+    );
+    expect(css).toContain(
+      [
+        '[data-theme="doctor-cockpit"] .clinical-plan-index,',
+        '[data-theme="doctor-cockpit"] .clinical-plan-status',
+      ].join("\n"),
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-status')).toContain(
+      "background: rgba(255, 255, 255, 0.06)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-status')).toContain(
+      "color: var(--color-text-muted)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-status-completed')).toContain(
+      "background: rgba(69, 214, 149, 0.1)",
+    );
     expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-status-completed')).toContain(
       "color: var(--color-text-muted)",
     );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-status-in_progress')).toContain(
+      "background: var(--color-primary-soft)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-plan-status-in_progress')).toContain(
+      "color: var(--color-primary)",
+    );
+
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-stream')).toContain(
+      "background: var(--color-canvas)",
+    );
     expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-chip')).toContain("border-color: transparent");
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-chip')).toContain(
+      "background: var(--color-surface)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-chip-success')).toContain(
+      "background: rgba(69, 214, 149, 0.1)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-chip-warning')).toContain(
+      "background: rgba(242, 176, 74, 0.12)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-chip-error')).toContain(
+      "background: rgba(255, 125, 142, 0.12)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-chip div')).toContain(
+      "border-bottom-color: var(--color-border-soft)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-chip strong')).toContain(
+      "color: var(--color-text)",
+    );
+    expect(css).toContain(
+      [
+        '[data-theme="doctor-cockpit"] .clinical-event-chip span,',
+        '[data-theme="doctor-cockpit"] .clinical-event-chip p',
+      ].join("\n"),
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-event-chip p')).toContain(
+      "color: var(--color-text-muted)",
+    );
+
+    expect(blockFor('[data-theme="doctor-cockpit"] .database-table th')).toContain(
+      "background: var(--color-surface)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .database-table th')).toContain(
+      "color: var(--color-text-muted)",
+    );
+    expect(blocksFor('[data-theme="doctor-cockpit"] .database-table td').join("\n")).toContain(
+      "color: var(--color-text)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .database-table tbody tr:nth-child(even)')).toContain(
+      "background: rgba(255, 255, 255, 0.03)",
+    );
     expect(blockFor('[data-theme="doctor-cockpit"] .database-table tbody tr:hover')).toContain(
       "rgba(77, 141, 255, 0.12)",
     );
+    expect(css).toContain(
+      [
+        '[data-theme="doctor-cockpit"] .database-pill,',
+        '[data-theme="doctor-cockpit"] .database-pagination,',
+        '[data-theme="doctor-cockpit"] .database-field',
+      ].join("\n"),
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .database-field')).toContain("border-color: transparent");
+    expect(blockFor('[data-theme="doctor-cockpit"] .database-field')).toContain(
+      "background: var(--color-surface-muted)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .database-field')).toContain(
+      "color: var(--color-text-muted)",
+    );
+
     expect(blockFor('[data-theme="doctor-cockpit"] .clinical-multimodal-card')).toContain(
       "border-color: transparent",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-multimodal-card')).toContain(
+      "background: var(--color-surface)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-multimodal-card')).toContain("box-shadow: none");
+    expect(css).toContain(
+      [
+        '[data-theme="doctor-cockpit"] .clinical-multimodal-status,',
+        '[data-theme="doctor-cockpit"] .clinical-multimodal-definition-row dt,',
+        '[data-theme="doctor-cockpit"] .clinical-multimodal-definition-row dd',
+      ].join("\n"),
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-multimodal-definition-row dd')).toContain(
+      "color: var(--color-text-muted)",
     );
   });
 
