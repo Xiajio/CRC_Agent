@@ -198,6 +198,30 @@ describe("consultation cockpit layout CSS", () => {
     expect(internalBorders).toContain("border-color: var(--color-border-soft)");
   });
 
+  it("uses cold-blue focus and restrained status color in doctor cockpit controls", () => {
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-top-nav')).toContain(
+      "background: var(--clinical-command-surface)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-nav-tab-active')).toContain(
+      "color: var(--color-primary)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-sse-pill')).toContain(
+      "color: var(--color-text-muted)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-sse-pill span')).toContain(
+      "background: var(--color-success)",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-textarea')).toContain(
+      "background: #1a1d26",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-textarea')).toContain(
+      "border-color: transparent",
+    );
+    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-send')).toContain(
+      "background: var(--color-primary)",
+    );
+  });
+
   it("defines the polished clinical visual system hooks", () => {
     expect(tokensCss).toContain("--color-primary: #0071e3");
     expect(tokensCss).toContain("--clinical-primary: var(--color-primary)");

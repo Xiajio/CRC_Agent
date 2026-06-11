@@ -3408,6 +3408,12 @@ body {
  * 下划线式导航指示、等宽数据字段、控制台式事件流。
  * ============================================================ */
 
+[data-theme="doctor-cockpit"] .clinical-top-nav {
+  border-bottom-color: transparent;
+  background: var(--clinical-command-surface);
+  box-shadow: none;
+}
+
 [data-theme="doctor-cockpit"] .clinical-nav-tabs {
   border-color: transparent;
   background: transparent;
@@ -3416,21 +3422,47 @@ body {
 
 [data-theme="doctor-cockpit"] .clinical-nav-tab {
   border-radius: var(--radius-md);
+  color: var(--clinical-command-muted);
 }
 
 [data-theme="doctor-cockpit"] .clinical-nav-tab:hover {
-  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--color-text);
 }
 
-[data-theme="doctor-cockpit"] .clinical-nav-tab-active,
+[data-theme="doctor-cockpit"] .clinical-nav-tab-active {
+  background: var(--color-surface-muted);
+  box-shadow: inset 0 -2px 0 var(--color-primary);
+  color: var(--color-primary);
+}
+
 [data-theme="doctor-cockpit"] .clinical-nav-tab-active:hover {
-  background: var(--color-primary-soft);
+  background: var(--color-surface-muted);
   box-shadow: inset 0 -2px 0 var(--color-primary);
   color: var(--color-primary);
 }
 
 [data-theme="doctor-cockpit"] .ui-top-nav-tab-active {
   background: var(--color-primary-soft);
+}
+
+[data-theme="doctor-cockpit"] .clinical-reset-button {
+  border-color: transparent;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: none;
+}
+
+[data-theme="doctor-cockpit"] .clinical-sse-pill {
+  border-color: transparent;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  box-shadow: none;
+}
+
+[data-theme="doctor-cockpit"] .clinical-sse-pill span {
+  background: var(--color-success);
+  box-shadow: 0 0 0 4px rgba(69, 214, 149, 0.1);
 }
 
 /* 仪表盘数据字段：等宽数字 + 等宽字体 */
@@ -3501,6 +3533,33 @@ body {
 [data-theme="doctor-cockpit"] .clinical-card-section-bordered,
 [data-theme="doctor-cockpit"] .clinical-multimodal-card .clinical-panel-header {
   border-color: var(--color-border-soft);
+}
+
+[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-region {
+  border-top-color: var(--color-border-soft);
+  background: #151821;
+}
+
+[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-textarea {
+  border-color: transparent;
+  background: #1a1d26;
+  color: var(--color-text);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
+}
+
+[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-textarea::placeholder {
+  color: var(--color-text-subtle);
+}
+
+[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-textarea:focus-visible {
+  outline: 2px solid rgba(77, 141, 255, 0.42);
+  outline-offset: 2px;
+}
+
+[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-send {
+  background: var(--color-primary);
+  color: #ffffff;
+  box-shadow: 0 0 28px rgba(77, 141, 255, 0.28);
 }
 
 /* 事件流：终端式控制台 */
