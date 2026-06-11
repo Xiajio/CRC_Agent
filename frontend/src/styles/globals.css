@@ -3562,6 +3562,12 @@ body {
   box-shadow: 0 0 28px rgba(77, 141, 255, 0.28);
 }
 
+[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-send:disabled {
+  background: color-mix(in srgb, var(--color-primary) 32%, transparent);
+  color: rgba(255, 255, 255, 0.8);
+  box-shadow: none;
+}
+
 /* 事件流：终端式控制台 */
 [data-theme="doctor-cockpit"] .clinical-event-stream {
   background: var(--color-canvas);

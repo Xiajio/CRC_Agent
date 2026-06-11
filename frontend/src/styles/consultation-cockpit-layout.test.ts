@@ -220,6 +220,12 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-send')).toContain(
       "background: var(--color-primary)",
     );
+    expect(
+      blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-send:disabled'),
+    ).toContain("background: color-mix(in srgb, var(--color-primary) 32%, transparent)");
+    expect(
+      blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-send:disabled'),
+    ).toContain("box-shadow: none");
   });
 
   it("defines the polished clinical visual system hooks", () => {
