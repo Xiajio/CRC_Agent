@@ -41,6 +41,12 @@
   --shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.05), 0 12px 32px rgba(0, 0, 0, 0.08);
   --shadow-control: 0 1px 0 rgba(0, 0, 0, 0.04);
   --panel-header-surface: var(--color-surface);
+  --anatomy-image-map-bg: radial-gradient(
+      circle at 72% 42%,
+      color-mix(in srgb, var(--color-primary) 12%, transparent),
+      transparent 42%
+    ),
+    var(--color-canvas);
   --font-xs: 12px;
   --font-sm: 13px;
   --font-md: 14px;
@@ -136,6 +142,15 @@
   --shadow-pop: 0 18px 48px rgba(0, 0, 0, 0.24);
   --shadow-control: none;
   --panel-header-surface: #151821;
+  --doctor-aurora-glow: radial-gradient(
+    circle,
+    rgba(35, 105, 255, 0.2) 0%,
+    rgba(35, 105, 255, 0.08) 38%,
+    transparent 72%
+  );
+  --doctor-focus-surface: #151821;
+  --doctor-control-surface: #1a1d26;
+  --doctor-control-foreground: #ffffff;
   --clinical-link-blue: #8db7ff;
   --clinical-ink-soft: rgba(255, 255, 255, 0.72);
   --clinical-glass-ink: rgba(255, 255, 255, 0.86);

@@ -124,6 +124,10 @@ describe("consultation cockpit layout CSS", () => {
     expect(cockpit).toContain("--shadow-card-resting: none");
     expect(cockpit).toContain("--clinical-glass-border: rgba(255, 255, 255, 0.06)");
     expect(cockpit).toContain("--dashboard-left-width: 280px");
+    expect(cockpit).toContain("--doctor-aurora-glow: radial-gradient");
+    expect(cockpit).toContain("--doctor-focus-surface: #151821");
+    expect(cockpit).toContain("--doctor-control-surface: #1a1d26");
+    expect(cockpit).toContain("--doctor-control-foreground: #ffffff");
 
     const care = blockFor(':root[data-theme="patient-care"]', tokensCss);
     expect(care).toContain("color-scheme: light");
@@ -141,7 +145,7 @@ describe("consultation cockpit layout CSS", () => {
   it("adds a non-interactive aurora layer behind doctor shells", () => {
     expect(blockFor(".clinical-app-shell-doctor")).toContain("isolation: isolate");
     expect(blockFor(".clinical-app-shell-doctor")).toContain("overflow-x: clip");
-    expect(blockFor(".clinical-app-shell-doctor::before")).toContain("radial-gradient");
+    expect(blockFor(".clinical-app-shell-doctor::before")).toContain("background: var(--doctor-aurora-glow)");
     expect(blockFor(".clinical-app-shell-doctor::before")).toContain("filter: blur(80px)");
     expect(blockFor(".clinical-app-shell-doctor::before")).toContain("pointer-events: none");
     expect(blockFor(".clinical-app-shell-doctor::before")).toContain("z-index: 0");
@@ -173,7 +177,7 @@ describe("consultation cockpit layout CSS", () => {
     expect(card).toContain("border-color: transparent");
     expect(card).toContain("background: var(--color-surface)");
     expect(card).toContain("box-shadow: none");
-    expect(conversation).toContain("background: #151821");
+    expect(conversation).toContain("background: var(--doctor-focus-surface)");
     expect(conversation).toContain("border-color: transparent");
     expect(conversation).toContain("box-shadow: none");
     expect(css).toContain(
@@ -212,7 +216,7 @@ describe("consultation cockpit layout CSS", () => {
       "background: var(--color-success)",
     );
     expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-textarea')).toContain(
-      "background: #1a1d26",
+      "background: var(--doctor-control-surface)",
     );
     expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card .clinical-composer-textarea')).toContain(
       "border-color: transparent",
