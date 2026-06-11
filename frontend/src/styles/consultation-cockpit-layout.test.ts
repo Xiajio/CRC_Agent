@@ -157,22 +157,45 @@ describe("consultation cockpit layout CSS", () => {
   });
 
   it("removes hard borders from doctor cockpit major cards", () => {
-    expect(blockFor('[data-theme="doctor-cockpit"] .ui-card-clinical-panel')).toContain(
-      "border-color: transparent",
+    const panel = blockFor('[data-theme="doctor-cockpit"] .ui-card-clinical-panel');
+    const card = blockFor('[data-theme="doctor-cockpit"] .clinical-card');
+    const conversation = blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card');
+    const hover = blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card:hover');
+    const softPanel = blockFor('[data-theme="doctor-cockpit"] .ui-card-clinical-panel.ui-card-soft');
+    const selectedPanel = blockFor('[data-theme="doctor-cockpit"] .ui-card-clinical-panel.ui-card-selected');
+    const internalBorders = blockFor(
+      '[data-theme="doctor-cockpit"] .clinical-multimodal-card .clinical-panel-header',
     );
-    expect(blockFor('[data-theme="doctor-cockpit"] .ui-card-clinical-panel')).toContain(
-      "background: var(--color-surface)",
+
+    expect(panel).toContain("border-color: transparent");
+    expect(panel).toContain("background: var(--color-surface)");
+    expect(panel).toContain("box-shadow: none");
+    expect(card).toContain("border-color: transparent");
+    expect(card).toContain("background: var(--color-surface)");
+    expect(card).toContain("box-shadow: none");
+    expect(conversation).toContain("background: #151821");
+    expect(conversation).toContain("border-color: transparent");
+    expect(conversation).toContain("box-shadow: none");
+    expect(css).toContain(
+      [
+        '[data-theme="doctor-cockpit"] .ui-card-clinical-panel:hover,',
+        '[data-theme="doctor-cockpit"] .clinical-card:hover,',
+        '[data-theme="doctor-cockpit"] .clinical-conversation-card:hover',
+      ].join("\n"),
     );
-    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-card')).toContain("border-color: transparent");
-    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card')).toContain(
-      "background: #151821",
+    expect(hover).toContain("border-color: transparent");
+    expect(hover).toContain("box-shadow: none");
+    expect(softPanel).toContain("background: var(--color-surface-muted)");
+    expect(selectedPanel).toContain("border-color: transparent");
+    expect(selectedPanel).toContain("background: var(--color-primary-soft)");
+    expect(css).toContain(
+      [
+        '[data-theme="doctor-cockpit"] .clinical-panel-header,',
+        '[data-theme="doctor-cockpit"] .clinical-card-section-bordered,',
+        '[data-theme="doctor-cockpit"] .clinical-multimodal-card .clinical-panel-header',
+      ].join("\n"),
     );
-    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card')).toContain(
-      "border-color: transparent",
-    );
-    expect(blockFor('[data-theme="doctor-cockpit"] .clinical-conversation-card:hover')).toContain(
-      "box-shadow: none",
-    );
+    expect(internalBorders).toContain("border-color: var(--color-border-soft)");
   });
 
   it("defines the polished clinical visual system hooks", () => {
