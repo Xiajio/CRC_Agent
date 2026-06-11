@@ -140,7 +140,7 @@ describe("consultation cockpit layout CSS", () => {
 
   it("adds a non-interactive aurora layer behind doctor shells", () => {
     expect(blockFor(".clinical-app-shell-doctor")).toContain("isolation: isolate");
-    expect(blockFor(".clinical-app-shell-doctor")).toContain("overflow-x: hidden");
+    expect(blockFor(".clinical-app-shell-doctor")).toContain("overflow-x: clip");
     expect(blockFor(".clinical-app-shell-doctor::before")).toContain("radial-gradient");
     expect(blockFor(".clinical-app-shell-doctor::before")).toContain("filter: blur(80px)");
     expect(blockFor(".clinical-app-shell-doctor::before")).toContain("pointer-events: none");

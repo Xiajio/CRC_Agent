@@ -1132,7 +1132,7 @@ body {
 .clinical-app-shell-doctor {
   position: relative;
   isolation: isolate;
-  overflow-x: hidden;
+  overflow-x: clip;
   background: var(--color-canvas);
 }
 

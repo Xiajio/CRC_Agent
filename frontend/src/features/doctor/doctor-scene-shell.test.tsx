@@ -183,6 +183,7 @@ describe("DoctorSceneShell", () => {
   it("marks each doctor route with stable shell classes for theme effects", () => {
     renderDoctorSceneShell();
     expect(screen.getByTestId("doctor-scene")).toHaveClass(
+      "clinical-app-shell",
       "clinical-app-shell-doctor",
       "clinical-app-shell-consultation",
     );
@@ -190,6 +191,7 @@ describe("DoctorSceneShell", () => {
     cleanup();
     renderDoctorSceneShell({}, { activeDoctorTab: "database" });
     expect(screen.getByTestId("doctor-scene")).toHaveClass(
+      "clinical-app-shell",
       "clinical-app-shell-doctor",
       "clinical-app-shell-database",
     );
@@ -197,6 +199,7 @@ describe("DoctorSceneShell", () => {
     cleanup();
     renderDoctorSceneShell({}, { activeDoctorTab: "multimodal" });
     expect(screen.getByTestId("doctor-scene")).toHaveClass(
+      "clinical-app-shell",
       "clinical-app-shell-doctor",
       "clinical-app-shell-multimodal",
     );
