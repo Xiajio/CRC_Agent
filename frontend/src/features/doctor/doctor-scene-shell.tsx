@@ -566,7 +566,11 @@ export function DoctorSceneShell({
 
   if (activeDoctorTab === "database") {
     return (
-      <div ref={setSceneElement} className="clinical-app-shell clinical-app-shell-database" data-testid="doctor-scene">
+      <div
+        ref={setSceneElement}
+        className="clinical-app-shell clinical-app-shell-doctor clinical-app-shell-database"
+        data-testid="doctor-scene"
+      >
         {topNav}
         <DoctorDatabaseView
           parentToolbar={null}
@@ -599,7 +603,11 @@ export function DoctorSceneShell({
           : undefined;
 
     return (
-      <div ref={setSceneElement} className="clinical-app-shell clinical-app-shell-multimodal" data-testid="doctor-scene">
+      <div
+        ref={setSceneElement}
+        className="clinical-app-shell clinical-app-shell-doctor clinical-app-shell-multimodal"
+        data-testid="doctor-scene"
+      >
         {topNav}
         <DoctorMultimodalView
           registryPatientId={registryPatientId}
@@ -638,7 +646,11 @@ export function DoctorSceneShell({
         : undefined;
 
   return (
-    <main ref={setSceneElement} className="clinical-app-shell" data-testid="doctor-scene">
+    <main
+      ref={setSceneElement}
+      className="clinical-app-shell clinical-app-shell-doctor clinical-app-shell-consultation"
+      data-testid="doctor-scene"
+    >
       {topNav}
       <div className="clinical-dashboard">
         <aside className="clinical-left-column">

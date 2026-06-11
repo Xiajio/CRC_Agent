@@ -138,6 +138,16 @@ describe("consultation cockpit layout CSS", () => {
     expect(care).toContain("--dashboard-left-width: 260px");
   });
 
+  it("adds a non-interactive aurora layer behind doctor shells", () => {
+    expect(blockFor(".clinical-app-shell-doctor")).toContain("isolation: isolate");
+    expect(blockFor(".clinical-app-shell-doctor")).toContain("overflow-x: hidden");
+    expect(blockFor(".clinical-app-shell-doctor::before")).toContain("radial-gradient");
+    expect(blockFor(".clinical-app-shell-doctor::before")).toContain("filter: blur(80px)");
+    expect(blockFor(".clinical-app-shell-doctor::before")).toContain("pointer-events: none");
+    expect(blockFor(".clinical-app-shell-doctor::before")).toContain("z-index: 0");
+    expect(blockFor(".clinical-app-shell-doctor > *")).toContain("z-index: 1");
+  });
+
   it("defines the polished clinical visual system hooks", () => {
     expect(tokensCss).toContain("--color-primary: #0071e3");
     expect(tokensCss).toContain("--clinical-primary: var(--color-primary)");

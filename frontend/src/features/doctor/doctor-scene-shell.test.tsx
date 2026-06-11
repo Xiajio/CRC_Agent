@@ -1,5 +1,5 @@
 import type { ReactNode, SetStateAction } from "react";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockConversationPanel = vi.hoisted(() => vi.fn());
@@ -178,6 +178,28 @@ describe("DoctorSceneShell", () => {
     screen.getByRole("button", { name: "多模态" }).click();
 
     expect(mockDoctorViewState.setActiveDoctorTab).toHaveBeenCalledWith("multimodal");
+  });
+
+  it("marks each doctor route with stable shell classes for theme effects", () => {
+    renderDoctorSceneShell();
+    expect(screen.getByTestId("doctor-scene")).toHaveClass(
+      "clinical-app-shell-doctor",
+      "clinical-app-shell-consultation",
+    );
+
+    cleanup();
+    renderDoctorSceneShell({}, { activeDoctorTab: "database" });
+    expect(screen.getByTestId("doctor-scene")).toHaveClass(
+      "clinical-app-shell-doctor",
+      "clinical-app-shell-database",
+    );
+
+    cleanup();
+    renderDoctorSceneShell({}, { activeDoctorTab: "multimodal" });
+    expect(screen.getByTestId("doctor-scene")).toHaveClass(
+      "clinical-app-shell-doctor",
+      "clinical-app-shell-multimodal",
+    );
   });
 
   it("renders the clinical assistant dashboard chrome for consultation mode", () => {

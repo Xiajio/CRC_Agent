@@ -1129,6 +1129,33 @@ body {
   background: var(--clinical-apple-bg);
 }
 
+.clinical-app-shell-doctor {
+  position: relative;
+  isolation: isolate;
+  overflow-x: hidden;
+  background: var(--color-canvas);
+}
+
+.clinical-app-shell-doctor::before {
+  content: "";
+  position: fixed;
+  left: 50%;
+  top: 118px;
+  z-index: 0;
+  width: min(760px, 72vw);
+  height: 360px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(35, 105, 255, 0.2) 0%, rgba(35, 105, 255, 0.08) 38%, transparent 72%);
+  filter: blur(80px);
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.clinical-app-shell-doctor > * {
+  position: relative;
+  z-index: 1;
+}
+
 .clinical-app-shell-database .clinical-page-shell {
   padding-top: 12px;
 }
@@ -1149,6 +1176,10 @@ body {
   -webkit-backdrop-filter: blur(18px) saturate(1.35);
   color: var(--clinical-command-ink);
   box-shadow: var(--clinical-control-shadow);
+}
+
+.clinical-app-shell-doctor .clinical-top-nav {
+  z-index: 20;
 }
 
 .clinical-brand-block {
