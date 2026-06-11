@@ -12,7 +12,7 @@ function blockFor(selector: string, source = css) {
 
 function blocksFor(selector: string, source = css) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return [...source.matchAll(new RegExp(`${escaped}\\s*\\{(?<body>[\\s\\S]*?)\\n\\s*\\}`, "gm"))].map(
+  return [...source.matchAll(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*\\{(?<body>[\\s\\S]*?)\\n\\s*\\}`, "gm"))].map(
     (match) => match.groups?.body ?? "",
   );
 }
@@ -146,6 +146,14 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-app-shell-doctor::before")).toContain("pointer-events: none");
     expect(blockFor(".clinical-app-shell-doctor::before")).toContain("z-index: 0");
     expect(blockFor(".clinical-app-shell-doctor > *")).toContain("z-index: 1");
+    expect(blockFor(".clinical-app-shell-doctor .clinical-top-nav")).toContain("z-index: 20");
+
+    expect(css.indexOf(".clinical-app-shell-doctor > *")).toBeLessThan(
+      css.indexOf(".clinical-app-shell-doctor .clinical-top-nav"),
+    );
+    expect(css.indexOf(".clinical-app-shell-doctor .clinical-top-nav")).toBeLessThan(
+      css.indexOf(".clinical-app-shell-database .clinical-page-shell"),
+    );
   });
 
   it("defines the polished clinical visual system hooks", () => {

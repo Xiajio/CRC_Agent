@@ -1156,6 +1156,10 @@ body {
   z-index: 1;
 }
 
+.clinical-app-shell-doctor .clinical-top-nav {
+  z-index: 20;
+}
+
 .clinical-app-shell-database .clinical-page-shell {
   padding-top: 12px;
 }
@@ -1176,10 +1180,6 @@ body {
   -webkit-backdrop-filter: blur(18px) saturate(1.35);
   color: var(--clinical-command-ink);
   box-shadow: var(--clinical-control-shadow);
-}
-
-.clinical-app-shell-doctor .clinical-top-nav {
-  z-index: 20;
 }
 
 .clinical-brand-block {
