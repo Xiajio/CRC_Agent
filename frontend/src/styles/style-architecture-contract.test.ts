@@ -102,6 +102,10 @@ function inlineStyleReferences(source: string, fileLabel: string) {
   });
 }
 
+function inlineBroadTransitionReferences(source: string, fileLabel: string) {
+  return matchingLines(source, /\btransition\s*:\s*["'`]all\b/i, fileLabel);
+}
+
 function cssRuleBody(selector: string, source: string) {
   const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = source.match(new RegExp(`${escapedSelector}\\s*\\{([^}]*)\\}`, "m"));
@@ -186,6 +190,12 @@ describe("style architecture contract", () => {
     expect(globalsCss).toContain(".clinical-definition-item dd");
     expect(globalsCss).toContain(".clinical-action-row-prompts");
     expect(baseCardRenderer).toContain('className="clinical-action-row clinical-action-row-prompts"');
+  });
+
+  it("keeps broad inline transitions out of TSX", () => {
+    const offenders = nonTestTsxFiles().flatMap((file) => inlineBroadTransitionReferences(read(file), file));
+
+    expect(offenders).toEqual([]);
   });
 
   it("keeps card renderer visuals out of inline styles", () => {

@@ -18,6 +18,12 @@ const wholeBodyOverviewSource = readFileSync(
   resolve(process.cwd(), "src/features/anatomy/whole-body-anatomy-overview.tsx"),
   "utf8",
 );
+const packageJson = JSON.parse(
+  readFileSync(resolve(process.cwd(), "package.json"), "utf8"),
+) as {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
 
 function cssToken(name: string) {
   const match = tokensCss.match(new RegExp(`--${name}:\\s*([^;]+);`));
@@ -28,6 +34,19 @@ function blockFor(selector: string, source = globalsCss) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = source.match(new RegExp(`${escaped}\\s*\\{(?<body>[\\s\\S]*?)\\n\\s*\\}`, "m"));
   return match?.groups?.body ?? "";
+}
+
+function dependencyVersion(name: string) {
+  return packageJson.dependencies?.[name] ?? packageJson.devDependencies?.[name] ?? null;
+}
+
+function matchingLines(source: string, regex: RegExp, fileLabel: string) {
+  const lineRegex = new RegExp(regex.source, regex.flags.replace(/g/g, ""));
+  return source
+    .split(/\r?\n/)
+    .map((line, index) => ({ line, number: index + 1 }))
+    .filter(({ line }) => lineRegex.test(line))
+    .map(({ line, number }) => `${fileLabel}:${number}: ${line.trim()}`);
 }
 
 function stripStaticSvgStrokeWidth(source: string) {
@@ -41,6 +60,7 @@ describe("motion design system", () => {
     expect(cssToken("motion-duration-transition")).toBe(motionTokens.css.durationTransition);
     expect(cssToken("motion-duration-enter")).toBe(motionTokens.css.durationEnter);
     expect(cssToken("motion-ease-out")).toBe(motionTokens.css.easeOut);
+    expect(cssToken("motion-ease-out")).toBe("cubic-bezier(0.16, 1, 0.3, 1)");
     expect(cssToken("motion-gsap-ease-out")).toBe(motionTokens.css.gsapEaseOut);
     expect(cssToken("motion-enter-y")).toBe(motionTokens.css.enterY);
     expect(cssToken("motion-highlight-scale")).toBe(motionTokens.css.highlightScale);
@@ -51,6 +71,23 @@ describe("motion design system", () => {
     expect(motionTokens.duration.transition).toBe(0.24);
     expect(motionTokens.duration.enter).toBe(0.32);
     expect(motionTokens.ease.out).toBe("power3.out");
+  });
+
+  it("keeps GSAP as the only JavaScript animation runtime", () => {
+    expect(dependencyVersion("gsap")).toBe("3.12.7");
+    expect(dependencyVersion("motion")).toBeNull();
+    expect(dependencyVersion("framer-motion")).toBeNull();
+    expect(dependencyVersion("@gsap/react")).toBeNull();
+  });
+
+  it("keeps globals.css transition timing token-backed", () => {
+    expect(
+      matchingLines(
+        globalsCss,
+        /\b(?:0\.2s|160ms|240ms)\s+ease\b/,
+        "src/styles/globals.css",
+      ),
+    ).toEqual([]);
   });
 
   it("removes broad transitions and keeps highlight feedback on transform and opacity", () => {
