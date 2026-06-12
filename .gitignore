@@ -8,6 +8,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .pytest_tmp/
+*.egg-info/
 .venv/
 venv/
 
@@ -83,6 +84,7 @@ output/
 runtime/
 tmp/
 .tmp/
+.tmp*/
 # Root scratch dirs/files left by Python, pip, or pytest temp roots.
 /_tmp/
 /_tmp_run_*.py
@@ -94,7 +96,11 @@ codex_pytest_*
 codex-runlogs/
 /py-write-root-test.txt
 *.log
+*.sqlite
+*.sqlite3
+*.db
 /start.txt
+/_cmd*_stdout_only.txt
 /_fix_*.txt
 /_ftfy_fixed.py
 /_garbled_analysis.txt
