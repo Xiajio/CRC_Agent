@@ -84,7 +84,7 @@ describe("motion design system", () => {
     expect(
       matchingLines(
         globalsCss,
-        /\b(?:0\.2s|160ms|240ms)\s+ease\b/,
+        /\b(?:\d+(?:\.\d+)?ms|\d*\.\d+s|\d+s)\s+ease\b/,
         "src/styles/globals.css",
       ),
     ).toEqual([]);

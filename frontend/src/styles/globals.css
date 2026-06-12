@@ -129,16 +129,19 @@ body {
   border: 0;
   border-bottom: 4px solid transparent;
   padding: 0 var(--space-6);
-  background: transparent;
+  background-color: transparent;
   color: var(--color-text-muted);
   font: inherit;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+  transition:
+    background-color var(--motion-duration-feedback) var(--motion-ease-out),
+    color var(--motion-duration-feedback) var(--motion-ease-out),
+    border-color var(--motion-duration-feedback) var(--motion-ease-out);
 }
 
 .ui-top-nav-tab:hover {
-  background: var(--color-surface);
+  background-color: var(--color-surface);
   color: var(--color-text);
 }
 
@@ -150,12 +153,12 @@ body {
 
 .ui-top-nav-tab:disabled:hover,
 .ui-top-nav-tab[aria-disabled="true"]:hover {
-  background: transparent;
+  background-color: transparent;
   color: var(--color-text-muted);
 }
 
 .ui-top-nav-tab-active {
-  background: var(--color-surface);
+  background-color: var(--color-surface);
   border-bottom-color: var(--color-primary);
   color: var(--color-primary);
   box-shadow: var(--clinical-button-border-shadow);
@@ -562,92 +565,6 @@ body {
   gap: 12px;
 }
 
-.recent-patients-heading {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--color-text);
-  font-size: var(--font-base);
-  font-weight: 700;
-}
-
-.recent-patients-loading {
-  color: var(--color-primary);
-}
-
-.recent-patients-scroll {
-  max-height: calc(100vh - 200px);
-  overflow-y: auto;
-  padding-right: var(--space-2);
-  margin-right: calc(var(--space-2) * -1);
-}
-
-.recent-patients-list {
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-}
-
-.recent-patient-button {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
-  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
-  color: var(--color-text);
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-  transition:
-    border-color var(--motion-duration-feedback) var(--motion-ease-out),
-    background-color var(--motion-duration-feedback) var(--motion-ease-out),
-    color var(--motion-duration-feedback) var(--motion-ease-out),
-    transform var(--motion-duration-feedback) var(--motion-ease-out);
-}
-
-.recent-patient-button:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
-  background: var(--color-primary-soft);
-  transform: translateY(-1px);
-}
-
-.recent-patient-button:focus-visible {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px var(--focus-ring);
-}
-
-.recent-patient-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.58;
-}
-
-.recent-patient-button-active {
-  border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
-  background: var(--color-primary-soft);
-}
-
-.recent-patient-title {
-  color: var(--color-text);
-  font-size: var(--font-base);
-}
-
-.recent-patient-button-active .recent-patient-title {
-  color: var(--color-primary);
-}
-
-.recent-patient-summary {
-  margin-top: var(--space-1);
-  font-size: var(--font-sm);
-}
-
-.recent-patient-status {
-  font-size: var(--font-sm);
-}
-
 .clinical-message-list-base {
   display: flex;
   flex-direction: column;
@@ -717,6 +634,92 @@ body {
 .clinical-step-current {
   border-color: color-mix(in srgb, var(--color-primary) 24%, transparent);
   background: var(--color-primary-soft);
+}
+
+.recent-patients-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-base);
+  font-weight: 700;
+}
+
+.recent-patients-loading {
+  color: var(--color-primary);
+}
+
+.recent-patients-scroll {
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  padding-right: var(--space-2);
+  margin-right: calc(var(--space-2) * -1);
+}
+
+.recent-patients-list {
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.recent-patient-button {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 12%, transparent);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  background-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
+  color: var(--color-text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-duration-feedback) var(--motion-ease-out),
+    background-color var(--motion-duration-feedback) var(--motion-ease-out),
+    color var(--motion-duration-feedback) var(--motion-ease-out),
+    transform var(--motion-duration-feedback) var(--motion-ease-out);
+}
+
+.recent-patient-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+  background-color: var(--color-primary-soft);
+  transform: translateY(-1px);
+}
+
+.recent-patient-button:focus-visible {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.recent-patient-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.recent-patient-button-active {
+  border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+  background-color: var(--color-primary-soft);
+}
+
+.recent-patient-title {
+  color: var(--color-text);
+  font-size: var(--font-base);
+}
+
+.recent-patient-button-active .recent-patient-title {
+  color: var(--color-primary);
+}
+
+.recent-patient-summary {
+  margin-top: var(--space-1);
+  font-size: var(--font-sm);
+}
+
+.recent-patient-status {
+  font-size: var(--font-sm);
 }
 
 .clinical-card-section {
@@ -1313,17 +1316,20 @@ body {
   border-bottom: 0;
   border-radius: 999px;
   padding: 0 16px;
-  background: transparent;
+  background-color: transparent;
   color: var(--clinical-command-muted);
   font: inherit;
   font-size: var(--font-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    background-color var(--motion-duration-feedback) var(--motion-ease-out),
+    color var(--motion-duration-feedback) var(--motion-ease-out),
+    box-shadow var(--motion-duration-feedback) var(--motion-ease-out);
 }
 
 .clinical-nav-tab:hover {
-  background: color-mix(in srgb, var(--color-surface) 82%, transparent);
+  background-color: color-mix(in srgb, var(--color-surface) 82%, transparent);
   color: var(--clinical-command-ink);
 }
 
@@ -1335,12 +1341,12 @@ body {
 
 .clinical-nav-tab:disabled:hover,
 .clinical-nav-tab[aria-disabled="true"]:hover {
-  background: transparent;
+  background-color: transparent;
   color: var(--clinical-command-muted);
 }
 
 .clinical-nav-tab-active {
-  background: var(--clinical-surface);
+  background-color: var(--clinical-surface);
   box-shadow: var(--clinical-button-border-shadow);
   color: var(--clinical-accent-blue);
 }
@@ -2670,13 +2676,14 @@ body {
   min-height: 34px;
   border-radius: 8px;
   padding: 0;
-  background: var(--clinical-primary);
+  background-color: var(--clinical-primary);
   box-shadow: none;
-  transition: background-color 0.16s ease;
+  transition:
+    background-color var(--motion-duration-feedback) var(--motion-ease-out);
 }
 
 .clinical-conversation-card .clinical-composer-send:hover:not(:disabled) {
-  background: var(--color-primary-hover);
+  background-color: var(--color-primary-hover);
   box-shadow: none;
   transform: none;
 }
