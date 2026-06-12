@@ -187,6 +187,61 @@ describe("ConversationPanel latency status", () => {
     expect(screen.queryByText(/\*\*摘要\*\*/)).not.toBeInTheDocument();
   });
 
+  it("renders GFM tables from assistant clinical markdown", () => {
+    renderConversationPanel({
+      messages: [
+        {
+          cursor: "2",
+          type: "ai",
+          content: [
+            "# 涓村簥娌荤枟寤鸿",
+            "",
+            "| 项目 | 建议 |",
+            "| --- | --- |",
+            "| 剂量 | 50 mg bid |",
+          ].join("\n"),
+          assetRefs: [],
+        },
+      ],
+    });
+
+    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "项目" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "50 mg bid" })).toBeInTheDocument();
+  });
+
+  it("does not render or expose raw HTML from assistant markdown", () => {
+    renderConversationPanel({
+      messages: [
+        {
+          cursor: "2",
+          type: "ai",
+          content: [
+            "# 涓村簥娌荤枟寤鸿",
+            "",
+            "<img src=x onerror=alert(1)>",
+            "",
+            "Visible safety text",
+          ].join("\n"),
+          assetRefs: [],
+        },
+      ],
+    });
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+    expect(screen.queryByText(/onerror/)).not.toBeInTheDocument();
+    expect(screen.getByText("Visible safety text")).toBeInTheDocument();
+  });
+
+  it("renders the composer send icon through lucide", () => {
+    renderConversationPanel({
+      draft: "ready",
+    });
+
+    const sendButton = screen.getByRole("button", { name: "发送消息" });
+    expect(sendButton.querySelector(".lucide-send")).toBeInTheDocument();
+  });
+
   it("submits trimmed drafts on Enter and keeps Shift+Enter inside the textarea", () => {
     const onSubmit = vi.fn();
 

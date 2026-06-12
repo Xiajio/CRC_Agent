@@ -2384,6 +2384,22 @@ body {
   line-height: 1.55;
 }
 
+.clinical-markdown {
+  display: grid;
+  gap: 12px;
+  white-space: normal;
+  color: var(--color-text);
+  line-height: 1.68;
+}
+
+.clinical-markdown > :first-child {
+  margin-top: 0;
+}
+
+.clinical-markdown > :last-child {
+  margin-bottom: 0;
+}
+
 .clinical-report-content {
   display: grid;
   gap: 12px;
@@ -2437,6 +2453,65 @@ body {
 
 .clinical-report-list li {
   padding-left: 2px;
+}
+
+.clinical-markdown-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.clinical-markdown-table {
+  width: 100%;
+  min-width: 360px;
+  border-collapse: collapse;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: var(--font-sm);
+}
+
+.clinical-markdown-table th,
+.clinical-markdown-table td {
+  border: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+}
+
+.clinical-markdown-table th {
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.clinical-markdown code {
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  background: var(--color-surface-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+}
+
+.clinical-markdown-code-block {
+  margin: 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--color-surface-muted);
+}
+
+.clinical-markdown-code-block code {
+  border: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.clinical-markdown a {
+  color: var(--clinical-link-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .clinical-composer-region {

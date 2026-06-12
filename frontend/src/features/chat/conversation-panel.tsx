@@ -1,5 +1,7 @@
 import type { FrontendMessage } from "../../app/api/types";
-import type { ReactNode } from "react";
+import { Send } from "lucide-react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { CLINICAL_HUMAN_REVIEW_LABEL } from "../../app/clinical/clinical-copy";
 import { ClinicalEmptyState } from "../../components/layout/clinical-empty-state";
 import { Button, Card, MessageBubble, Textarea } from "../../components/ui";
@@ -150,92 +152,55 @@ function stripLegacyClinicalReportNoise(text: string): string {
     .trim();
 }
 
-function plainInlineMarkdown(text: string): string {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1")
-    .trim();
-}
+const clinicalMarkdownComponents: Components = {
+  h1: ({ children }) => <h3 className="clinical-report-title">{children}</h3>,
+  h2: ({ children }) => <h4 className="clinical-report-section-title">{children}</h4>,
+  h3: ({ children }) => <h4 className="clinical-report-section-title">{children}</h4>,
+  h4: ({ children }) => <h4 className="clinical-report-section-title">{children}</h4>,
+  h5: ({ children }) => <h4 className="clinical-report-section-title">{children}</h4>,
+  h6: ({ children }) => <h4 className="clinical-report-section-title">{children}</h4>,
+  p: ({ children }) => <p className="clinical-report-paragraph">{children}</p>,
+  ul: ({ children }) => <ul className="clinical-report-list">{children}</ul>,
+  ol: ({ children }) => <ol className="clinical-report-list clinical-report-ordered-list">{children}</ol>,
+  li: ({ children }) => <li>{children}</li>,
+  table: ({ children }) => (
+    <div className="clinical-markdown-table-scroll">
+      <table className="clinical-markdown-table">{children}</table>
+    </div>
+  ),
+  th: ({ children }) => <th>{children}</th>,
+  td: ({ children }) => <td>{children}</td>,
+  a: ({ children, href }) => (
+    <a href={href} target="_blank" rel="noreferrer">
+      {children}
+    </a>
+  ),
+  code: ({ children, className }) => <code className={className}>{children}</code>,
+  pre: ({ children }) => <pre className="clinical-markdown-code-block">{children}</pre>,
+};
 
-function isClinicalReportText(text: string): boolean {
-  return /(^|\n)\s*#\s*.*临床治疗建议/.test(text);
-}
-
-function flushList(nodes: ReactNode[], listItems: string[], key: string) {
-  if (listItems.length === 0) {
-    return;
-  }
-  nodes.push(
-    <ul key={key} className="clinical-report-list">
-      {listItems.map((item, index) => (
-        <li key={`${key}-${index}`}>{plainInlineMarkdown(item)}</li>
-      ))}
-    </ul>,
+function ClinicalMarkdown({ text }: { text: string }) {
+  return (
+    <div className="clinical-message-text clinical-markdown">
+      <ReactMarkdown
+        components={clinicalMarkdownComponents}
+        remarkPlugins={[remarkGfm]}
+        skipHtml
+      >
+        {text}
+      </ReactMarkdown>
+    </div>
   );
-  listItems.length = 0;
 }
 
-function renderClinicalReport(text: string): ReactNode {
-  const nodes: ReactNode[] = [];
-  const listItems: string[] = [];
-
-  for (const [index, rawLine] of text.split("\n").entries()) {
-    const line = rawLine.trim();
-    if (!line) {
-      flushList(nodes, listItems, `list-${index}`);
-      continue;
-    }
-
-    const heading = line.match(/^(#{1,6})\s*(.+)$/);
-    if (heading) {
-      flushList(nodes, listItems, `list-${index}`);
-      const level = heading[1].length;
-      const title = plainInlineMarkdown(heading[2]);
-      if (level <= 1) {
-        nodes.push(<h3 key={`heading-${index}`} className="clinical-report-title">{title}</h3>);
-      } else {
-        nodes.push(<h4 key={`heading-${index}`} className="clinical-report-section-title">{title}</h4>);
-      }
-      continue;
-    }
-
-    if (line.startsWith("- ")) {
-      listItems.push(line.slice(2).trim());
-      continue;
-    }
-
-    flushList(nodes, listItems, `list-${index}`);
-    const labeled = line.match(/^\*\*(.+?)\*\*:?\s*(.*)$/);
-    if (labeled) {
-      nodes.push(
-        <p key={`paragraph-${index}`} className="clinical-report-summary">
-          <strong>{plainInlineMarkdown(labeled[1])}</strong>
-          {labeled[2] ? <span>{plainInlineMarkdown(labeled[2])}</span> : null}
-        </p>,
-      );
-      continue;
-    }
-
-    nodes.push(
-      <p key={`paragraph-${index}`} className="clinical-report-paragraph">
-        {plainInlineMarkdown(line)}
-      </p>,
-    );
-  }
-
-  flushList(nodes, listItems, "list-final");
-
-  return <div className="clinical-report-content">{nodes}</div>;
-}
-
-function renderMessageText(text: string) {
-  if (isClinicalReportText(text)) {
-    return renderClinicalReport(text);
+function renderMessageText(text: string, renderMarkdown: boolean) {
+  if (renderMarkdown) {
+    return <ClinicalMarkdown text={text} />;
   }
   return <div className="clinical-message-text">{text}</div>;
 }
 
-function renderMessageContent(text: string, thinkText?: string) {
+function renderMessageContent(text: string, thinkText?: string, renderMarkdown = false) {
   return (
     <>
       {thinkText ? (
@@ -244,7 +209,7 @@ function renderMessageContent(text: string, thinkText?: string) {
           <div>{thinkText}</div>
         </details>
       ) : null}
-      {text ? renderMessageText(text) : null}
+      {text ? renderMessageText(text, renderMarkdown) : null}
     </>
   );
 }
@@ -359,7 +324,7 @@ export function ConversationPanel({
                 >
                   {!hideText || thinkText ? (
                     <div className="bubble-content">
-                      {renderMessageContent(hideText ? "" : normalizedText, thinkText || undefined)}
+                      {renderMessageContent(hideText ? "" : normalizedText, thinkText || undefined, !isUser)}
                     </div>
                   ) : null}
                   {message.inlineCards?.length ? (
@@ -450,10 +415,7 @@ export function ConversationPanel({
               onClick={onSubmit}
               aria-label="发送消息"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <line x1="22" y1="2" x2="11" y2="13" />
-                <polygon points="22 2 15 22 11 13 2 9 22 2" />
-              </svg>
+              <Send size={18} aria-hidden="true" />
             </button>
           </div>
         </div>
