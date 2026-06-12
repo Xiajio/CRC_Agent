@@ -3,8 +3,12 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-const css = readFileSync(resolve(process.cwd(), "src/styles/globals.css"), "utf8");
-const tokensCss = readFileSync(resolve(process.cwd(), "src/styles/tokens.css"), "utf8");
+function readCssFile(path: string): string {
+  return readFileSync(resolve(process.cwd(), path), "utf8").replace(/\r\n/g, "\n");
+}
+
+const css = readCssFile("src/styles/globals.css");
+const tokensCss = readCssFile("src/styles/tokens.css");
 
 function blockFor(selector: string, source = css) {
   return blocksFor(selector, source)[0] ?? "";
