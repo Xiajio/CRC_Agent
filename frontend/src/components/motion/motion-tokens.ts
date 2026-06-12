@@ -3,7 +3,7 @@ const motionCssTokens = {
   durationHighlight: "240ms",
   durationTransition: "240ms",
   durationEnter: "320ms",
-  easeOut: "cubic-bezier(0.22, 1, 0.36, 1)",
+  easeOut: "cubic-bezier(0.16, 1, 0.3, 1)",
   gsapEaseOut: "power3.out",
   enterY: "12px",
   highlightScale: "1.018",
