@@ -341,12 +341,14 @@ export function useWorkspaceStreamingTurn({
     try {
       const response = await apiClient.resetSession(sessionId);
       applySessionResponse(response);
+      setSessionState((current) => ({ ...current, eventLog: [] }));
       return true;
     } catch (error) {
       if (isNotFoundApiError(error)) {
         try {
           const replacement = await apiClient.createSession(scene);
           applySessionResponse(replacement);
+          setSessionState((current) => ({ ...current, eventLog: [] }));
           return true;
         } catch (replacementError) {
           setErrorMessage(readWorkspaceErrorMessage(replacementError));
@@ -364,6 +366,7 @@ export function useWorkspaceStreamingTurn({
     latencyProbe,
     scene,
     sessionState.sessionId,
+    setSessionState,
     traceStoreRef,
   ]);
 

@@ -8,7 +8,7 @@ import { generateTraceId } from "../../app/api/generate-trace-id";
 import type { ApiClient } from "../../app/api/client";
 import type { SessionResponse, SessionState, StreamEvent } from "../../app/api/types";
 import { buildApiClientStub, makeSessionResponse } from "../../test/test-utils";
-import { createInitialSessionState } from "../../app/store/stream-reducer";
+import { createInitialSessionState, hydrateSessionState } from "../../app/store/stream-reducer";
 import { useTurnLatencyProbe } from "./use-turn-latency-probe";
 import { useWorkspaceStreamingTurn } from "./use-workspace-streaming-turn";
 import { STREAM_EMPTY_RESPONSE_MESSAGE } from "./workspace-flow-utils";
@@ -447,6 +447,67 @@ describe("useWorkspaceStreamingTurn", () => {
     expect(view.result.current.state.messages[0]).toMatchObject({ cursor: "1", content: "old message" });
     expect(view.result.current.state.messages[1]).toMatchObject({ cursor: "2", content: "new message" });
     expect(view.result.current.turn.isLoadingHistory).toBe(false);
+  });
+
+  it("clears the clinical event log after reset", async () => {
+    const resetSession = vi.fn(async () =>
+      makeSessionResponse({
+        session_id: "doctor-session",
+        scene: "doctor",
+        snapshot: {
+          messages: [],
+          cards: [],
+        },
+      }),
+    );
+    const apiClient = buildApiClientStub({ resetSession });
+    const view = renderHook(() => {
+      const [state, setState] = useState(
+        makeSessionState({
+          sessionId: "doctor-session",
+          eventLog: [
+            {
+              id: "node-1-decision",
+              kind: "node",
+              title: "decision",
+              tone: "neutral",
+            },
+          ],
+        }),
+      );
+      const traceStoreRef = useRef(createChatLatencyTraceStore());
+      const latencyProbe = useTurnLatencyProbe();
+
+      const turn = useWorkspaceStreamingTurn({
+        scene: "doctor",
+        apiClient,
+        sessionState: state,
+        setSessionState: setState,
+        applySessionResponse: (response) => {
+          setState((current) => hydrateSessionState(current, response));
+        },
+        traceStoreRef,
+        latencyProbe: {
+          activeProbeRef: latencyProbe.activeProbeRef,
+          beginTurn: latencyProbe.beginTurn,
+          clearScene: latencyProbe.clearScene,
+          markAborted: latencyProbe.markAborted,
+          markError: latencyProbe.markError,
+          clearActiveProbe: latencyProbe.clearActiveProbe,
+          markMessageDone: latencyProbe.markMessageDone,
+          markUiComplete: latencyProbe.markUiComplete,
+        },
+      });
+
+      return { turn, state };
+    });
+
+    await act(async () => {
+      await view.result.current.turn.resetScene();
+    });
+
+    expect(resetSession).toHaveBeenCalledWith("doctor-session");
+    expect(view.result.current.state.eventLog).toEqual([]);
   });
 
   it("resets by applying reset session response", async () => {
