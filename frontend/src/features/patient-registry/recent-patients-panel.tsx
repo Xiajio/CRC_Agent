@@ -30,48 +30,37 @@ export function RecentPatientsPanel({
 }: RecentPatientsPanelProps) {
   return (
     <Card as="section" variant="clinical-panel" data-testid="recent-patients-panel">
-      <h2 style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <span style={{ fontSize: "1.2rem" }}></span> {title}
-      </h2>
+      <h2 className="recent-patients-heading">{title}</h2>
       {error ? <p className="clinical-copy clinical-copy-alert">{error}</p> : null}
-      {isLoading ? <p className="clinical-copy" style={{ color: "var(--color-primary)" }}>正在加载最近患者...</p> : null}
+      {isLoading ? <p className="clinical-copy recent-patients-loading">正在加载最近患者...</p> : null}
       {!isLoading && items.length === 0 ? <p className="clinical-copy">{emptyMessage}</p> : null}
       {items.length > 0 ? (
-        <div style={{ maxHeight: "calc(100vh - 200px)", overflowY: "auto", paddingRight: "8px", marginRight: "-8px" }}>
-          <ul className="clinical-list" style={{ gap: "10px", marginTop: "10px" }}>
+        <div className="recent-patients-scroll">
+          <ul className="clinical-list recent-patients-list">
             {items.map((item) => {
               const isPreviewed = previewedPatientId === item.patient_id;
               return (
                 <li key={item.patient_id}>
                   <button
                     type="button"
-                    className={`clinical-list-item ${isPreviewed ? "clinical-step-current" : ""}`}
+                    className={`clinical-list-item recent-patient-button ${
+                      isPreviewed ? "clinical-step-current recent-patient-button-active" : ""
+                    }`}
                     onClick={() => onPreviewPatient(item.patient_id)}
                     disabled={isLoadingPreview}
                     aria-label={`preview patient ${item.patient_id}`}
                     aria-pressed={isPreviewed}
-                    style={{
-                      width: "100%",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: "12px",
-                      padding: "16px",
-                      textAlign: "left",
-                      transition: "all 0.2s ease",
-                      border: isPreviewed ? "1px solid rgba(20, 102, 216, 0.3)" : "1px solid rgba(20, 102, 216, 0.12)",
-                      boxShadow: isPreviewed ? "0 4px 12px rgba(20, 102, 216, 0.08)" : "none",
-                    }}
                   >
                     <div>
-                      <strong style={{ color: isPreviewed ? "var(--color-primary)" : "inherit", fontSize: "1.05rem" }}>
+                      <strong className="recent-patient-title">
                         {`患者 #${item.patient_id}`}
                       </strong>
-                      <p className="clinical-copy clinical-copy-tight" style={{ fontSize: "0.85rem", marginTop: "6px" }}>
+                      <p className="clinical-copy clinical-copy-tight recent-patient-summary">
                         {patientSummary(item)}
                       </p>
                     </div>
-                    <span className="clinical-meta-text" style={{ fontSize: "0.85rem" }}>
-                      {isPreviewed ? "✅ 正在预览" : "👀 预览患者"}
+                    <span className="clinical-meta-text recent-patient-status">
+                      {isPreviewed ? "正在预览" : "预览患者"}
                     </span>
                   </button>
                 </li>
