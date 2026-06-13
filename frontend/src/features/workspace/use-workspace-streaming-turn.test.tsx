@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiClientError } from "../../app/api/client";
 import { createChatLatencyTraceStore } from "../../app/api/chat-latency-trace";
 import { generateTraceId } from "../../app/api/generate-trace-id";
+import { StreamRequestError } from "../../app/api/stream";
 import type { ApiClient } from "../../app/api/client";
 import type { SessionResponse, SessionState, StreamEvent } from "../../app/api/types";
 import { buildApiClientStub, makeSessionResponse } from "../../test/test-utils";
@@ -184,6 +185,115 @@ describe("useWorkspaceStreamingTurn", () => {
     expect(view.result.current.turn.errorMessage).toBe("backend fixture unavailable");
     expect(view.result.current.latencyProbe.activeProbe?.status).toBe("error");
     expect(view.result.current.turn.isStreaming).toBe(false);
+  });
+
+  it("retries once when the stream request is briefly busy", async () => {
+    vi.useFakeTimers();
+    try {
+      const streamTurn = vi
+        .fn()
+        .mockRejectedValueOnce(new StreamRequestError(409, "Session is busy"))
+        .mockImplementationOnce(async (_sessionId: string, _request: unknown, onEvent: (event: StreamEvent) => void) => {
+          onEvent({
+            type: "message.done",
+            role: "assistant",
+            message_id: "assistant-1",
+            content: "retry succeeded",
+          });
+        });
+      const apiClient = buildApiClientStub({ streamTurn });
+      const view = createTurnHarness({
+        apiClient,
+        scene: "patient",
+        sessionState: makeSessionState({
+          sessionId: "patient-session",
+        }),
+      });
+
+      let submit: Promise<void> = Promise.resolve();
+      act(() => {
+        submit = view.result.current.turn.submitPrompt("hello");
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(150);
+        await submit;
+      });
+
+      expect(streamTurn).toHaveBeenCalledTimes(2);
+      expect(view.result.current.state.messages).toHaveLength(2);
+      expect(view.result.current.state.messages[1]).toMatchObject({
+        type: "ai",
+        content: "retry succeeded",
+      });
+      expect(view.result.current.state.lastError).toBeNull();
+      expect(view.result.current.turn.errorMessage).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("surfaces a recoverable stream error when the busy retry also fails", async () => {
+    vi.useFakeTimers();
+    try {
+      const streamTurn = vi
+        .fn()
+        .mockRejectedValueOnce(new StreamRequestError(409, "Session is busy"))
+        .mockRejectedValueOnce(new StreamRequestError(409, "Session is busy"));
+      const apiClient = buildApiClientStub({ streamTurn });
+      const view = createTurnHarness({
+        apiClient,
+        scene: "patient",
+        sessionState: makeSessionState({
+          sessionId: "patient-session",
+        }),
+      });
+
+      let submit: Promise<void> = Promise.resolve();
+      act(() => {
+        submit = view.result.current.turn.submitPrompt("hello");
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(150);
+        await submit;
+      });
+
+      expect(streamTurn).toHaveBeenCalledTimes(2);
+      expect(view.result.current.state.lastError).toMatchObject({
+        code: "STREAM_REQUEST_FAILED",
+        message: "Session is busy",
+        recoverable: true,
+      });
+      expect(view.result.current.turn.errorMessage).toBe("Session is busy");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not retry non-busy stream failures", async () => {
+    const streamTurn = vi.fn(async () => {
+      throw new StreamRequestError(503, "backend unavailable");
+    });
+    const apiClient = buildApiClientStub({ streamTurn });
+    const view = createTurnHarness({
+      apiClient,
+      scene: "patient",
+      sessionState: makeSessionState({
+        sessionId: "patient-session",
+      }),
+    });
+
+    await act(async () => {
+      await view.result.current.turn.submitPrompt("hello");
+    });
+
+    expect(streamTurn).toHaveBeenCalledTimes(1);
+    expect(view.result.current.state.lastError).toMatchObject({
+      code: "STREAM_REQUEST_FAILED",
+      message: "backend unavailable",
+      recoverable: true,
+    });
   });
 
   it("marks the turn recoverable when the stream ends without visible assistant output", async () => {
