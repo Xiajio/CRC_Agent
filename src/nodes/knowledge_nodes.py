@@ -149,7 +149,70 @@ def _create_sufficiency_evaluator(model):
 
 
 # ==============================================================================
-# 3. Node: Knowledge Retrieval
+# 3. Plan Tool Selection Helpers
+# ==============================================================================
+
+_EXPLICIT_RAG_TOOL_TYPES = {
+    "search_treatment_recommendations",
+    "search_staging_criteria",
+    "search_drug_information",
+    "search_clinical_guidelines",
+    "search",
+}
+
+_RAG_TOOL_BY_PLAN_TYPE = {
+    "search_treatment_recommendations": "search_treatment_recommendations",
+    "search_staging_criteria": "search_staging_criteria",
+    "search_drug_information": "search_drug_information",
+    "search_clinical_guidelines": "search_clinical_guidelines",
+    "search": "search_clinical_guidelines",
+}
+
+_STRUCTURAL_TOOL_BY_PLAN_TYPE = {
+    "list_guideline_toc": "list_guideline_toc",
+    "toc": "list_guideline_toc",
+    "read_guideline_chapter": "read_guideline_chapter",
+    "read": "read_guideline_chapter",
+    "chapter": "read_guideline_chapter",
+}
+
+
+def _tool_by_name(tools: List[BaseTool], name: str) -> BaseTool | None:
+    return next(
+        (
+            tool
+            for tool in tools
+            if hasattr(tool, "name") and getattr(tool, "name", "") == name
+        ),
+        None,
+    )
+
+
+def _select_plan_rag_tool(tool_type: str, tools: List[BaseTool]) -> BaseTool | None:
+    normalized = str(tool_type or "").strip().lower()
+    tool_name = _RAG_TOOL_BY_PLAN_TYPE.get(normalized)
+    if not tool_name:
+        return None
+    return _tool_by_name(tools, tool_name)
+
+
+def _select_plan_structural_tool(tool_type: str, tools: List[BaseTool]) -> BaseTool | None:
+    normalized = str(tool_type or "").strip().lower()
+    tool_name = _STRUCTURAL_TOOL_BY_PLAN_TYPE.get(normalized)
+    if not tool_name:
+        return None
+    return _tool_by_name(tools, tool_name)
+
+
+def _invoke_rag_search_tool(tool: BaseTool, query: str, top_k: int = 6):
+    try:
+        return tool.invoke({"query": query, "top_k": top_k})
+    except TypeError:
+        return tool.invoke({"query": query})
+
+
+# ==============================================================================
+# 4. Node: Knowledge Retrieval
 # ==============================================================================
 
 def node_knowledge_retrieval(
@@ -252,7 +315,7 @@ def node_knowledge_retrieval(
                 
                 # 1. TOC (Table of Contents) - 目录查询
                 if "toc" in tool_type or "目录" in tool_type:
-                    toc_tool = next((t for t in tools if hasattr(t, 'name') and t.name == "list_guideline_toc"), None)
+                    toc_tool = _select_plan_structural_tool(tool_type, tools)
                     if toc_tool:
                         # 从描述中提取指南名称
                         guideline_name = _extract_guideline_name(current_step.description)
@@ -268,7 +331,7 @@ def node_knowledge_retrieval(
                 
                 # 2. CHAPTER - 章节阅读
                 elif "chapter" in tool_type or "章节" in tool_type:
-                    chapter_tool = next((t for t in tools if hasattr(t, 'name') and t.name == "read_guideline_chapter"), None)
+                    chapter_tool = _select_plan_structural_tool(tool_type, tools)
                     if chapter_tool:
                         # 从描述中提取指南名称和章节名称
                         guideline_name, chapter_name = _extract_guideline_and_chapter(current_step.description)
@@ -287,12 +350,28 @@ def node_knowledge_retrieval(
                 
                 # 3. SEARCH - 检索
                 elif "search" in tool_type:
-                    # 通用知识问题优先使用 web_search，避免临床指南污染
-                    if not use_patient_context:
+                    explicit_rag_tool = _select_plan_rag_tool(tool_type, tools)
+                    is_explicit_rag = tool_type in _EXPLICIT_RAG_TOOL_TYPES
+
+                    if explicit_rag_tool and is_explicit_rag:
+                        search_query = _extract_search_query(
+                            current_step.description,
+                            state,
+                            use_patient_context=use_patient_context,
+                        )
+                        result = _invoke_rag_search_tool(explicit_rag_tool, search_query, top_k=6)
+                        result_content = str(result)
+                        if "No relevant" in result_content or len(result_content) < 50:
+                            error_detected = True
+                    elif not use_patient_context:
                         web_tool = web_tool_map.get("web_search")
                         if web_tool:
                             search_query = _normalize_web_query(
-                                _extract_search_query(current_step.description, state, use_patient_context=False)
+                                _extract_search_query(
+                                    current_step.description,
+                                    state,
+                                    use_patient_context=False,
+                                )
                             )
                             result = web_tool.invoke({"query": search_query})
                             result_content = str(result)
@@ -302,11 +381,14 @@ def node_knowledge_retrieval(
                             result_content = "错误：web_search 工具不可用"
                             error_detected = True
                     else:
-                        # 使用现有的 RAG 工具
-                        if local_rag_tool:
-                            # 从描述中提取查询关键词
-                            search_query = _extract_search_query(current_step.description, state, use_patient_context=True)
-                            result = local_rag_tool.invoke({"query": search_query, "top_k": 6})
+                        fallback_rag_tool = explicit_rag_tool or local_rag_tool
+                        if fallback_rag_tool:
+                            search_query = _extract_search_query(
+                                current_step.description,
+                                state,
+                                use_patient_context=True,
+                            )
+                            result = _invoke_rag_search_tool(fallback_rag_tool, search_query, top_k=6)
                             result_content = str(result)
                             
                             # 检查是否有检索结果
@@ -356,22 +438,27 @@ def node_knowledge_retrieval(
                                 result_content = "错误：web_search 工具不可用"
                                 error_detected = True
                         else:
-                            if local_rag_tool:
-                                search_query = _extract_search_query(current_step.description, state, use_patient_context=True)
-                                result = local_rag_tool.invoke({"query": search_query, "top_k": 6})
+                            mapped_rag_tool = _select_plan_rag_tool(mapped_tool, tools) or local_rag_tool
+                            if mapped_rag_tool:
+                                search_query = _extract_search_query(
+                                    current_step.description,
+                                    state,
+                                    use_patient_context=True,
+                                )
+                                result = _invoke_rag_search_tool(mapped_rag_tool, search_query, top_k=6)
                                 result_content = str(result)
                                 
                                 if "No relevant" in result_content or len(result_content) < 50:
                                     error_detected = True
                             else:
-                                result_content = "错误：search_clinical_guidelines 工具不可用"
+                                result_content = "错误：search_treatment_recommendations 工具不可用"
                                 error_detected = True
                     else:
                         # 无法映射，标记失败
                         new_plan = mark_step_failed(
                             state,
                             current_step.id,
-                            f"不支持的工具类型: {current_step.tool_needed}。有效的工具类型包括: list_guideline_toc, read_guideline_chapter, search_treatment_recommendations, database_query, web_search, ask_user"
+                            f"不支持的工具类型: {current_step.tool_needed}。有效的工具类型包括: list_guideline_toc, read_guideline_chapter, search_clinical_guidelines, search_treatment_recommendations, search_staging_criteria, search_drug_information, database_query, web_search, ask_user"
                         )
                         return {
                             "current_plan": new_plan,

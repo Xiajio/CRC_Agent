@@ -8,7 +8,6 @@ from typing import Iterable
 _TARGET_KEYWORDS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("assessment", ("ask_user",)),
     ("case_database", ("database_query", "case_database_query", "case_database", "database", "case")),
-    ("tool_executor", ("calculator", "tool_executor")),
     (
         "rad_agent",
         (
@@ -48,8 +47,6 @@ _ASSIGNEE_ALIASES: dict[str, str] = {
     "pathology_analysis": "path_agent",
     "pathology": "path_agent",
     "clam": "path_agent",
-    "tool_executor": "tool_executor",
-    "calculator": "tool_executor",
 }
 
 

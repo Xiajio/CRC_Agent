@@ -1,4 +1,5 @@
 from .clinical_tools import list_clinical_tools
+from .basic_tools import echo, word_count
 from .rag_tools import get_guideline_tool, get_all_rag_tools, get_enhanced_rag_tools
 from .web_search_tools import (
     get_web_search_tool,
@@ -119,6 +120,7 @@ def list_all_tools():
     - Pathology CLAM tools
     """
     tools = list_clinical_tools()
+    tools.extend([word_count, echo])
     
     try:
         tools.extend(get_enhanced_rag_tools())
@@ -178,6 +180,8 @@ __all__ = [
     "list_tools_with_web_search",
     "list_all_tools",
     "list_clinical_tools",
+    "echo",
+    "word_count",
     # RAG
     "get_guideline_tool",
     "get_all_rag_tools",
