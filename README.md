@@ -458,6 +458,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start_demo.ps1
 | `UPLOAD_CONVERTER_MODE` | 上传转换模式：`real` / `fixture` | `real` |
 | `VITE_DEMO_MODE` | 前端 demo 回放模式：`replay` 时展示稳定演示上下文 | — |
 
+生产部署前请先阅读 [Production Readiness Guide](docs/deployment/production-readiness.md)。当前生产边界是 **single-worker production boundary**：`SESSION_STORE_BACKEND=sqlite` 只持久化 BFF metadata，不提供跨进程 run lock；多 worker / 多实例部署需要后续 Redis 分布式锁阶段支持。
+
 本地浏览器 UI 不应暴露单独的 admin token。若本地 UI 需要删除患者或 upsert 病例，使用单 token 模式：只设置 `API_BEARER_TOKEN`，不要设置 `API_ADMIN_BEARER_TOKEN`。
 
 ## 测试
@@ -528,6 +530,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start_demo.ps1
 默认 `SESSION_STORE_BACKEND=memory`，BFF session metadata 只在进程内保存；浏览器刷新会复用同一进程内的 session，后端重启后需重建。设置 `SESSION_STORE_BACKEND=sqlite` 后，`session_id`、`thread_id`、场景、患者绑定、上传资产索引、pending context、context state 和 snapshot version 会镜像到 SQLite，并在启动时恢复到内存。
 
 SQLite session store 只覆盖 BFF metadata；完整对话历史和 LangGraph state 仍取决于 `CHECKPOINT_KIND`。如果 checkpoint 仍是 `memory`，重启后可恢复 session metadata，但不能恢复完整 graph checkpoint。
+
+SQLite session store 不提供跨进程 active run 互斥；它不能替代 Redis 分布式锁，也不能让多 worker 同时安全写同一个 LangGraph thread checkpoint。
 
 ## 场景说明
 
