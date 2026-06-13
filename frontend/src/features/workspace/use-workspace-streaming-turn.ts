@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRe
 import { generateTraceId } from "../../app/api/generate-trace-id";
 import type { ChatLatencyTraceStore } from "../../app/api/chat-latency-trace";
 import type { ApiClient } from "../../app/api/client";
-import type { StreamTraceTap } from "../../app/api/stream";
+import { StreamRequestError, type StreamTraceTap } from "../../app/api/stream";
 import type { ChatTurnRequest, Scene, SessionResponse, SessionState, StreamEvent } from "../../app/api/types";
 import { mergeMessageHistory, reduceStreamEvent } from "../../app/store/stream-reducer";
 import {
@@ -57,6 +57,42 @@ function hasVisibleAssistantOutput(event: StreamEvent): boolean {
   return typeof event.content === "string"
     ? event.content.trim().length > 0
     : event.content !== null && event.content !== undefined;
+}
+
+const STREAM_BUSY_RETRY_DELAY_MS = 150;
+
+function isBusyStreamError(error: unknown): boolean {
+  return error instanceof StreamRequestError && error.status === 409;
+}
+
+function createAbortError(): Error {
+  if (typeof DOMException !== "undefined") {
+    return new DOMException("Stream retry aborted", "AbortError");
+  }
+  const error = new Error("Stream retry aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function waitForBusyRetry(signal: AbortSignal, delayMs = STREAM_BUSY_RETRY_DELAY_MS): Promise<void> {
+  if (signal.aborted) {
+    return Promise.reject(createAbortError());
+  }
+
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      signal.removeEventListener("abort", handleAbort);
+      resolve();
+    }, delayMs);
+
+    function handleAbort() {
+      window.clearTimeout(timeoutId);
+      signal.removeEventListener("abort", handleAbort);
+      reject(createAbortError());
+    }
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
 }
 
 export type UseWorkspaceStreamingTurnOptions = {
@@ -190,8 +226,8 @@ export function useWorkspaceStreamingTurn({
       let receivedVisibleAssistantOutput = false;
       let receivedRecoverableError = false;
 
-      try {
-        await apiClient.streamTurn(
+      const runStreamTurn = () =>
+        apiClient.streamTurn(
           sessionId,
           request,
           (event) => {
@@ -222,6 +258,23 @@ export function useWorkspaceStreamingTurn({
           controller.signal,
           traceTap,
         );
+
+      try {
+        try {
+          await runStreamTurn();
+        } catch (streamError) {
+          if (
+            isBusyStreamError(streamError)
+            && activeStreamRef.current === controller
+            && streamSequenceRef.current === sequence
+            && !controller.signal.aborted
+          ) {
+            await waitForBusyRetry(controller.signal);
+            await runStreamTurn();
+          } else {
+            throw streamError;
+          }
+        }
 
         if (
           !receivedVisibleAssistantOutput
