@@ -149,7 +149,69 @@ def _create_sufficiency_evaluator(model):
 
 
 # ==============================================================================
-# 3. Node: Knowledge Retrieval
+# 3. Plan Tool Selection Helpers
+# ==============================================================================
+
+_EXPLICIT_RAG_TOOL_TYPES = {
+    "search_treatment_recommendations",
+    "search_staging_criteria",
+    "search_drug_information",
+    "search_clinical_guidelines",
+}
+
+_RAG_TOOL_BY_PLAN_TYPE = {
+    "search_treatment_recommendations": "search_treatment_recommendations",
+    "search_staging_criteria": "search_staging_criteria",
+    "search_drug_information": "search_drug_information",
+    "search_clinical_guidelines": "search_clinical_guidelines",
+    "search": "search_clinical_guidelines",
+}
+
+_STRUCTURAL_TOOL_BY_PLAN_TYPE = {
+    "list_guideline_toc": "list_guideline_toc",
+    "toc": "list_guideline_toc",
+    "read_guideline_chapter": "read_guideline_chapter",
+    "read": "read_guideline_chapter",
+    "chapter": "read_guideline_chapter",
+}
+
+
+def _tool_by_name(tools: List[BaseTool], name: str) -> BaseTool | None:
+    return next(
+        (
+            tool
+            for tool in tools
+            if hasattr(tool, "name") and getattr(tool, "name", "") == name
+        ),
+        None,
+    )
+
+
+def _select_plan_rag_tool(tool_type: str, tools: List[BaseTool]) -> BaseTool | None:
+    normalized = str(tool_type or "").strip().lower()
+    tool_name = _RAG_TOOL_BY_PLAN_TYPE.get(normalized)
+    if not tool_name:
+        return None
+    return _tool_by_name(tools, tool_name)
+
+
+def _select_plan_structural_tool(tool_type: str, tools: List[BaseTool]) -> BaseTool | None:
+    normalized = str(tool_type or "").strip().lower()
+    tool_name = _STRUCTURAL_TOOL_BY_PLAN_TYPE.get(normalized)
+    if not tool_name:
+        return None
+    return _tool_by_name(tools, tool_name)
+
+
+def _invoke_rag_search_tool(tool: BaseTool, query: str, top_k: int = 6):
+    try:
+        return tool.invoke({"query": query, "top_k": top_k})
+    except TypeError:
+        return tool.invoke({"query": query})
+
+
+# ==============================================================================
+# 4. Node: Knowledge Retrieval
 # ==============================================================================
 
 def node_knowledge_retrieval(
