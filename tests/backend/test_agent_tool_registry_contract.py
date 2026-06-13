@@ -48,6 +48,12 @@ def test_calculator_is_not_advertised_without_a_concrete_tool() -> None:
     assert "calculator" not in planner_prompts.PLANNER_SYSTEM_PROMPT
 
 
+def test_tool_executor_remains_a_valid_explicit_route() -> None:
+    step = PlanStep(id="step_1", description="Run executor", tool_needed="tool_executor")
+    assert step.is_valid_tool()
+    assert classify_pending_step_target("tool_executor") == "tool_executor"
+
+
 def test_explicit_rag_plan_values_select_matching_tools() -> None:
     tools = _fake_rag_tools()
 
