@@ -122,3 +122,14 @@ def test_sqlite_session_store_skips_corrupt_pending_context_rows(tmp_path) -> No
     assert reopened.get_session(good.session_id) is not None
     assert reopened.get_session("sess_corrupt") is None
     reopened.close()
+
+
+def test_sqlite_session_store_missing_session_cleanup_paths_do_not_raise(tmp_path) -> None:
+    db_path = tmp_path / "sessions.db"
+    store = SqliteSessionStore(db_path, ttl_days=None)
+
+    assert store.drain_context_messages("sess_missing") == []
+    store.restore_context_messages("sess_missing", [HumanMessage(content="queued")])
+    store.touch("sess_missing")
+
+    store.close()
