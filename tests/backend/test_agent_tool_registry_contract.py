@@ -82,6 +82,17 @@ def test_guideline_structure_plan_values_select_matching_tools() -> None:
         assert selected.name == tool_name
 
 
+def test_rag_invocation_helper_passes_top_k_when_supported() -> None:
+    tool = FakeTool("search_treatment_recommendations")
+
+    result = knowledge_nodes._invoke_rag_search_tool(tool, "stage iii crc", top_k=6)
+
+    assert result == {
+        "tool": "search_treatment_recommendations",
+        "payload": {"query": "stage iii crc", "top_k": 6},
+    }
+
+
 def test_parallel_case_database_step_uses_atomic_database_tools(monkeypatch) -> None:
     database_tool = FakeTool("get_patient_case_info")
     monkeypatch.setattr(

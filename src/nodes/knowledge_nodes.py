@@ -314,7 +314,7 @@ def node_knowledge_retrieval(
                 
                 # 1. TOC (Table of Contents) - 目录查询
                 if "toc" in tool_type or "目录" in tool_type:
-                    toc_tool = next((t for t in tools if hasattr(t, 'name') and t.name == "list_guideline_toc"), None)
+                    toc_tool = _select_plan_structural_tool(tool_type, tools)
                     if toc_tool:
                         # 从描述中提取指南名称
                         guideline_name = _extract_guideline_name(current_step.description)
@@ -330,7 +330,7 @@ def node_knowledge_retrieval(
                 
                 # 2. CHAPTER - 章节阅读
                 elif "chapter" in tool_type or "章节" in tool_type:
-                    chapter_tool = next((t for t in tools if hasattr(t, 'name') and t.name == "read_guideline_chapter"), None)
+                    chapter_tool = _select_plan_structural_tool(tool_type, tools)
                     if chapter_tool:
                         # 从描述中提取指南名称和章节名称
                         guideline_name, chapter_name = _extract_guideline_and_chapter(current_step.description)
@@ -349,12 +349,28 @@ def node_knowledge_retrieval(
                 
                 # 3. SEARCH - 检索
                 elif "search" in tool_type:
-                    # 通用知识问题优先使用 web_search，避免临床指南污染
-                    if not use_patient_context:
+                    explicit_rag_tool = _select_plan_rag_tool(tool_type, tools)
+                    is_explicit_rag = tool_type in _EXPLICIT_RAG_TOOL_TYPES
+
+                    if explicit_rag_tool and is_explicit_rag:
+                        search_query = _extract_search_query(
+                            current_step.description,
+                            state,
+                            use_patient_context=use_patient_context,
+                        )
+                        result = _invoke_rag_search_tool(explicit_rag_tool, search_query, top_k=6)
+                        result_content = str(result)
+                        if "No relevant" in result_content or len(result_content) < 50:
+                            error_detected = True
+                    elif not use_patient_context:
                         web_tool = web_tool_map.get("web_search")
                         if web_tool:
                             search_query = _normalize_web_query(
-                                _extract_search_query(current_step.description, state, use_patient_context=False)
+                                _extract_search_query(
+                                    current_step.description,
+                                    state,
+                                    use_patient_context=False,
+                                )
                             )
                             result = web_tool.invoke({"query": search_query})
                             result_content = str(result)
@@ -364,11 +380,14 @@ def node_knowledge_retrieval(
                             result_content = "错误：web_search 工具不可用"
                             error_detected = True
                     else:
-                        # 使用现有的 RAG 工具
-                        if local_rag_tool:
-                            # 从描述中提取查询关键词
-                            search_query = _extract_search_query(current_step.description, state, use_patient_context=True)
-                            result = local_rag_tool.invoke({"query": search_query, "top_k": 6})
+                        fallback_rag_tool = explicit_rag_tool or local_rag_tool
+                        if fallback_rag_tool:
+                            search_query = _extract_search_query(
+                                current_step.description,
+                                state,
+                                use_patient_context=True,
+                            )
+                            result = _invoke_rag_search_tool(fallback_rag_tool, search_query, top_k=6)
                             result_content = str(result)
                             
                             # 检查是否有检索结果
@@ -418,15 +437,20 @@ def node_knowledge_retrieval(
                                 result_content = "错误：web_search 工具不可用"
                                 error_detected = True
                         else:
-                            if local_rag_tool:
-                                search_query = _extract_search_query(current_step.description, state, use_patient_context=True)
-                                result = local_rag_tool.invoke({"query": search_query, "top_k": 6})
+                            mapped_rag_tool = _select_plan_rag_tool(mapped_tool, tools) or local_rag_tool
+                            if mapped_rag_tool:
+                                search_query = _extract_search_query(
+                                    current_step.description,
+                                    state,
+                                    use_patient_context=True,
+                                )
+                                result = _invoke_rag_search_tool(mapped_rag_tool, search_query, top_k=6)
                                 result_content = str(result)
                                 
                                 if "No relevant" in result_content or len(result_content) < 50:
                                     error_detected = True
                             else:
-                                result_content = "错误：search_clinical_guidelines 工具不可用"
+                                result_content = "错误：search_treatment_recommendations 工具不可用"
                                 error_detected = True
                     else:
                         # 无法映射，标记失败
