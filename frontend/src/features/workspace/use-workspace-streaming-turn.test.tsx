@@ -76,6 +76,7 @@ describe("useWorkspaceStreamingTurn", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -189,86 +190,102 @@ describe("useWorkspaceStreamingTurn", () => {
 
   it("retries once when the stream request is briefly busy", async () => {
     vi.useFakeTimers();
-    try {
-      const streamTurn = vi
-        .fn()
-        .mockRejectedValueOnce(new StreamRequestError(409, "Session is busy"))
-        .mockImplementationOnce(async (_sessionId: string, _request: unknown, onEvent: (event: StreamEvent) => void) => {
-          onEvent({
-            type: "message.done",
-            role: "assistant",
-            message_id: "assistant-1",
-            content: "retry succeeded",
-          });
+    const streamTurn = vi
+      .fn()
+      .mockRejectedValueOnce(new StreamRequestError(409, "Session is busy"))
+      .mockImplementationOnce(async (_sessionId: string, _request: unknown, onEvent: (event: StreamEvent) => void) => {
+        onEvent({
+          type: "message.done",
+          role: "assistant",
+          message_id: "assistant-1",
+          content: "retry succeeded",
         });
-      const apiClient = buildApiClientStub({ streamTurn });
-      const view = createTurnHarness({
-        apiClient,
-        scene: "patient",
-        sessionState: makeSessionState({
-          sessionId: "patient-session",
-        }),
       });
+    const apiClient = buildApiClientStub({ streamTurn });
+    const view = createTurnHarness({
+      apiClient,
+      scene: "patient",
+      sessionState: makeSessionState({
+        sessionId: "patient-session",
+      }),
+    });
 
-      let submit: Promise<void> = Promise.resolve();
-      act(() => {
-        submit = view.result.current.turn.submitPrompt("hello");
-      });
+    let submit: Promise<void> = Promise.resolve();
+    act(() => {
+      submit = view.result.current.turn.submitPrompt("hello");
+    });
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(150);
-        await submit;
-      });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
-      expect(streamTurn).toHaveBeenCalledTimes(2);
-      expect(view.result.current.state.messages).toHaveLength(2);
-      expect(view.result.current.state.messages[1]).toMatchObject({
-        type: "ai",
-        content: "retry succeeded",
-      });
-      expect(view.result.current.state.lastError).toBeNull();
-      expect(view.result.current.turn.errorMessage).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(streamTurn).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(149);
+    });
+
+    expect(streamTurn).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+      await submit;
+    });
+
+    expect(streamTurn).toHaveBeenCalledTimes(2);
+    expect(view.result.current.state.messages).toHaveLength(2);
+    expect(view.result.current.state.messages[1]).toMatchObject({
+      type: "ai",
+      content: "retry succeeded",
+    });
+    expect(view.result.current.state.lastError).toBeNull();
+    expect(view.result.current.turn.errorMessage).toBeNull();
   });
 
   it("surfaces a recoverable stream error when the busy retry also fails", async () => {
     vi.useFakeTimers();
-    try {
-      const streamTurn = vi
-        .fn()
-        .mockRejectedValueOnce(new StreamRequestError(409, "Session is busy"))
-        .mockRejectedValueOnce(new StreamRequestError(409, "Session is busy"));
-      const apiClient = buildApiClientStub({ streamTurn });
-      const view = createTurnHarness({
-        apiClient,
-        scene: "patient",
-        sessionState: makeSessionState({
-          sessionId: "patient-session",
-        }),
-      });
+    const streamTurn = vi
+      .fn()
+      .mockRejectedValueOnce(new StreamRequestError(409, "Session is busy"))
+      .mockRejectedValueOnce(new StreamRequestError(409, "Session is busy"));
+    const apiClient = buildApiClientStub({ streamTurn });
+    const view = createTurnHarness({
+      apiClient,
+      scene: "patient",
+      sessionState: makeSessionState({
+        sessionId: "patient-session",
+      }),
+    });
 
-      let submit: Promise<void> = Promise.resolve();
-      act(() => {
-        submit = view.result.current.turn.submitPrompt("hello");
-      });
+    let submit: Promise<void> = Promise.resolve();
+    act(() => {
+      submit = view.result.current.turn.submitPrompt("hello");
+    });
 
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(150);
-        await submit;
-      });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
-      expect(streamTurn).toHaveBeenCalledTimes(2);
-      expect(view.result.current.state.lastError).toMatchObject({
-        code: "STREAM_REQUEST_FAILED",
-        message: "Session is busy",
-        recoverable: true,
-      });
-      expect(view.result.current.turn.errorMessage).toBe("Session is busy");
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(streamTurn).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(149);
+    });
+
+    expect(streamTurn).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+      await submit;
+    });
+
+    expect(streamTurn).toHaveBeenCalledTimes(2);
+    expect(view.result.current.state.lastError).toMatchObject({
+      code: "STREAM_REQUEST_FAILED",
+      message: "Session is busy",
+      recoverable: true,
+    });
+    expect(view.result.current.turn.errorMessage).toBe("Session is busy");
   });
 
   it("does not retry non-busy stream failures", async () => {
