@@ -158,8 +158,9 @@ class PlanStep(BaseModel):
         description=(
             "预计使用的工具类型。只能使用以下类型之一："
             "list_guideline_toc, toc, read_guideline_chapter, read, chapter, "
-            "search_treatment_recommendations, search, database_query, "
-            "case_database_query, web_search, web, ask_user, tool_executor, "
+            "search_clinical_guidelines, search_treatment_recommendations, "
+            "search_staging_criteria, search_drug_information, search, database_query, "
+            "case_database_query, web_search, web, ask_user, "
             "imaging_analysis, tumor_detection, radiology, tumor_screening, ct_analysis, "
             "pathology_analysis, pathology, clam"
         )
@@ -199,10 +200,11 @@ class PlanStep(BaseModel):
         return {
             "list_guideline_toc", "toc",
             "read_guideline_chapter", "read", "chapter",
-            "search_treatment_recommendations", "search",
+            "search_clinical_guidelines", "search_treatment_recommendations",
+            "search_staging_criteria", "search_drug_information", "search",
             "database_query", "case_database_query",
             "web_search", "web",
-            "ask_user", "tool_executor",
+            "ask_user",
             # 影像分析工具
             "imaging_analysis", "tumor_detection", "radiology",
             "tumor_screening", "ct_analysis",

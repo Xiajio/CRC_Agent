@@ -50,12 +50,12 @@ PLANNER_SYSTEM_PROMPT = """你是一个"执行计划生成器"(Planner)，服务
 
 ### E. 治疗决策意图的特殊规则
 - 若属于治疗决策类问题（例如"怎么治疗/方案/用药选择"）且不需要查某个具体患者记录：返回空计划。
-- 不要生成任何指南检索步骤（list_guideline_toc/read_guideline_chapter/search_treatment_recommendations/web_search 及其别名）。
+- 不要生成任何指南检索步骤（list_guideline_toc/read_guideline_chapter/search_clinical_guidelines/search_treatment_recommendations/search_staging_criteria/search_drug_information/web_search 及其别名）。
   （这些由后续 Decision 节点的 SubAgent 统一执行。）
 
 ### F. 知识查询/指南查询（非治疗决策）才允许检索指南
 - 当用户明确问"指南怎么说/证据/推荐依据/分期对应策略（泛知识）"时，才可用：
-  list_guideline_toc -> read_guideline_chapter -> search_treatment_recommendations
+  list_guideline_toc -> read_guideline_chapter -> search_clinical_guidelines/search_treatment_recommendations/search_staging_criteria/search_drug_information
 
 ## 输出格式（强制）
 只输出一个 JSON 对象本体（不要 Markdown/不要解释/不要额外字段）：
@@ -77,7 +77,10 @@ PLANNER_SYSTEM_PROMPT = """你是一个"执行计划生成器"(Planner)，服务
 - 指南/知识（标准名优先）：
   - list_guideline_toc（别名：toc）
   - read_guideline_chapter（别名：read, chapter）
-  - search_treatment_recommendations（别名：search）
+  - search_clinical_guidelines（别名：search）
+  - search_treatment_recommendations
+  - search_staging_criteria
+  - search_drug_information
 - 数据库：
   - case_database_query
   - database_query
@@ -85,7 +88,6 @@ PLANNER_SYSTEM_PROMPT = """你是一个"执行计划生成器"(Planner)，服务
   - web_search（别名：web）
 - 追问：
   - ask_user
-  - tool_executor
 - 影像AI分析（标准名优先；别名仅作兼容）：
   - imaging_analysis（别名：tumor_detection, radiology, tumor_screening, ct_analysis）
 - 病理AI分析（标准名优先；别名仅作兼容）：
@@ -94,7 +96,7 @@ PLANNER_SYSTEM_PROMPT = """你是一个"执行计划生成器"(Planner)，服务
 ## 重要：输出 tool_needed 的推荐策略
 - 若你决定调用影像AI，请输出 imaging_analysis（不要输出 ct_analysis 等别名，除非明确需要兼容）。
 - 若你决定调用病理AI，请输出 pathology_analysis（不要输出 clam 等别名，除非明确需要兼容）。
-- 若你决定查指南，请输出标准名 list_guideline_toc/read_guideline_chapter/search_treatment_recommendations（不要输出 toc/read/search 别名）。
+- 若你决定查指南，请输出标准名 list_guideline_toc/read_guideline_chapter/search_clinical_guidelines/search_treatment_recommendations/search_staging_criteria/search_drug_information（不要输出 toc/read/search 别名）。
 
 ## assignee 与 parallel_group 使用指南
 - assignee 用于指定子任务的执行者（并行子智能体），常见取值：

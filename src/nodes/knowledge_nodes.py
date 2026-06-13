@@ -457,7 +457,7 @@ def node_knowledge_retrieval(
                         new_plan = mark_step_failed(
                             state,
                             current_step.id,
-                            f"不支持的工具类型: {current_step.tool_needed}。有效的工具类型包括: list_guideline_toc, read_guideline_chapter, search_treatment_recommendations, database_query, web_search, ask_user"
+                            f"不支持的工具类型: {current_step.tool_needed}。有效的工具类型包括: list_guideline_toc, read_guideline_chapter, search_clinical_guidelines, search_treatment_recommendations, search_staging_criteria, search_drug_information, database_query, web_search, ask_user"
                         )
                         return {
                             "current_plan": new_plan,

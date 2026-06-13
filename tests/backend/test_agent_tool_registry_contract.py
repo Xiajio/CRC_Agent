@@ -48,10 +48,33 @@ def test_calculator_is_not_advertised_without_a_concrete_tool() -> None:
     assert "calculator" not in planner_prompts.PLANNER_SYSTEM_PROMPT
 
 
-def test_tool_executor_remains_a_valid_explicit_route() -> None:
-    step = PlanStep(id="step_1", description="Run executor", tool_needed="tool_executor")
-    assert step.is_valid_tool()
-    assert classify_pending_step_target("tool_executor") == "tool_executor"
+def test_tool_executor_is_not_advertised_as_a_planner_tool() -> None:
+    assert "tool_executor" not in PlanStep.get_valid_tool_types()
+    assert "tool_executor" not in planner_prompts.PLANNER_SYSTEM_PROMPT
+    assert classify_pending_step_target("tool_executor") != "tool_executor"
+
+
+def test_rag_planner_contract_matches_dispatch_aliases() -> None:
+    valid_tool_types = PlanStep.get_valid_tool_types()
+
+    assert {
+        "search_clinical_guidelines",
+        "search_treatment_recommendations",
+        "search_staging_criteria",
+        "search_drug_information",
+        "search",
+    }.issubset(valid_tool_types)
+
+    prompt = planner_prompts.PLANNER_SYSTEM_PROMPT
+    assert "search_clinical_guidelines" in prompt
+    assert "search_treatment_recommendations" in prompt
+    assert "search_staging_criteria" in prompt
+    assert "search_drug_information" in prompt
+    assert "search_treatment_recommendations（别名：search）" not in prompt
+
+    selected = knowledge_nodes._select_plan_rag_tool("search", _fake_rag_tools())
+    assert selected is not None
+    assert selected.name == "search_clinical_guidelines"
 
 
 def test_explicit_rag_plan_values_select_matching_tools() -> None:
