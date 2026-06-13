@@ -157,6 +157,7 @@ _EXPLICIT_RAG_TOOL_TYPES = {
     "search_staging_criteria",
     "search_drug_information",
     "search_clinical_guidelines",
+    "search",
 }
 
 _RAG_TOOL_BY_PLAN_TYPE = {

@@ -77,6 +77,13 @@ def test_rag_planner_contract_matches_dispatch_aliases() -> None:
     assert selected.name == "search_clinical_guidelines"
 
 
+def test_search_alias_is_an_explicit_guideline_rag_alias() -> None:
+    assert "search" in knowledge_nodes._EXPLICIT_RAG_TOOL_TYPES
+    selected = knowledge_nodes._select_plan_rag_tool("search", _fake_rag_tools())
+    assert selected is not None
+    assert selected.name == "search_clinical_guidelines"
+
+
 def test_explicit_rag_plan_values_select_matching_tools() -> None:
     tools = _fake_rag_tools()
 
@@ -142,6 +149,29 @@ def test_parallel_case_database_step_uses_atomic_database_tools(monkeypatch) -> 
     selected = parallel_subagents._select_tools_for_step(step, tools=[])
 
     assert [tool.name for tool in selected] == ["get_patient_case_info"]
+
+
+def test_parallel_case_database_merges_atomic_tools_with_non_database_matches(monkeypatch) -> None:
+    database_tool = FakeTool("get_patient_case_info")
+    pathology_tool = FakeTool("pathology_slide_classify")
+    monkeypatch.setattr(
+        parallel_subagents,
+        "ATOMIC_DATABASE_TOOLS",
+        [database_tool],
+        raising=False,
+    )
+
+    step = PlanStep(
+        id="step_1",
+        description="Fetch the patient case.",
+        tool_needed="case_database_query",
+        status="pending",
+        assignee="case_database",
+    )
+
+    selected = parallel_subagents._select_tools_for_step(step, tools=[pathology_tool])
+
+    assert [tool.name for tool in selected] == ["pathology_slide_classify", "get_patient_case_info"]
 
 
 def test_list_database_tools_matches_atomic_database_tools() -> None:

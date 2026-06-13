@@ -148,7 +148,7 @@ INTENT_CLASSIFIER_SYSTEM_PROMPT = """你是一个专业的结直肠癌 (CRC) AI 
    - 示例：
      * "查询<case_id>号患者信息并给出治疗方案" → multi_task (包含 case_database_query + treatment_decision)
      * "分析这张CT影像然后评估分期" → multi_task (包含 imaging_analysis + clinical_assessment)
-     * "帮我查一下T3期的治疗指南并计算风险评分" → multi_task (包含 knowledge_query + calculator)
+     * "帮我查一下T3期的治疗指南并查询患者病例信息" → multi_task (包含 knowledge_query + case_database_query)
    - 当选择此类时，必须在 `sub_tasks` 字段中列出包含的子任务（按执行顺序排序）
    - **⚠️ 常见误判 - 请注意以下场景不是 multi_task**：
      * "对<case_id>号患者进行影像组学分析" → 这是 imaging_analysis，不是 multi_task！（影像工具可以直接用患者ID查找影像）

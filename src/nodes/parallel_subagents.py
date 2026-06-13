@@ -60,9 +60,16 @@ def _select_tools_for_step(step: PlanStep, tools: List[BaseTool]) -> List[BaseTo
                 for k in ["database", "case", "patient", "imaging", "pathology"]
             )
         ]
-        if selected:
-            return selected
-        return list(ATOMIC_DATABASE_TOOLS)
+        combined = []
+        seen_names = set()
+        for candidate in [*selected, *ATOMIC_DATABASE_TOOLS]:
+            name = getattr(candidate, "name", "")
+            key = name or id(candidate)
+            if key in seen_names:
+                continue
+            seen_names.add(key)
+            combined.append(candidate)
+        return combined
 
     return list(tools)
 
