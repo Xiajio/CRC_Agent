@@ -17,6 +17,7 @@ from .sub_agent import (
     create_web_researcher,
     SubAgentContext,
 )
+from ..tools.database_tools import ATOMIC_DATABASE_TOOLS
 
 
 CASE_DATABASE_SYSTEM_PROMPT = """你是一个病例与影像信息检索助理。
@@ -46,15 +47,24 @@ def _infer_assignee(step: PlanStep) -> str:
 
 def _select_tools_for_step(step: PlanStep, tools: List[BaseTool]) -> List[BaseTool]:
     tool = (step.tool_needed or "").lower()
+    assignee = (step.assignee or "").lower()
     tool_map = {t.name: t for t in tools if hasattr(t, "name")}
-    if "web" in tool:
+
+    if "web" in tool or assignee == "web_search":
         return [t for t in tools if "web" in getattr(t, "name", "").lower()]
-    if any(k in tool for k in ["database", "case"]):
-        return [
+
+    if assignee == "case_database" or any(k in tool for k in ["database", "case"]):
+        selected = [
             t for t in tools
-            if any(k in getattr(t, "name", "").lower() for k in ["database", "case", "patient", "imaging"])
+            if any(
+                k in getattr(t, "name", "").lower()
+                for k in ["database", "case", "patient", "imaging", "pathology"]
+            )
         ]
-    # 默认返回全部工具，让子智能体自行选择
+        if selected:
+            return selected
+        return list(ATOMIC_DATABASE_TOOLS)
+
     return list(tool_map.values())
 
 
