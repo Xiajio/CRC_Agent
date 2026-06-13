@@ -48,7 +48,6 @@ def _infer_assignee(step: PlanStep) -> str:
 def _select_tools_for_step(step: PlanStep, tools: List[BaseTool]) -> List[BaseTool]:
     tool = (step.tool_needed or "").lower()
     assignee = (step.assignee or "").lower()
-    tool_map = {t.name: t for t in tools if hasattr(t, "name")}
 
     if "web" in tool or assignee == "web_search":
         return [t for t in tools if "web" in getattr(t, "name", "").lower()]
