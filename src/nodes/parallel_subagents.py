@@ -65,7 +65,7 @@ def _select_tools_for_step(step: PlanStep, tools: List[BaseTool]) -> List[BaseTo
             return selected
         return list(ATOMIC_DATABASE_TOOLS)
 
-    return list(tool_map.values())
+    return list(tools)
 
 
 async def _run_subagent_for_step(
