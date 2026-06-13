@@ -83,9 +83,8 @@ PLANNER_SYSTEM_PROMPT = """你是一个"执行计划生成器"(Planner)，服务
   - database_query
 - 网络：
   - web_search（别名：web）
-- 追问/计算：
+- 追问：
   - ask_user
-  - calculator
 - 影像AI分析（标准名优先；别名仅作兼容）：
   - imaging_analysis（别名：tumor_detection, radiology, tumor_screening, ct_analysis）
 - 病理AI分析（标准名优先；别名仅作兼容）：
