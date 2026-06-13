@@ -386,15 +386,9 @@ def get_database_tools() -> List[Any]:
 
 
 def list_database_tools() -> List[str]:
-    """列出所有数据库工具名称"""
+    """List the concrete database tool names exposed by ATOMIC_DATABASE_TOOLS."""
     return [
-        "search_case_database",
-        "get_case_by_id",
-        "summarize_patient_existing_info",
-        "upsert_patient_info",
-        "get_all_cases",
-        "get_case_statistics",
-        "get_random_case",
-        "get_imaging_by_folder",
-        "list_imaging_folders",
+        getattr(tool, "name", "")
+        for tool in ATOMIC_DATABASE_TOOLS
+        if getattr(tool, "name", "")
     ]
