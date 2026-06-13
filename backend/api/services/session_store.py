@@ -97,33 +97,50 @@ class InMemorySessionStore:
             return meta
 
     def try_acquire_run_lock(self, session_id: str, run_id: str) -> bool:
-        meta = self._sessions[session_id]
-        lock = self._run_locks[session_id]
-        if not lock.acquire(blocking=False):
-            return False
-        meta.active_run_id = run_id
-        return True
+        with self._store_lock:
+            meta = self._sessions.get(session_id)
+            lock = self._run_locks.get(session_id)
+            if meta is None or lock is None:
+                return False
+            if not lock.acquire(blocking=False):
+                return False
+            meta.active_run_id = run_id
+            return True
 
     def release_run_lock(self, session_id: str, run_id: str) -> bool:
-        meta = self._sessions[session_id]
-        lock = self._run_locks[session_id]
-        if lock.locked() and meta.active_run_id == run_id:
-            meta.active_run_id = None
-            lock.release()
-            return True
-        return False
+        with self._store_lock:
+            meta = self._sessions.get(session_id)
+            lock = self._run_locks.get(session_id)
+            if meta is None or lock is None:
+                return False
+            if lock.locked() and meta.active_run_id == run_id:
+                meta.active_run_id = None
+                lock.release()
+                return True
+            return False
 
     def enqueue_context_message(self, session_id: str, message: Any) -> None:
-        self._sessions[session_id].pending_context_messages.append(message)
+        with self._store_lock:
+            meta = self._sessions[session_id]
+            meta.pending_context_messages.append(message)
 
     def drain_context_messages(self, session_id: str) -> list[Any]:
-        meta = self._sessions[session_id]
-        drained = list(meta.pending_context_messages)
-        meta.pending_context_messages.clear()
-        return drained
+        with self._store_lock:
+            meta = self._sessions.get(session_id)
+            if meta is None:
+                return []
+            drained = list(meta.pending_context_messages)
+            meta.pending_context_messages.clear()
+            return drained
 
     def restore_context_messages(self, session_id: str, messages: list[Any]) -> None:
-        self._sessions[session_id].pending_context_messages.extend(messages)
+        if not messages:
+            return
+        with self._store_lock:
+            meta = self._sessions.get(session_id)
+            if meta is None:
+                return
+            meta.pending_context_messages.extend(messages)
 
     def touch(self, session_id: str) -> None:
         del session_id

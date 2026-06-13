@@ -83,17 +83,23 @@ class SqliteSessionStore(InMemorySessionStore):
     def drain_context_messages(self, session_id: str) -> list[Any]:
         with self._store_lock:
             drained = super().drain_context_messages(session_id)
-            self._persist(self._sessions[session_id])
+            meta = self._sessions.get(session_id)
+            if meta is not None:
+                self._persist(meta)
             return drained
 
     def restore_context_messages(self, session_id: str, messages: list[Any]) -> None:
         with self._store_lock:
             super().restore_context_messages(session_id, messages)
-            self._persist(self._sessions[session_id])
+            meta = self._sessions.get(session_id)
+            if meta is not None:
+                self._persist(meta)
 
     def touch(self, session_id: str) -> None:
         with self._store_lock:
-            self._persist(self._sessions[session_id])
+            meta = self._sessions.get(session_id)
+            if meta is not None:
+                self._persist(meta)
 
     def bump_snapshot_version(self, session_id: str) -> int:
         with self._store_lock:
