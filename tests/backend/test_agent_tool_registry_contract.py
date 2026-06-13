@@ -131,19 +131,26 @@ def test_list_database_tools_matches_atomic_database_tools() -> None:
 
 def test_basic_utility_tools_are_executor_only(monkeypatch) -> None:
     from src import tools as tool_registry
+    from src.tools import database_tools
 
     monkeypatch.setattr(tool_registry, "list_clinical_tools", lambda: [])
     monkeypatch.setattr(tool_registry, "get_enhanced_rag_tools", lambda: [])
     monkeypatch.setattr(tool_registry, "get_all_web_search_tools", lambda: [])
+    monkeypatch.setattr(tool_registry, "get_clinical_web_search_tools", lambda: [])
     monkeypatch.setattr(tool_registry, "get_database_tools", lambda: [])
+    monkeypatch.setattr(database_tools, "get_database_tools", lambda: [])
     monkeypatch.setattr(tool_registry, "get_tumor_screening_tools", lambda: [])
     monkeypatch.setattr(tool_registry, "get_tumor_localization_tools", lambda: [])
     monkeypatch.setattr(tool_registry, "list_radiomics_tools", lambda: [])
     monkeypatch.setattr(tool_registry, "get_pathology_clam_tools", lambda: [])
 
-    executor_tool_names = {
-        getattr(tool, "name", "")
-        for tool in tool_registry.list_all_tools()
-    }
+    def tool_names(tools) -> set[str]:
+        return {getattr(tool, "name", "") for tool in tools}
 
-    assert {"word_count", "echo"}.issubset(executor_tool_names)
+    utility_tool_names = {"word_count", "echo"}
+
+    assert utility_tool_names.issubset(tool_names(tool_registry.list_all_tools()))
+    assert utility_tool_names.isdisjoint(tool_names(tool_registry.list_tools()))
+    assert utility_tool_names.isdisjoint(
+        tool_names(tool_registry.list_tools_with_web_search())
+    )
