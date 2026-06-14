@@ -28,6 +28,7 @@ def test_create_app_lifespan_wires_patient_context_resolver(
 ) -> None:
     real_path = Path
     runtime_root = real_path("output") / "test-app-runtime-wiring" / uuid4().hex
+    context_finalizer = object()
 
     def path_factory(*parts: str) -> Path:
         if parts == ("runtime",):
@@ -43,7 +44,7 @@ def test_create_app_lifespan_wires_patient_context_resolver(
     monkeypatch.setattr(
         app_module,
         "create_context_maintenance_service",
-        lambda *_, **__: None,
+        lambda *_, **__: context_finalizer,
     )
 
     app = app_module.create_app()
@@ -59,3 +60,5 @@ def test_create_app_lifespan_wires_patient_context_resolver(
             runtime.doctor_graph_service._patient_context_resolver
             is runtime.patient_context_resolver
         )
+        assert runtime.doctor_graph_service._context_finalizer is context_finalizer
+        assert runtime.patient_graph_service._context_finalizer is None

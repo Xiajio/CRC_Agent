@@ -31,6 +31,7 @@ tests/backend/*
 !tests/backend/test_app_runtime_wiring.py
 !tests/backend/test_assets_api.py
 !tests/backend/test_auth_security.py
+!tests/backend/test_context_maintenance.py
 !tests/backend/test_graph_service_streaming.py
 !tests/backend/test_patient_context_resolver.py
 !tests/backend/test_patient_event_sourcing.py
