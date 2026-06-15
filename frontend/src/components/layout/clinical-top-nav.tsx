@@ -42,6 +42,7 @@ type ClinicalTopNavProps = {
   profileLabel: string;
   profileAriaLabel: string;
   onProfileClick?: () => void;
+  profileControl?: ReactNode;
   className?: string;
 };
 
@@ -59,6 +60,7 @@ export function ClinicalTopNav({
   profileLabel,
   profileAriaLabel,
   onProfileClick,
+  profileControl,
   className,
 }: ClinicalTopNavProps) {
   return (
@@ -77,6 +79,7 @@ export function ClinicalTopNav({
       profileAriaLabel={profileAriaLabel}
       profileIcon={<ClinicalUserIcon />}
       onProfileClick={onProfileClick}
+      profileControl={profileControl}
       className={["clinical-top-nav", className].filter(Boolean).join(" ")}
     />
   );

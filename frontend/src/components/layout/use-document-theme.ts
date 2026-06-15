@@ -1,6 +1,6 @@
 import { useLayoutEffect } from "react";
 
-export type WorkspaceTheme = "doctor-cockpit" | "patient-care";
+export type WorkspaceTheme = "doctor-cockpit" | "patient-care" | "agent-admin";
 
 /**
  * 把场景主题挂到 <html data-theme="...">。

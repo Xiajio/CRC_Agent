@@ -1,0 +1,127 @@
+import { useState, type ReactNode } from "react";
+
+import type { Scene, SessionState } from "../../app/api/types";
+import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
+import { classNames } from "../../components/ui";
+import {
+  ADMIN_NAV_ITEMS,
+  AGENT_ADMIN_TASKS,
+  type AgentAdminTaskId,
+} from "./agent-admin-model";
+import { AgentAdminTaskPages } from "./agent-admin-pages";
+
+function activeRuntime(patient: SessionState, doctor: SessionState): string {
+  return doctor.runtime?.runner_mode ?? patient.runtime?.runner_mode ?? "unknown";
+}
+
+type AgentAdminViewProps = {
+  activeScene: Scene;
+  patient: SessionState;
+  doctor: SessionState;
+  surfaceSwitcher: ReactNode;
+};
+
+export function AgentAdminView({
+  activeScene,
+  patient,
+  doctor,
+  surfaceSwitcher,
+}: AgentAdminViewProps) {
+  const [activeTaskId, setActiveTaskId] = useState<AgentAdminTaskId>("overview");
+  const watchedState = activeScene === "doctor" ? doctor : patient;
+  const watchedSceneLabel = activeScene === "doctor" ? "医生会话" : "患者会话";
+
+  function navigateTask(taskId: AgentAdminTaskId) {
+    setActiveTaskId(taskId);
+  }
+
+  return (
+    <main className="clinical-app-shell agent-admin-shell" data-testid="agent-admin-console">
+      <ClinicalTopNav
+        brandLabel="智能体后台"
+        brandLogoVariant="light"
+        navLabel="智能体后台导航"
+        items={ADMIN_NAV_ITEMS}
+        activeKey={activeTaskId}
+        onSelect={(key) => {
+          if (AGENT_ADMIN_TASKS.some((task) => task.id === key)) {
+            setActiveTaskId(key as AgentAdminTaskId);
+          }
+        }}
+        statusLabel="只读观测"
+        statusTone="safe"
+        profileLabel="后台"
+        profileAriaLabel="切换工作台"
+        profileControl={surfaceSwitcher}
+        className="agent-admin-top-nav"
+      />
+
+      <section className="agent-admin-context-strip" aria-label="后台上下文">
+        <div>
+          <span>当前观察</span>
+          <strong>{watchedSceneLabel}</strong>
+        </div>
+        <div>
+          <span>患者 Session</span>
+          <strong>{patient.sessionId ?? "未创建"}</strong>
+        </div>
+        <div>
+          <span>医生 Session</span>
+          <strong>{doctor.sessionId ?? "未创建"}</strong>
+        </div>
+        <div>
+          <span>Runtime</span>
+          <strong>{activeRuntime(patient, doctor)}</strong>
+        </div>
+        <div>
+          <span>Active Run</span>
+          <strong>{watchedState.activeRunId ?? "idle"}</strong>
+        </div>
+      </section>
+
+      <div className="agent-admin-console-layout">
+        <nav className="agent-admin-subtask-rail" aria-label="后台子任务">
+          <div className="agent-admin-rail-header">
+            <span>后台子任务</span>
+            <small>Phase 1 read-only</small>
+          </div>
+          {AGENT_ADMIN_TASKS.map((task) => {
+            const Icon = task.icon;
+            const isActive = task.id === activeTaskId;
+            return (
+              <button
+                key={task.id}
+                type="button"
+                className={classNames([
+                  "agent-admin-task-button",
+                  isActive && "agent-admin-task-button-active",
+                ])}
+                aria-current={isActive ? "page" : undefined}
+                onClick={() => navigateTask(task.id)}
+              >
+                <span className="agent-admin-task-icon" aria-hidden="true">
+                  <Icon size={17} strokeWidth={2} />
+                </span>
+                <span className="agent-admin-task-copy">
+                  <span className="agent-admin-task-title-row">
+                    <strong>{task.label}</strong>
+                    <em>{task.status}</em>
+                  </span>
+                  <small>{task.responsibility}</small>
+                </span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <AgentAdminTaskPages
+          activeTaskId={activeTaskId}
+          activeScene={activeScene}
+          patient={patient}
+          doctor={doctor}
+          onNavigateTask={navigateTask}
+        />
+      </div>
+    </main>
+  );
+}

@@ -18,6 +18,7 @@ export interface TopNavProps extends Omit<HTMLAttributes<HTMLElement>, "onSelect
   items: TopNavItem[];
   navLabel: string;
   onProfileClick?: () => void;
+  profileControl?: ReactNode;
   onSelect: (key: string) => void;
   profileAriaLabel: string;
   profileIcon?: ReactNode;
@@ -36,6 +37,7 @@ export function TopNav({
   items,
   navLabel,
   onProfileClick,
+  profileControl,
   onSelect,
   profileAriaLabel,
   profileIcon,
@@ -106,22 +108,24 @@ export function TopNav({
           </span>
         ) : null}
         {statusLabel ? <span className="ui-top-nav-divider clinical-top-divider" /> : null}
-        <button
-          type="button"
-          className="ui-profile-switch clinical-profile-switch"
-          aria-label={profileAriaLabel}
-          onClick={onProfileClick}
-        >
-          {profileIcon ? (
-            <span className="ui-profile-avatar clinical-avatar" aria-hidden="true">
-              {profileIcon}
+        {profileControl ?? (
+          <button
+            type="button"
+            className="ui-profile-switch clinical-profile-switch"
+            aria-label={profileAriaLabel}
+            onClick={onProfileClick}
+          >
+            {profileIcon ? (
+              <span className="ui-profile-avatar clinical-avatar" aria-hidden="true">
+                {profileIcon}
+              </span>
+            ) : null}
+            <span className="ui-profile-label clinical-doctor-name">{profileLabel}</span>
+            <span className="ui-profile-chevron clinical-chevron" aria-hidden="true">
+              v
             </span>
-          ) : null}
-          <span className="ui-profile-label clinical-doctor-name">{profileLabel}</span>
-          <span className="ui-profile-chevron clinical-chevron" aria-hidden="true">
-            v
-          </span>
-        </button>
+          </button>
+        )}
       </div>
     </header>
   );

@@ -39,6 +39,7 @@ import { useDoctorViewState, type DoctorTab } from "./use-doctor-view-state";
 
 type DoctorSceneShellProps = {
   toolbar: ReactNode;
+  surfaceSwitcher?: ReactNode;
   onSwitchScene?: () => void;
   registryPatientId: number | null;
   caseDatabasePatientId: string | null;
@@ -480,6 +481,7 @@ function ClinicalEventStream({
 
 export function DoctorSceneShell({
   toolbar,
+  surfaceSwitcher,
   registryPatientId,
   caseDatabasePatientId,
   patientRegistry,
@@ -560,6 +562,7 @@ export function DoctorSceneShell({
       profileLabel="医生"
       profileAriaLabel={CLINICAL_PATIENT_SCENE_ARIA_LABEL}
       onProfileClick={onSwitchScene}
+      profileControl={surfaceSwitcher}
       className="clinical-top-nav-doctor"
     />
   );

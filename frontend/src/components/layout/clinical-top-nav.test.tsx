@@ -94,4 +94,24 @@ describe("ClinicalTopNav", () => {
       expect.stringContaining("yizhu-company-logo-light"),
     );
   });
+
+  it("renders a custom profile control when the workspace provides one", () => {
+    render(
+      <ClinicalTopNav
+        brandLabel="Agent Admin"
+        navLabel="Agent admin navigation"
+        items={navItems}
+        activeKey="consultation"
+        onSelect={vi.fn()}
+        statusLabel="Read only"
+        statusTone="safe"
+        profileLabel="Admin"
+        profileAriaLabel="切换工作台"
+        profileControl={<button type="button">后台切换菜单</button>}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "后台切换菜单" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "切换工作台" })).not.toBeInTheDocument();
+  });
 });

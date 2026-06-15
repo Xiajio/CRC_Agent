@@ -7,6 +7,7 @@ import { ConversationPanel } from "../features/chat/conversation-panel";
 import { ClinicalTopNav } from "../components/layout/clinical-top-nav";
 import { useDocumentTheme } from "../components/layout/use-document-theme";
 import { Card } from "../components/ui";
+import { AgentAdminView } from "../features/agent-admin/agent-admin-view";
 import { DoctorSceneShell } from "../features/doctor/doctor-scene-shell";
 import type { CardPatientContext } from "../features/cards/card-renderers-extended";
 import { PatientBackgroundPanel } from "../features/cards/patient-background-panel";
@@ -22,6 +23,7 @@ import {
   usePatientWorkspaceNav,
 } from "../features/workspace/use-patient-workspace-nav";
 import { useSceneSessions } from "../features/workspace/use-scene-sessions";
+import { WorkspaceSurfaceSwitcher, type WorkspaceSurface } from "../features/workspace/workspace-surface-switcher";
 import { usePatientUploads } from "../features/workspace/use-patient-uploads";
 import { SessionRecoveryBanner } from "../features/workspace/session-recovery-banner";
 import { useTurnLatencyProbe } from "../features/workspace/use-turn-latency-probe";
@@ -143,8 +145,15 @@ export function WorkspacePage() {
     recoveryNotice,
     dismissRecoveryNotice,
   } = useSceneSessions();
+  const [activeSurface, setActiveSurface] = useState<WorkspaceSurface>(activeScene);
 
-  useDocumentTheme(activeScene === "doctor" ? "doctor-cockpit" : "patient-care");
+  useDocumentTheme(
+    activeSurface === "agent-admin"
+      ? "agent-admin"
+      : activeScene === "doctor"
+        ? "doctor-cockpit"
+        : "patient-care",
+  );
 
   const [drafts, setDrafts] = useState<SceneDrafts>({
     patient: "",
@@ -435,6 +444,7 @@ export function WorkspacePage() {
 
   function handleSceneSwitch(scene: Scene) {
     if (scene === activeScene) {
+      setActiveSurface(scene);
       return;
     }
 
@@ -444,7 +454,24 @@ export function WorkspacePage() {
     if (scene === "doctor") {
       patientUploads.clearUploadStatus();
     }
+    setActiveSurface(scene);
     setActiveScene(scene);
+  }
+
+  function handleSurfaceSwitch(surface: WorkspaceSurface) {
+    if (surface === activeSurface) {
+      return;
+    }
+
+    if (surface === "agent-admin") {
+      activeTurn.abortActiveTurn("scene_switch");
+      setSceneError(null);
+      patientUploads.clearError();
+      setActiveSurface("agent-admin");
+      return;
+    }
+
+    handleSceneSwitch(surface);
   }
 
   function updateDraft(scene: Scene, value: string) {
@@ -557,6 +584,26 @@ export function WorkspacePage() {
   const recoveryBanner = recoveryNotice ? (
     <SessionRecoveryBanner message={recoveryNotice} onDismiss={dismissRecoveryNotice} />
   ) : null;
+  const workspaceSurfaceSwitcher = (
+    <WorkspaceSurfaceSwitcher
+      activeSurface={activeSurface}
+      onSelect={handleSurfaceSwitch}
+    />
+  );
+
+  if (activeSurface === "agent-admin") {
+    return (
+      <>
+        {recoveryBanner}
+        <AgentAdminView
+          activeScene={activeScene}
+          patient={patient.state}
+          doctor={doctor.state}
+          surfaceSwitcher={workspaceSurfaceSwitcher}
+        />
+      </>
+    );
+  }
 
   if (activeScene === "doctor") {
     return (
@@ -564,6 +611,7 @@ export function WorkspacePage() {
         {recoveryBanner}
         <DoctorSceneShell
           toolbar={topNavActions}
+        surfaceSwitcher={workspaceSurfaceSwitcher}
         onSwitchScene={() => handleSceneSwitch("patient")}
         registryPatientId={registryPatientId}
         caseDatabasePatientId={doctor.state.caseDatabasePatientId}
@@ -678,6 +726,7 @@ export function WorkspacePage() {
         profileLabel="患者"
         profileAriaLabel={CLINICAL_DOCTOR_SCENE_ARIA_LABEL}
         onProfileClick={() => handleSceneSwitch("doctor")}
+        profileControl={workspaceSurfaceSwitcher}
         className="clinical-top-nav-patient"
       />
       <div

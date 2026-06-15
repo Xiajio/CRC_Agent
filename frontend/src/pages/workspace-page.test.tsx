@@ -107,6 +107,7 @@ vi.mock("../features/doctor/doctor-scene-shell", () => ({
     draft: string;
     onDraftChange: (value: string) => void;
     onSubmit: () => void;
+    surfaceSwitcher?: ReactNode;
     cards?: Record<string, unknown>;
     patientContext?: Record<string, unknown>;
     onSetCurrentCaseDatabasePatient?: (patientId: number) => void;
@@ -117,6 +118,7 @@ vi.mock("../features/doctor/doctor-scene-shell", () => ({
     return (
       <section data-testid="doctor-scene-shell" data-latency-kind={props.latencyStatus?.kind ?? "idle"}>
         <div data-testid="doctor-toolbar">{props.toolbar}</div>
+        <div data-testid="doctor-surface-switcher">{props.surfaceSwitcher}</div>
         <button type="button" aria-label="患者场景" onClick={props.onSwitchScene}>
           switch to patient
         </button>
@@ -880,15 +882,40 @@ describe("WorkspacePage patient triage submission wiring", () => {
     );
   });
 
-  it("renders patient chrome with profile scene switching instead of standalone scene buttons", () => {
+  it("renders patient chrome with the collapsible workspace surface switcher", () => {
     renderWorkspaceWithSceneSessions(buildApiClientStub());
 
     expect(screen.getByRole("navigation", { name: "患者工作台" })).toBeInTheDocument();
-    const profileSwitch = screen.getByRole("button", { name: /医生场景/i });
-    expect(profileSwitch).toHaveClass("clinical-profile-switch");
-    expect(profileSwitch).toHaveTextContent("患者");
-    expect(screen.queryByRole("button", { name: /患者场景/i })).not.toBeInTheDocument();
+    const profileSwitch = screen.getByRole("button", { name: "切换工作台，当前为患者" });
+    expect(profileSwitch).toHaveClass("clinical-surface-trigger");
+    expect(profileSwitch).toHaveAttribute("aria-haspopup", "menu");
+    fireEvent.click(profileSwitch);
+    expect(screen.getByRole("menu", { name: "工作台切换" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /患者/ })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("menuitem", { name: /医生/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /后台/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "\u91cd\u7f6e\u5f53\u524d\u573a\u666f" })).toBeInTheDocument();
+  });
+
+  it("opens the agent admin surface without changing the active graph scene", () => {
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    fireEvent.click(screen.getByRole("button", { name: "切换工作台，当前为患者" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /后台/ }));
+
+    expect(screen.getByTestId("agent-admin-console")).toBeInTheDocument();
+    expect(screen.getByRole("banner")).toHaveTextContent("智能体后台");
+    expect(mockSceneSessions.setActiveScene).not.toHaveBeenCalled();
+    expect(document.documentElement).toHaveAttribute("data-theme", "agent-admin");
+  });
+
+  it("keeps doctor selection as a graph scene switch from the surface menu", () => {
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    fireEvent.click(screen.getByRole("button", { name: "切换工作台，当前为患者" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /医生/ }));
+
+    expect(mockSceneSessions.setActiveScene).toHaveBeenCalledWith("doctor");
   });
 
   it("keeps patient workspace shell copy in UTF-8 Chinese", () => {
@@ -1468,7 +1495,8 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("completed");
     expect(screen.getByTestId("latency-ms")).toHaveTextContent("2100");
 
-    fireEvent.click(screen.getByRole("button", { name: /医生场景/i }));
+    fireEvent.click(screen.getByRole("button", { name: "切换工作台，当前为患者" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /医生/ }));
     view.rerenderWorkspace();
 
     expect(screen.getByTestId("doctor-scene-shell")).toBeInTheDocument();
@@ -1697,7 +1725,8 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(streamTurn).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("latency-kind")).toHaveTextContent("streaming");
 
-    fireEvent.click(screen.getByRole("button", { name: /医生场景/i }));
+    fireEvent.click(screen.getByRole("button", { name: "切换工作台，当前为患者" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /医生/ }));
     view.rerenderWorkspace();
 
     expect(screen.getByTestId("doctor-scene-shell")).toBeInTheDocument();

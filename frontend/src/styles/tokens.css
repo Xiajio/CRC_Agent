@@ -197,3 +197,39 @@
   --clinical-command-muted: rgba(75, 85, 99, 0.9);
   --dashboard-left-width: 260px;
 }
+
+:root[data-theme="agent-admin"] {
+  color-scheme: light;
+  --color-canvas: #fff7f7;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f9eeee;
+  --color-primary: #c9142f;
+  --color-primary-hover: #a90f26;
+  --color-primary-soft: rgba(201, 20, 47, 0.1);
+  --color-navy: #211416;
+  --color-navy-soft: #3a2428;
+  --color-text: #211416;
+  --color-text-muted: #70585d;
+  --color-text-subtle: #8a6d73;
+  --color-border: #ead4d8;
+  --color-border-soft: rgba(120, 20, 35, 0.12);
+  --color-border-strong: rgba(120, 20, 35, 0.22);
+  --color-success: #168556;
+  --color-success-soft: rgba(22, 133, 86, 0.1);
+  --color-warning: #a45c00;
+  --color-warning-soft: rgba(164, 92, 0, 0.11);
+  --color-danger: #b42335;
+  --color-danger-soft: rgba(180, 35, 53, 0.1);
+  --shadow-card: 0 1px 3px rgba(92, 18, 30, 0.06);
+  --shadow-card-resting: 0 1px 5px rgba(92, 18, 30, 0.08);
+  --shadow-pop: 0 16px 40px rgba(92, 18, 30, 0.14);
+  --panel-header-surface: #ffffff;
+  --clinical-link-blue: #c9142f;
+  --clinical-ink-soft: rgba(33, 20, 22, 0.76);
+  --clinical-glass-ink: rgba(33, 20, 22, 0.88);
+  --clinical-command-surface: rgba(255, 255, 255, 0.94);
+  --clinical-command-surface-strong: #ffffff;
+  --clinical-command-muted: rgba(112, 88, 93, 0.92);
+  --clinical-button-border-shadow: inset 0 0 0 1px rgba(120, 20, 35, 0.1);
+  --dashboard-left-width: 280px;
+}

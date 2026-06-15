@@ -3944,3 +3944,1078 @@ body {
 [data-theme="patient-care"] .clinical-meta-text {
   color: var(--color-text-muted);
 }
+
+/* Agent Admin surface switcher */
+.clinical-surface-switcher {
+  position: relative;
+  display: inline-flex;
+}
+
+.clinical-surface-trigger {
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--clinical-command-surface-strong);
+  box-shadow: var(--shadow-control);
+}
+
+.clinical-surface-avatar {
+  width: 28px;
+  height: 28px;
+}
+
+.clinical-surface-chevron {
+  color: var(--color-text-muted);
+}
+
+.clinical-surface-menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 40;
+  width: 260px;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--clinical-command-surface-strong);
+  box-shadow: var(--shadow-pop);
+}
+
+.clinical-surface-menu-item {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 52px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.clinical-surface-menu-item:hover,
+.clinical-surface-menu-item-active {
+  background: var(--color-primary-soft);
+  color: var(--color-primary);
+}
+
+.clinical-surface-menu-icon,
+.clinical-surface-menu-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.clinical-surface-menu-copy {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.clinical-surface-menu-copy strong,
+.clinical-surface-menu-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clinical-surface-menu-copy strong {
+  font-size: var(--font-md);
+  font-weight: 700;
+}
+
+.clinical-surface-menu-copy small {
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+}
+
+/* Agent Admin operations console */
+.agent-admin-shell {
+  min-height: 100vh;
+  background: var(--color-canvas);
+  color: var(--color-text);
+}
+
+.agent-admin-top-nav {
+  grid-template-columns: minmax(330px, 380px) minmax(420px, 1fr) auto auto;
+}
+
+.agent-admin-top-nav .clinical-company-logo {
+  width: clamp(144px, 11vw, 158px);
+  height: 34px;
+  max-height: 34px;
+}
+
+.agent-admin-top-nav .ui-top-nav-brand-label {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.agent-admin-context-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-8);
+  border-bottom: 1px solid var(--color-border-soft);
+  background: var(--color-surface-muted);
+}
+
+.agent-admin-context-strip div,
+.agent-admin-metric,
+.agent-admin-learning-panel,
+.agent-admin-evidence-panel,
+.agent-admin-timeline-panel,
+.agent-admin-detail-panel,
+.agent-admin-right-inspector section {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.agent-admin-context-strip div {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: var(--space-3);
+}
+
+.agent-admin-context-strip span,
+.agent-admin-metric span,
+.agent-admin-panel-heading span,
+.agent-admin-rail-header small,
+.agent-admin-task-copy small,
+.agent-admin-detail-list span,
+.agent-admin-right-inspector small,
+.agent-admin-plan-list span {
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+}
+
+.agent-admin-context-strip strong,
+.agent-admin-metric strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-admin-console-layout {
+  display: grid;
+  grid-template-columns: minmax(270px, 300px) minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-8) var(--space-8);
+}
+
+.agent-admin-subtask-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--color-surface);
+}
+
+.agent-admin-rail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.agent-admin-rail-header span {
+  font-weight: 700;
+}
+
+.agent-admin-task-button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 64px;
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius-md);
+  padding: var(--space-2);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.agent-admin-task-button:hover,
+.agent-admin-task-button-active {
+  border-color: var(--color-border);
+  border-left-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+.agent-admin-task-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-primary);
+}
+
+.agent-admin-task-copy,
+.agent-admin-task-title-row {
+  min-width: 0;
+}
+
+.agent-admin-task-copy {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.agent-admin-task-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.agent-admin-task-title-row strong,
+.agent-admin-task-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-admin-task-title-row em {
+  flex: 0 0 auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-2);
+  color: var(--color-primary);
+  font-size: var(--font-xs);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.agent-admin-main-console,
+.agent-admin-task-page {
+  display: grid;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.agent-admin-task-page-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  background: var(--color-surface);
+}
+
+.agent-admin-task-page-header div {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.agent-admin-task-page-header span,
+.agent-admin-panel-heading span,
+.agent-admin-metric span,
+.agent-admin-metric small,
+.agent-admin-status-chip,
+.agent-admin-definition-list dt,
+.agent-admin-detail-list span,
+.agent-admin-plan-list > span {
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+}
+
+.agent-admin-task-page-header h1 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-xl);
+  font-weight: 700;
+}
+
+.agent-admin-task-page-header p,
+.agent-admin-task-description {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.agent-admin-task-page-header svg {
+  flex: 0 0 auto;
+  color: var(--color-primary);
+}
+
+.agent-admin-metric-strip,
+.agent-admin-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.agent-admin-metric,
+.agent-admin-panel,
+.agent-admin-session-grid > div {
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+}
+
+.agent-admin-metric {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+}
+
+.agent-admin-metric strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: var(--font-lg);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-admin-metric-red strong,
+.agent-admin-status-chip-red,
+.agent-admin-state-icon-red {
+  color: var(--color-primary);
+}
+
+.agent-admin-metric-warning strong,
+.agent-admin-status-chip-warning,
+.agent-admin-state-icon-warning {
+  color: var(--color-warning);
+}
+
+.agent-admin-metric-success strong,
+.agent-admin-status-chip-success,
+.agent-admin-state-icon-success,
+.agent-admin-state-icon-active {
+  color: var(--color-success);
+}
+
+.agent-admin-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.agent-admin-panel {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.agent-admin-panel-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3);
+}
+
+.agent-admin-panel-heading div {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.agent-admin-panel-heading h2 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-lg);
+  font-weight: 700;
+}
+
+.agent-admin-panel-heading svg {
+  color: var(--color-primary);
+}
+
+.agent-admin-split-workbench,
+.agent-admin-workbench {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.38fr);
+  grid-template-areas: "center right";
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.agent-admin-split-primary {
+  grid-area: center;
+}
+
+.agent-admin-split-secondary {
+  grid-area: right;
+}
+
+.agent-admin-split-primary,
+.agent-admin-split-secondary,
+.agent-admin-right-inspector {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.agent-admin-event-list,
+.agent-admin-risk-list,
+.agent-admin-segment-list,
+.agent-admin-latency-list,
+.agent-admin-definition-list,
+.agent-admin-recent-grid,
+.agent-admin-pipeline,
+.agent-admin-matrix,
+.agent-admin-timeline,
+.agent-admin-detail-list,
+.agent-admin-readiness-list,
+.agent-admin-plan-list,
+.agent-admin-list-rows {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.agent-admin-recent-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.agent-admin-pipeline,
+.agent-admin-matrix {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.agent-admin-event-list > *,
+.agent-admin-risk-list > *,
+.agent-admin-segment-list > *,
+.agent-admin-latency-list > *,
+.agent-admin-pipeline > *,
+.agent-admin-matrix > *,
+.agent-admin-timeline-row,
+.agent-admin-plan-list p,
+.agent-admin-detail-list > span,
+.agent-admin-detail-list > button,
+.agent-admin-readiness-list > span,
+.agent-admin-list-rows p {
+  min-width: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--color-border-soft);
+  padding: var(--space-2) 0;
+}
+
+.agent-admin-timeline-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.42fr) minmax(0, 1fr) minmax(54px, auto);
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 40px;
+}
+
+.agent-admin-timeline-node,
+.agent-admin-detail-list > span,
+.agent-admin-detail-list > button,
+.agent-admin-plan-list p {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.agent-admin-timeline-node,
+.agent-admin-timeline-row strong,
+.agent-admin-session-grid strong,
+.agent-admin-definition-list dd,
+.agent-admin-table td,
+.agent-admin-table th,
+.agent-admin-evidence-table td,
+.agent-admin-evidence-table th {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-admin-timeline-node {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.agent-admin-timeline-row > span:not(.agent-admin-timeline-node) {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-admin-latency-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-muted);
+}
+
+.agent-admin-latency-bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-primary);
+}
+
+.agent-admin-timeline-row-ready .agent-admin-latency-bar i {
+  background: var(--color-border-strong);
+}
+
+.agent-admin-timeline-row-active {
+  color: var(--color-primary);
+}
+
+.agent-admin-plan-list {
+  margin-top: var(--space-2);
+}
+
+.agent-admin-plan-list p {
+  justify-content: space-between;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  color: var(--color-text);
+}
+
+.agent-admin-plan-list em {
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+  font-style: normal;
+}
+
+.agent-admin-detail-list > button,
+.agent-admin-disabled-action {
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-muted);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+}
+
+.agent-admin-detail-list > button {
+  padding: var(--space-2);
+  cursor: pointer;
+}
+
+.agent-admin-disabled-action {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(0, auto);
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-2);
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.agent-admin-disabled-action span,
+.agent-admin-disabled-action small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-admin-disabled-action svg,
+.agent-admin-state-icon-disabled {
+  color: var(--color-text-muted);
+}
+
+.agent-admin-session-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.agent-admin-session-grid > div {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-surface-muted);
+}
+
+.agent-admin-session-grid span,
+.agent-admin-session-grid small {
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+}
+
+.agent-admin-definition-list {
+  grid-template-columns: max-content minmax(0, 1fr);
+  column-gap: var(--space-3);
+}
+
+.agent-admin-definition-list dt,
+.agent-admin-definition-list dd {
+  min-width: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--color-border-soft);
+  padding: var(--space-2) 0;
+}
+
+.agent-admin-definition-list dd {
+  color: var(--color-text);
+  font-weight: 700;
+}
+
+.agent-admin-table,
+.agent-admin-evidence-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: var(--font-sm);
+}
+
+.agent-admin-table th,
+.agent-admin-table td,
+.agent-admin-evidence-table th,
+.agent-admin-evidence-table td {
+  border-bottom: 1px solid var(--color-border-soft);
+  padding: var(--space-2);
+  text-align: left;
+}
+
+.agent-admin-table th,
+.agent-admin-evidence-table th {
+  color: var(--color-text-muted);
+  font-weight: 700;
+}
+
+.agent-admin-source-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.agent-admin-source-chips span {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface-muted);
+  color: var(--color-primary);
+  font-size: var(--font-xs);
+  font-weight: 700;
+}
+
+.agent-admin-memory-workbench {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(320px, 1.35fr) minmax(240px, 1fr);
+  align-items: stretch;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.agent-admin-memory-workbench > * {
+  min-width: 0;
+}
+
+.agent-admin-memory-layer-list,
+.agent-admin-memory-pipeline {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.agent-admin-memory-layer-row {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--color-border) 86%, var(--color-primary) 14%);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: color-mix(in srgb, var(--color-surface) 92%, var(--color-primary) 8%);
+  overflow-wrap: anywhere;
+}
+
+.agent-admin-memory-layer-row .agent-admin-timeline-node,
+.agent-admin-memory-pipeline .agent-admin-timeline-node {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.agent-admin-memory-layer-row small,
+.agent-admin-memory-layer-row em,
+.agent-admin-memory-pipeline small {
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
+.agent-admin-memory-layer-row strong {
+  min-width: 0;
+  color: var(--color-text);
+  font-size: var(--font-sm);
+  overflow-wrap: anywhere;
+}
+
+.agent-admin-memory-layer-row-empty,
+.agent-admin-memory-layer-row-idle {
+  border-left-color: var(--color-border-strong);
+  background: var(--color-surface-muted);
+}
+
+.agent-admin-memory-layer-row-running {
+  background: color-mix(in srgb, var(--color-surface) 84%, var(--color-primary) 16%);
+}
+
+.agent-admin-memory-layer-row-stale,
+.agent-admin-memory-layer-row-unstructured {
+  border-left-color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning-soft) 42%, var(--color-surface) 58%);
+}
+
+.agent-admin-memory-layer-row-failed {
+  border-left-color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger-soft) 48%, var(--color-surface) 52%);
+}
+
+.agent-admin-memory-pipeline > * {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.85fr) minmax(0, 1.45fr) minmax(72px, auto);
+  grid-template-areas:
+    "stage detail status"
+    "stage patient doctor";
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--color-border) 86%, var(--color-primary) 14%);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  overflow-wrap: anywhere;
+}
+
+.agent-admin-memory-pipeline .agent-admin-timeline-node {
+  grid-area: stage;
+  min-width: 0;
+}
+
+.agent-admin-memory-pipeline > * > span:not(.agent-admin-timeline-node) {
+  grid-area: detail;
+  min-width: 0;
+  overflow: visible;
+  color: var(--color-text-muted);
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.agent-admin-memory-pipeline > * > strong {
+  grid-area: status;
+  justify-self: start;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: 0 var(--space-2);
+  color: var(--color-primary);
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.agent-admin-memory-pipeline > * > small:first-of-type {
+  grid-area: patient;
+}
+
+.agent-admin-memory-pipeline > * > small:last-of-type {
+  grid-area: doctor;
+}
+
+.agent-admin-memory-pipeline .agent-admin-timeline-row-success {
+  border-left-color: var(--color-success);
+  background: color-mix(in srgb, var(--color-success-soft) 50%, var(--color-surface) 50%);
+}
+
+.agent-admin-memory-pipeline .agent-admin-timeline-row-active {
+  background: color-mix(in srgb, var(--color-primary-soft) 55%, var(--color-surface) 45%);
+}
+
+.agent-admin-memory-pipeline .agent-admin-timeline-row-ready,
+.agent-admin-memory-pipeline .agent-admin-timeline-row-idle {
+  border-left-color: var(--color-border-strong);
+  background: var(--color-surface-muted);
+}
+
+.agent-admin-memory-pipeline .agent-admin-timeline-row-warning {
+  border-left-color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning-soft) 42%, var(--color-surface) 58%);
+}
+
+.agent-admin-memory-table {
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: var(--space-1);
+}
+
+.agent-admin-memory-table-row {
+  display: grid;
+  grid-template-columns:
+    minmax(220px, 1.6fr)
+    minmax(110px, 0.7fr)
+    minmax(84px, 0.55fr)
+    minmax(130px, 0.8fr)
+    minmax(92px, 0.55fr);
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 720px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 86%, var(--color-primary) 14%);
+  border-left: 4px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+}
+
+.agent-admin-memory-table-head {
+  border-left-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary-soft) 60%, var(--color-surface) 40%);
+  color: var(--color-primary);
+  font-size: var(--font-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.agent-admin-memory-table-row span,
+.agent-admin-memory-table-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-admin-memory-table-row strong {
+  color: var(--color-primary);
+  font-size: var(--font-sm);
+}
+
+.agent-admin-memory-table-row-empty,
+.agent-admin-memory-table-row-idle {
+  border-left-color: var(--color-border-strong);
+  background: var(--color-surface-muted);
+}
+
+.agent-admin-memory-table-row-running {
+  background: color-mix(in srgb, var(--color-primary-soft) 55%, var(--color-surface) 45%);
+}
+
+.agent-admin-memory-table-row-stale,
+.agent-admin-memory-table-row-unstructured {
+  border-left-color: var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning-soft) 36%, var(--color-surface) 64%);
+}
+
+.agent-admin-memory-table-row-failed {
+  border-left-color: var(--color-danger);
+  background: color-mix(in srgb, var(--color-danger-soft) 42%, var(--color-surface) 58%);
+}
+
+@media (max-width: 1180px) {
+  .agent-admin-top-nav {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    overflow-x: hidden;
+  }
+
+  .agent-admin-top-nav .clinical-brand-block,
+  .agent-admin-top-nav .clinical-nav-tabs,
+  .agent-admin-top-nav .clinical-user-area {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .agent-admin-top-nav .clinical-nav-tabs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+    justify-content: stretch;
+    height: auto;
+    min-height: 44px;
+    overflow-x: visible;
+  }
+
+  .agent-admin-top-nav .clinical-nav-tab {
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 var(--space-3);
+  }
+
+  .agent-admin-top-nav .clinical-user-area {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    overflow-x: visible;
+  }
+
+  .agent-admin-context-strip,
+  .agent-admin-metric-strip,
+  .agent-admin-metrics-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .agent-admin-console-layout {
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .agent-admin-split-workbench,
+  .agent-admin-workbench {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "center"
+      "right";
+  }
+
+  .agent-admin-memory-workbench {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .agent-admin-memory-workbench > .agent-admin-panel:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .agent-admin-memory-pipeline > * {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "stage"
+      "detail"
+      "status"
+      "patient"
+      "doctor";
+    align-items: start;
+  }
+
+  .agent-admin-recent-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .agent-admin-top-nav {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    overflow-x: hidden;
+  }
+
+  .agent-admin-top-nav .clinical-brand-block,
+  .agent-admin-top-nav .clinical-nav-tabs,
+  .agent-admin-top-nav .clinical-user-area {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .agent-admin-top-nav .clinical-company-logo {
+    width: 122px;
+    height: 30px;
+  }
+
+  .agent-admin-top-nav .clinical-nav-tabs {
+    justify-content: flex-start;
+    height: auto;
+    overflow-x: auto;
+  }
+
+  .agent-admin-top-nav .clinical-nav-tab {
+    min-width: max-content;
+    height: 32px;
+    padding: 0 var(--space-3);
+    font-size: var(--font-xs);
+  }
+
+  .agent-admin-top-nav .clinical-user-area {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .agent-admin-top-nav .clinical-top-divider {
+    display: none;
+  }
+
+  .agent-admin-context-strip,
+  .agent-admin-console-layout,
+  .agent-admin-metric-strip,
+  .agent-admin-metrics-grid,
+  .agent-admin-workbench,
+  .agent-admin-memory-workbench,
+  .agent-admin-lower-grid,
+  .agent-admin-recent-grid,
+  .agent-admin-session-grid,
+  .agent-admin-right-inspector {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-admin-task-page-header {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .agent-admin-context-strip,
+  .agent-admin-console-layout {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+
+  .agent-admin-timeline-row {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .agent-admin-memory-workbench > .agent-admin-panel:last-child {
+    grid-column: auto;
+  }
+
+  .agent-admin-memory-table-row {
+    grid-template-columns:
+      minmax(180px, 1.4fr)
+      minmax(96px, 0.75fr)
+      minmax(72px, 0.55fr)
+      minmax(118px, 0.85fr)
+      minmax(82px, 0.55fr);
+    min-width: 620px;
+  }
+
+  .clinical-surface-menu {
+    right: auto;
+    left: 0;
+  }
+}
