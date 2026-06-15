@@ -1,59 +1,64 @@
 # LangG —— 结直肠癌智能临床决策支持系统
 
-基于 **LangGraph** 的多智能体临床决策支持系统，面向**结直肠癌（CRC）**的智能诊疗全流程。提供患者分诊与医生临床决策辅助两大场景，集成 RAG 知识检索、医学影像 AI 分析、历史病例数据库、患者登记处和可回放演示链路。
+基于 **LangGraph** 的多智能体临床决策支持系统，面向**结直肠癌（CRC）**的智能诊疗全流程。提供患者分诊、医生临床决策辅助、后台智能体运行观测三大工作台，集成 RAG 知识检索、医学影像 AI 分析、历史病例数据库、患者登记处（事件溯源）、记忆自动化维护和可回放演示链路。
 
 ## 核心功能
 
 | 场景 | 功能 |
 |------|------|
 | **患者端** | 智能分诊问答（门诊分诊）、症状采集、病历资料上传、身份登记、自报告卡片生成 |
-| **医生端** | 意图分类 → 规划 → 知识检索 / 影像分析 / 病理分析 / 病例查询 → 临床评估 → 诊断 → TNM 分期 → 治疗决策 → 批判审查 → 证据引用 → 质量评估 → 记忆管理，多模态医生视图与患者绑定上下文注入 |
+| **医生端** | 意图分类 → 规划 → 知识检索 / 影像分析 / 病理分析 / 病例查询 / 网络搜索 → 临床评估 → 诊断 → TNM 分期 → 治疗决策 → 批判审查 → 证据引用 → 质量评估 → 记忆管理，多模态医生视图与患者绑定上下文注入 |
+| **后台端** | 智能体运行观测控制台：全局健康 / 会话观测 / 上下文记忆审计 / 规则目录 / 工具清单与可达性 / 学习准备 / 执行链路追踪 / 证据池 / 只读边界，9 个子任务页面 |
 | **知识检索** | 混合 RAG 引擎：Chroma 向量检索 + BM25 关键词检索（jieba 分词） + Cross-Encoder / Cohere / LLM 重排序 |
 | **影像 AI** | YOLOv8 肿瘤检测、U-Net 肿瘤分割、PyRadiomics 影像组学特征提取 |
 | **病理 AI** | CLAM 病理切片分类（WSI 全切片图像）、热力图生成 |
 | **病例库** | 历史病例 Excel 数据库 + SQLite 患者登记处（事件溯源），支持结构化筛选、自然语言查询、患者资产落盘与会话上下文恢复 |
+| **记忆自动化** | 分层摘要记忆（摘要记忆 / 永久事实 / 动态事实 / 锚点事件 / 维护日志），五阶段流水线（收集 → 摘要 → 结构化 → 同步 → 过期检查） |
 | **运行与演示** | `real` / `fixture` 双图运行模式、`demo` 回放模式、可选 SQLite BFF session 持久化、Bearer/API Admin 鉴权 |
 | **联网搜索** | Deep Research 服务：查询分解 → 并行搜索 → 去重 → LLM 综合，带来源可信度评分 |
 
 ## 技术架构
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  Frontend (React 18 + TypeScript + Vite + TailwindCSS)             │
-│  pages/workspace-page  ·  features/chat/cards/doctor/database/   │
-│  features/patient-identity/registry/roadmap/execution-plan/      │
-│  app/store (stream-reducer + 中文事件标签) · app/api (SSE trace) │
-│  features/workspace/ (6 hooks: sessions/streaming/latency/cards/  │
-│                       uploads/nav)                                │
-└────────────────────────┬─────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Frontend (React 18 + TypeScript + Vite + TailwindCSS + GSAP)              │
+│  pages/workspace-page  ·  features/chat/cards/doctor/database/            │
+│  features/patient-identity/registry/roadmap/execution-plan/               │
+│  features/anatomy/  ·  features/agent-admin/  ·  components/motion/       │
+│  app/store (stream-reducer + 中文事件标签) · app/api (SSE trace)          │
+│  features/workspace/ (workspace-surface-switcher: 患者/医生/后台 三工作台) │
+│  styles/ (globals.css + tokens.css + style-architecture-contract)         │
+└────────────────────────┬───────────────────────────────────────────────────┘
                          │ SSE streaming (18 种事件类型)
-┌────────────────────────▼─────────────────────────────────────────┐
-│  Backend BFF (FastAPI + Uvicorn)                                  │
-│  routes/ sessions · chat · database · patient-registry ·         │
-│          uploads · assets   (21 个 REST 端点)                     │
-│  services/ graph_service · graph_factory · session_store · sqlite_store │
-│            upload_service · patient_registry_service ·           │
-│            patient_commands · patient_context_resolver ·         │
-│            database_service · database_intent_service ·           │
-│            context_maintenance · payload_builder ·                │
-│            chat_latency_trace · asset_service · runtime_paths · settings │
-│  adapters/ state_snapshot · event_normalizer · card_extractor ·  │
-│            card_payload_sanitizer · reference_normalizer ·        │
-│            message_content                                        │
-│  schemas/ events (18 种, 含 trace.*) · responses · database · registry │
-└────────────────────────┬─────────────────────────────────────────┘
+┌────────────────────────▼───────────────────────────────────────────────────┐
+│  Backend BFF (FastAPI + Uvicorn)                                            │
+│  routes/ sessions · chat · database · patient-registry ·                   │
+│          uploads · assets   (21 个 REST 端点)                               │
+│  services/ graph_service · graph_factory · session_store · sqlite_store   │
+│            upload_service · patient_registry_service ·                     │
+│            patient_commands · patient_context_resolver ·                   │
+│            database_service · database_intent_service ·                    │
+│            context_maintenance · payload_builder ·                         │
+│            chat_latency_trace · asset_service · runtime_paths · settings   │
+│            anatomy_region_map ·                                             │
+│  adapters/ state_snapshot · event_normalizer · card_extractor ·            │
+│            card_payload_sanitizer · reference_normalizer ·                 │
+│            message_content                                                  │
+│  schemas/ events (18 种, 含 trace.*) · responses · database · registry    │
+└────────────────────────┬───────────────────────────────────────────────────┘
                          │ SceneGraphRouter: patient_graph / doctor_graph
-┌────────────────────────▼─────────────────────────────────────────┐
-│  Agent Core (LangGraph)                                           │
-│  graph_builder.py → build_patient_graph() / build_doctor_graph() │
-│  state.py (CRCAgentState: 57 个字段, PlanStep DAG, 证据链追溯)   │
-│  nodes/ (27 个 Python 模块, 23 个 NodeName)  ·  policies/  ·  prompts/ │
-│  rag/ (Chroma + BM25 + 混合检索 + 重排序)  ·  tools/            │
-│  services/ (LLM服务/网络搜索/文档转换/病例Excel/患者卡片投射)    │
-└──────────────────────────────────────────────────────────────────┘
+┌────────────────────────▼───────────────────────────────────────────────────┐
+│  Agent Core (LangGraph)                                                     │
+│  graph_builder.py → build_patient_graph() / build_doctor_graph()           │
+│  state.py (CRCAgentState: ~60 个字段, PlanStep DAG, 证据链追溯,            │
+│            StructuredSummary 分层记忆)                                      │
+│  nodes/ (27 个 Python 模块, 23 个 NodeName)  ·  policies/  ·  prompts/    │
+│  rag/ (Chroma + BM25 + 混合检索 + 重排序)  ·  tools/                      │
+│  services/ (LLM服务/网络搜索/文档转换/病例Excel/患者卡片投射)              │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 医生端 Agent 工作流（23 个节点，医生图使用其中 20 个）
+### 医生端 Agent 工作流（20 个节点）
 
 ```
 INTENT → PLANNER → KNOWLEDGE / CASE_DATABASE / RAD_AGENT / PATH_AGENT
@@ -63,9 +68,9 @@ INTENT → PLANNER → KNOWLEDGE / CASE_DATABASE / RAD_AGENT / PATH_AGENT
        ⇄ CHAT_MAIN / GENERAL_CHAT / CLINICAL_ENTRY_RESOLVER / OUTPATIENT_TRIAGE / MEMORY
 ```
 
-路由由 Planner 生成的 `PlanStep` DAG 动态驱动，支持并行子代理执行、失败自修正循环（Decision ↔ Critic / Decision ↔ Evaluator）。
+路由由 Planner 生成的 `PlanStep` DAG 动态驱动，支持并行子代理执行、失败自修正循环（Decision ↔ Critic / Decision ↔ Evaluator），每轮节点计时。
 
-### 患者端 Agent 工作流（9 个节点）
+### 患者端 Agent 工作流（8 个节点）
 
 ```
 INTENT → PLANNER → CLINICAL_ENTRY_RESOLVER → OUTPATIENT_TRIAGE / ASSESSMENT
@@ -74,13 +79,21 @@ INTENT → PLANNER → CLINICAL_ENTRY_RESOLVER → OUTPATIENT_TRIAGE / ASSESSMEN
 
 门诊分诊支持交互式追问卡片（`triage_question_card`），生成风险等级 + 处置建议 + 建议检查。
 
+### 后台端（Agent Admin Console，9 个子任务页面）
+
+```
+总览 → 会话 / 记忆 / 规则 / 工具 / 学习 / Trace / 证据 / 设置只读
+```
+
+只读观测控制台，通过 `WorkspaceSurfaceSwitcher` 三工作台切换器进入。一期为前端衍生视图，不写入规则或工具状态。
+
 ## 目录结构
 
 ```
 LangG/
 ├── src/                          # Python 核心：LangGraph Agent
 │   ├── graph_builder.py          # 双图构建（doctor / patient）+ 路由函数 + 节点计时
-│   ├── state.py                  # CRCAgentState（57 字段）+ PlanStep + Reducer（含 merge_node_timings）
+│   ├── state.py                  # CRCAgentState（~60 字段）+ PlanStep + StructuredSummary + 证据链 + Reducer
 │   ├── config.py                 # 分层配置（LLM / RAG / 文档转换 / 网络搜索 / 检查点 / 可观测性）
 │   ├── checkpoint.py             # 检查点工厂（Memory / SQLite / Postgres / Redis）
 │   ├── observability.py          # LangSmith 追踪集成
@@ -145,6 +158,7 @@ LangG/
 │   │   ├── web_search_tools.py   # 网络搜索工具
 │   │   ├── card_formatter.py     # 卡片格式化（11 种卡片类型）
 │   │   ├── basic_tools.py        # 基础工具
+│   │   ├── path_security.py      # 工具路径安全校验
 │   │   └── tool/                 # 第三方 AI 模型文件
 │   │       ├── Tumor_Detection/  # YOLOv8 肿瘤检测脚本
 │   │       ├── Tumor_Localization/ # U-Net 肿瘤分割脚本
@@ -182,12 +196,13 @@ LangG/
 │       │   ├── patient_context_resolver.py # 患者上下文解析（缓存/失效）
 │       │   ├── database_service.py   # 数据库搜索/过滤/统计
 │       │   ├── database_intent_service.py # 自然语言→结构化过滤器
-│       │   ├── context_maintenance.py # 后台上下文摘要
+│       │   ├── context_maintenance.py # 后台上下文摘要与记忆维护
 │       │   ├── payload_builder.py    # 图输入负载构建
 │       │   ├── chat_latency_trace.py # 两阶段延迟追踪
 │       │   ├── asset_service.py  # 资产文件加载
 │       │   ├── runtime_paths.py  # runtime 根目录解析（LANGG_RUNTIME_ROOT）
 │       │   ├── settings.py       # 运行时配置
+│       │   ├── anatomy_region_map.py  # 结直肠解剖区域映射
 │       │   ├── fixture_graph_runner.py    # 固定数据回放器
 │       │   └── upload_fixture_cards.py    # 固定上传卡片加载
 │       ├── schemas/              # Pydantic 数据模型
@@ -202,18 +217,21 @@ LangG/
 │           ├── card_payload_sanitizer.py # 卡片负载清理 + 图像预览
 │           ├── reference_normalizer.py   # 引用规范化
 │           └── message_content.py # 消息内容清理
-├── frontend/                     # React SPA 前端（118 个 TypeScript 源文件）
+├── frontend/                     # React SPA 前端（141 个 TypeScript 源文件）
 │   └── src/
 │       ├── main.tsx              # 入口
 │       ├── app/
 │       │   ├── router.tsx        # 路由
 │       │   ├── providers.tsx     # ApiClient 上下文
 │       │   ├── api/              # API 客户端（SSE 流 + 延迟追踪）
-│       │   └── store/            # 状态管理（stream-reducer）
+│       │   ├── store/            # 状态管理（stream-reducer + ui-store + session-store）
+│       │   └── clinical/         # 临床事件标签 + critic feedback 解析
 │       ├── pages/
-│       │   ├── workspace-page.tsx # 主工作区（患者+医生双场景编排）
+│       │   ├── workspace-page.tsx # 主工作区（患者+医生+后台三场景编排）
 │       │   └── database-page.tsx  # 数据库控制台
 │       ├── features/
+│       │   ├── agent-admin/      # 后台智能体观测控制台（9 子任务页 + 模型层 + 组件库）
+│       │   ├── anatomy/          # 结直肠解剖图谱（10 区域交互高亮 + 全身概览）
 │       │   ├── chat/             # 对话面板（流式渲染/内联卡片/思维链/延迟显示）
 │       │   ├── cards/            # 卡片渲染系统（11 种卡片 + 分诊交互卡）
 │       │   ├── doctor/           # 医生场景布局 + 事件流 + 数据库视图 + 多模态视图
@@ -224,20 +242,23 @@ LangG/
 │       │   ├── roadmap/          # 临床路线图面板
 │       │   ├── execution-plan/   # 执行计划面板 + 参考文献列表
 │       │   ├── uploads/          # 文件上传面板
-│       │   └── workspace/        # 工作区钩子（6 个 hooks + 5 个对应测试）
+│       │   └── workspace/        # 工作区钩子（use-scene-sessions / use-workspace-cards 等 + workspace-surface-switcher）
 │       ├── components/
 │       │   ├── ui/               # UI 组件库（Button/Card/Input/Textarea/MessageBubble/TopNav/AppShell/PanelGrid）
-│       │   └── layout/           # 布局组件（ClinicalTopNav）
-│       └── styles/               # 全局样式（globals.css）
+│       │   ├── layout/           # 布局组件（ClinicalTopNav / workspace-layout / clinical-empty-state）
+│       │   └── motion/           # GSAP 动效系统（motion-tokens / use-gsap-context / use-highlight-flash / use-view-transition）
+│       └── styles/               # 全局样式（globals.css + tokens.css + style-architecture-contract）
 ├── tests/                        # 测试
 │   ├── frontend/                 # 前端集成测试（workspace-scenes / conversation-panel 等）
-│   ├── backend/                  # 后端测试（chat_latency_trace 等）
+│   ├── backend/                  # 后端测试（50+ 文件，含 agent tool registry / context maintenance / RAG evidence / production readiness 等）
 │   ├── e2e/                      # Playwright E2E 测试
-│   │   ├── acceptance/           # 验收测试规格
-│   │   └── demo/                 # 演示回放与 SQLite session 持久化回归
+│   │   ├── acceptance/           # 验收测试规格（frontend-regression-contracts）
+│   │   ├── demo/                 # 演示回放与 SQLite session 持久化回归
+│   │   └── visual/               # 视觉风格架构测试
 │   └── fixtures/                 # 测试固定数据
 ├── scripts/                      # 启动与管理脚本
 │   ├── start_real.ps1            # 一键启动（后端 + 前端）
+│   ├── start_real.cmd            # CMD 版本一键启动
 │   ├── start_backend_real.ps1    # 后端启动
 │   ├── start_frontend.ps1        # 前端启动
 │   ├── start_demo.ps1            # demo fixture + replay 前端启动
@@ -245,10 +266,14 @@ LangG/
 │   ├── start_backend_acceptance_fixture.ps1 # 验收测试后端
 │   ├── playwright_demo_server.cjs # Playwright demo 服务编排器
 │   ├── run_demo_playwright.cjs   # 自动化 demo 浏览器 walkthrough
+│   ├── run_clinical_visual_playwright.cjs # 临床视觉风格浏览器回归
+│   ├── run_real_case_browser_acceptance.cjs # 真实病例浏览器验收
 │   ├── run_sqlite_session_persistence_playwright.cjs # SQLite session 持久化回归
 │   ├── prepare_acceptance_case_db.py  # 验收测试数据库准备
 │   ├── run_e2e_full_acceptance.ps1   # E2E 验收测试
-│   └── capture_graph_fixtures.py # 图固定数据捕获
+│   ├── capture_graph_fixtures.py # 图固定数据捕获
+│   ├── generate_project_intro_pdf.py # 项目介绍 PDF 生成
+│   └── backfill_tumor_region_codes.py # 肿瘤区域编码回填
 └── pyproject.toml                # Python 项目配置
 ```
 
@@ -477,14 +502,26 @@ cd frontend && npm run test:e2e
 # E2E 验收测试
 cd frontend && npm run test:e2e:acceptance
 
+# 视觉风格架构测试
+cd frontend && npm run test:e2e:visual
+
 # SQLite session 持久化浏览器回归
 cd frontend && npm run test:e2e:sqlite-session
+
+# 样式架构契约测试
+cd frontend && npm run lint:styles
+
+# 样式 + 布局契约测试
+cd frontend && npm run lint:styles:layout
 
 # 全量 E2E 验收（PowerShell）
 powershell -ExecutionPolicy Bypass -File .\scripts\run_e2e_full_acceptance.ps1
 
 # Demo 回放 walkthrough（默认有头浏览器；设置 DEMO_PLAYWRIGHT_HEADLESS=1 可无头运行）
 node .\scripts\run_demo_playwright.cjs
+
+# 临床视觉风格浏览器回归
+node .\scripts\run_clinical_visual_playwright.cjs
 ```
 
 ### Python 依赖审计
@@ -535,14 +572,15 @@ SQLite session store 不提供跨进程 active run 互斥；它不能替代 Redi
 
 ## 场景说明
 
-系统支持两种用户场景，通过顶部导航切换：
+系统支持三种工作台，通过顶部导航的 `WorkspaceSurfaceSwitcher` 切换：
 
 | 场景 | 用途 | 图类型 |
 |------|------|--------|
-| **patient** | 患者自报告：门诊分诊、症状采集、身份登记、资料上传 | `patient_graph`（9 节点） |
+| **patient** | 患者自报告：门诊分诊、症状采集、身份登记、资料上传 | `patient_graph`（8 节点） |
 | **doctor** | 医生临床决策：诊断分期、治疗方案、影像/病理 AI、多模态视图、证据引用、质量审查 | `doctor_graph`（20 节点） |
+| **agent-admin** | 后台智能体观测：全局健康、会话监控、记忆审计、规则/工具目录、执行链路、证据池、只读边界 | 前端衍生视图（只读，不创建第三种 graph） |
 
-医生场景支持绑定患者登记处中的患者，自动注入患者摘要和告警信息到图上下文中。
+医生场景支持绑定患者登记处中的患者，自动注入患者摘要和告警信息到图上下文中。后台控制台观察 patient/doctor 双场景的 session state，不修改 graph 状态。
 
 ## 关键设计
 
@@ -560,15 +598,19 @@ Agent 核心由 Planner 生成的 `PlanStep` DAG 动态驱动：支持原子步�
 
 ### 证据链可追溯
 
-所有治疗决策通过声明（Claim）→ 证据链接（EvidenceLink）→ 检索来源（RetrievedReference）全链路可追溯，支持覆盖率检查和人工审查建议。
+所有治疗决策通过声明（Claim）→ 证据链接（EvidenceLink）→ 检索来源（RetrievedReference）全链路可追溯，支持覆盖率检查和人工审查建议。`DecisionWithEvidence` 结构体提供完整的 claim_id → evidence_sources 映射，可通过 `trace_evidence_chain()` 追溯单条结论的完整证据路径。
 
 ### 子代理上下文隔离
 
 知识检索和网页搜索在沙箱子代理中执行（`SubAgentContext`），隔离消息历史、防止上下文污染、支持自动工具故障转移。
 
+### 分层记忆系统
+
+记忆维护采用五层架构：**摘要记忆**（压缩对话上下文）、**永久事实**（不可变信息：确诊时间、癌种、分期、过敏史等）、**动态事实**（近期变化：当前方案、关注点）、**锚点事件**（永不丢弃的关键事件）、**维护日志**（自动化维护状态）。自动化流水线按五阶段运行：收集 → 摘要 → 结构化 → 同步 → 过期检查，由 `context_maintenance` 服务驱动，前端后台控制台提供完整的记忆可视化审计界面。
+
 ### 医学工具路径安全
 
-影像、病理和肿瘤检测工具会校验模型路径与输入路径，只允许访问项目内配置的模型根目录、`data/`、`runtime/` 和测试 fixture；可通过 `TOOL_ALLOWED_MODEL_ROOTS`、`TOOL_ALLOWED_INPUT_ROOTS` 扩展可信根目录。PyTorch 模型加载优先使用 `weights_only=True`。
+影像、病理和肿瘤检测工具会校验模型路径与输入路径，只允许访问项目内配置的模型根目录、`data/`、`runtime/` 和测试 fixture；可通过 `TOOL_ALLOWED_MODEL_ROOTS`、`TOOL_ALLOWED_INPUT_ROOTS` 扩展可信根目录。PyTorch 模型加载优先使用 `weights_only=True`。`path_security.py` 提供统一的路径安全校验。
 
 ### Split Patient Identity
 
@@ -576,13 +618,24 @@ Agent 核心由 Planner 生成的 `PlanStep` DAG 动态驱动：支持原子步�
 
 ### 每轮节点计时
 
-`node_timings` 使用 `merge_node_timings` reducer 实现每轮重置 + 同节点去重，INTENT 节点作为每轮入口自动清空上一轮计时数据。
+`node_timings` 使用 `merge_node_timings` reducer 实现每轮重置 + 同节点去重，INTENT 节点作为每轮入口自动清空上一轮计时数据。关键节点（ASSESSMENT、DECISION、CITATION、EVALUATOR）自动记录执行耗时。
+
+### GSAP 动效系统
+
+前端使用 GSAP (GreenSock Animation Platform) 提供声明式动效系统：`motion-tokens` 定义 CSS 动效令牌（duration/ease/enter），React hooks（`use-gsap-context`、`use-highlight-flash`、`use-highlight-pulse`、`use-shell-reveal`、`use-view-transition`）封装动画生命周期与 reduced-motion 偏好检测。
+
+### 结直肠解剖图谱
+
+`features/anatomy/` 提供 SVG 结直肠解剖区域图，支持 10 个解剖区域（盲肠、升结肠、肝曲、横结肠、脾曲、降结肠、乙状结肠、直肠乙状结肠交界、直肠、肛门）的交互高亮与选择，用于多模态视图中的肿瘤位置标注。
 
 ## 相关文档
 
 - [现状架构图谱](docs/current-architecture-map.md)
 - [Demo Mode Runbook](docs/demo/demo-mode-runbook.md)
+- [Production Readiness Guide](docs/deployment/production-readiness.md)
 - [Agent 节点文档](src/nodes/README.md)
 - [RAG 模块文档](src/rag/README.md)
 - [工具模块文档](src/tools/README.md)
 - [服务层文档](src/services/README.md)
+- [设计 QA 报告](design-qa.md)
+- 设计规格：[Agent Admin Phase One](docs/superpowers/specs/2026-06-14-agent-admin-phase-one-design.md) · [Agent Admin Subtask Pages](docs/superpowers/specs/2026-06-14-agent-admin-subtask-pages-design.md) · [Memory Automation](docs/superpowers/specs/2026-06-15-agent-admin-memory-automation-design.md) · [Production Readiness Roadmap](docs/superpowers/specs/2026-06-13-production-readiness-roadmap-design.md) · [Agent Tooling Repair](docs/superpowers/specs/2026-06-13-agent-tooling-repair-design.md) · [Frontend Motion Experience](docs/superpowers/specs/2026-06-12-frontend-motion-experience-roadmap-design.md) · [Doctor Dark Polish](docs/superpowers/specs/2026-06-11-doctor-gemini-dark-polish-design.md) · [Patient ChatGPT Polish](docs/superpowers/specs/2026-06-11-patient-chatgpt-style-polish-design.md) · [Whole Body Anatomy](docs/superpowers/specs/2026-06-08-whole-body-anatomy-overview-design.md)
