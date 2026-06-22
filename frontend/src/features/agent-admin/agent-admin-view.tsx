@@ -1,5 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
+import { ApiClientError, type ApiClient } from "../../app/api/client";
+import type { AdminToolManifestResponse } from "../../app/api/types";
 import type { Scene, SessionState } from "../../app/api/types";
 import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
 import { classNames } from "../../components/ui";
@@ -19,19 +21,77 @@ type AgentAdminViewProps = {
   patient: SessionState;
   doctor: SessionState;
   surfaceSwitcher: ReactNode;
+  apiClient?: Pick<ApiClient, "getAdminTools">;
 };
+
+export type AgentAdminToolsResource =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: AdminToolManifestResponse }
+  | { status: "error"; error: { status?: number; message: string } };
 
 export function AgentAdminView({
   activeScene,
   patient,
   doctor,
   surfaceSwitcher,
+  apiClient,
 }: AgentAdminViewProps) {
   const [activeTaskId, setActiveTaskId] = useState<AgentAdminTaskId>("overview");
+  const [toolsResource, setToolsResource] = useState<AgentAdminToolsResource>({ status: "idle" });
   const watchedState = activeScene === "doctor" ? doctor : patient;
   const watchedSceneLabel = activeScene === "doctor" ? "医生会话" : "患者会话";
 
+  useEffect(() => {
+    if (activeTaskId !== "tools") {
+      return;
+    }
+
+    if (!apiClient || typeof apiClient.getAdminTools !== "function") {
+      setToolsResource({ status: "idle" });
+      return;
+    }
+
+    let cancelled = false;
+    setToolsResource({ status: "loading" });
+
+    void apiClient.getAdminTools().then(
+      (data) => {
+        if (!cancelled) {
+          setToolsResource({ status: "success", data });
+        }
+      },
+      (error) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (error instanceof ApiClientError) {
+          setToolsResource({
+            status: "error",
+            error: { status: error.status, message: error.message },
+          });
+          return;
+        }
+
+        setToolsResource({
+          status: "error",
+          error: {
+            message: error instanceof Error ? error.message : "Unknown admin tools error",
+          },
+        });
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTaskId, apiClient]);
+
   function navigateTask(taskId: AgentAdminTaskId) {
+    if (taskId === "tools" && activeTaskId !== "tools" && apiClient && typeof apiClient.getAdminTools === "function") {
+      setToolsResource({ status: "loading" });
+    }
     setActiveTaskId(taskId);
   }
 
@@ -120,6 +180,7 @@ export function AgentAdminView({
           patient={patient}
           doctor={doctor}
           onNavigateTask={navigateTask}
+          toolsResource={toolsResource}
         />
       </div>
     </main>

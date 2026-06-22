@@ -46,6 +46,7 @@ import {
   sessionStatus,
   type AgentAdminTaskId,
 } from "./agent-admin-model";
+import type { AgentAdminToolsResource } from "./agent-admin-view";
 
 type AgentAdminPagesProps = {
   activeTaskId: AgentAdminTaskId;
@@ -53,6 +54,7 @@ type AgentAdminPagesProps = {
   patient: SessionState;
   doctor: SessionState;
   onNavigateTask: (taskId: AgentAdminTaskId) => void;
+  toolsResource: AgentAdminToolsResource;
 };
 
 function watchedSession(activeScene: Scene, patient: SessionState, doctor: SessionState) {
@@ -65,6 +67,7 @@ export function AgentAdminTaskPages({
   patient,
   doctor,
   onNavigateTask,
+  toolsResource,
 }: AgentAdminPagesProps) {
   const activeTask = AGENT_ADMIN_TASKS.find((task) => task.id === activeTaskId) ?? AGENT_ADMIN_TASKS[0];
   const ActiveTaskIcon = activeTask.icon;
@@ -98,7 +101,7 @@ export function AgentAdminTaskPages({
       ) : activeTaskId === "rules" ? (
         <RulesPage />
       ) : activeTaskId === "tools" ? (
-        <ToolsPage />
+        <ToolsPage toolsResource={toolsResource} />
       ) : activeTaskId === "learning" ? (
         <LearningPage />
       ) : activeTaskId === "trace" ? (
@@ -119,7 +122,7 @@ function AgentAdminOverviewPage({
   patient,
   doctor,
   onNavigateTask,
-}: Omit<AgentAdminPagesProps, "activeTaskId">) {
+}: Omit<AgentAdminPagesProps, "activeTaskId" | "toolsResource">) {
   const watchedState = watchedSession(activeScene, patient, doctor);
   const patientSession = buildSessionSummary("患者", patient);
   const doctorSession = buildSessionSummary("医生", doctor);
@@ -472,10 +475,31 @@ function RulesPage() {
   );
 }
 
-function ToolsPage() {
-  const toolRows = buildToolInventoryRows();
-  const reachabilityRows = buildToolReachabilityRows();
+function ToolsPage({ toolsResource }: { toolsResource: AgentAdminToolsResource }) {
+  const manifest = toolsResource.status === "success" ? toolsResource.data : null;
+  const shouldRenderFallback = toolsResource.status === "idle" || toolsResource.status === "error";
+  const toolRows = manifest ? buildToolInventoryRows(manifest) : shouldRenderFallback ? buildToolInventoryRows() : [];
+  const reachabilityRows = manifest
+    ? buildToolReachabilityRows(manifest)
+    : shouldRenderFallback
+      ? buildToolReachabilityRows()
+      : [];
   const inspectedTool = toolRows[0];
+  const sourceStatus =
+    toolsResource.status === "success"
+      ? "runtime manifest"
+      : toolsResource.status === "loading"
+        ? "reading runtime manifest"
+        : toolsResource.status === "error"
+          ? `runtime manifest unavailable${toolsResource.error.status ? ` (${toolsResource.error.status})` : ""}: ${toolsResource.error.message}`
+          : "fallback inventory";
+  const fallbackStatus = toolsResource.status === "error" ? "fallback inventory" : null;
+  const runtimeFlag = manifest ? `WEB_SEARCH_ENABLED ${String(manifest.runtime.web_search_enabled)}` : null;
+  const emptyToolLabel =
+    toolsResource.status === "success" ? "runtime manifest returned no tools" : "reading runtime manifest";
+  const emptyGroupLabel =
+    toolsResource.status === "success" ? "runtime manifest returned no groups" : "reading runtime manifest";
+  const emptyState = toolsResource.status === "success" ? "empty" : "loading";
 
   return (
     <>
@@ -484,6 +508,9 @@ function ToolsPage() {
           <>
             <AgentAdminPanel eyebrow="filters" title="工具筛选" icon={GitBranch}>
               <div className="agent-admin-detail-list">
+                <span>{sourceStatus}</span>
+                {fallbackStatus ? <span>{fallbackStatus}</span> : null}
+                {runtimeFlag ? <span>{runtimeFlag}</span> : null}
                 {reachabilityRows.map((group) => (
                   <span key={group.name}>
                     {group.name} / {group.count} / {group.status}
@@ -493,16 +520,27 @@ function ToolsPage() {
             </AgentAdminPanel>
             <AgentAdminPanel eyebrow="inventory table" title="工具清单" icon={Wrench}>
               <div className="agent-admin-timeline">
-                {toolRows.map((tool) => (
-                  <article key={tool.name} className="agent-admin-timeline-row agent-admin-timeline-row-ready">
+                {toolRows.length > 0 ? (
+                  toolRows.map((tool) => (
+                    <article key={tool.name} className="agent-admin-timeline-row agent-admin-timeline-row-ready">
+                      <span className="agent-admin-timeline-node">
+                        <AgentAdminStateIcon state={tool.available ? "success" : "ready"} />
+                        {tool.name}
+                      </span>
+                      <span>{tool.group}</span>
+                      <strong>{tool.state}</strong>
+                    </article>
+                  ))
+                ) : (
+                  <article className="agent-admin-timeline-row agent-admin-timeline-row-ready">
                     <span className="agent-admin-timeline-node">
-                      <AgentAdminStateIcon state={tool.state === "available" ? "success" : "ready"} />
-                      {tool.name}
+                      <AgentAdminStateIcon state="ready" />
+                      {emptyToolLabel}
                     </span>
-                    <span>{tool.group}</span>
-                    <strong>{tool.state}</strong>
+                    <span>runtime manifest</span>
+                    <strong>{emptyState}</strong>
                   </article>
-                ))}
+                )}
               </div>
             </AgentAdminPanel>
           </>
@@ -510,27 +548,51 @@ function ToolsPage() {
         secondary={
           <AgentAdminPanel eyebrow="dependency inspector" title="依赖检查" icon={ServerCog}>
             <div className="agent-admin-detail-list">
-              <span>{inspectedTool.name}</span>
-              <span>group: {inspectedTool.group}</span>
-              <span>state: {inspectedTool.state}</span>
-              <span>{inspectedTool.dependency}</span>
-              <span>tool_executor required for executor dispatch</span>
+              {inspectedTool ? (
+                <>
+                  <span>{inspectedTool.name}</span>
+                  <span>group: {inspectedTool.group}</span>
+                  <span>state: {inspectedTool.state}</span>
+                  <span>{inspectedTool.dependency}</span>
+                  <span>registries: {inspectedTool.registries}</span>
+                  <span>route targets: {inspectedTool.routeTargets}</span>
+                  <span>graph scope: {inspectedTool.graphScope}</span>
+                  <span>tool_executor required for executor dispatch</span>
+                </>
+              ) : (
+                <>
+                  <span>{emptyToolLabel}</span>
+                  <span>runtime manifest</span>
+                  <span>{emptyState}</span>
+                </>
+              )}
             </div>
           </AgentAdminPanel>
         }
       />
       <AgentAdminPanel eyebrow="reachability map" title="可达性矩阵" icon={Route}>
         <div className="agent-admin-timeline">
-          {reachabilityRows.map((group) => (
-            <article key={group.name} className="agent-admin-timeline-row agent-admin-timeline-row-success">
+          {reachabilityRows.length > 0 ? (
+            reachabilityRows.map((group) => (
+              <article key={group.name} className="agent-admin-timeline-row agent-admin-timeline-row-success">
+                <span className="agent-admin-timeline-node">
+                  <AgentAdminStateIcon state="success" />
+                  {group.name}
+                </span>
+                <span>{group.status}</span>
+                <strong>{group.count}</strong>
+              </article>
+            ))
+          ) : (
+            <article className="agent-admin-timeline-row agent-admin-timeline-row-ready">
               <span className="agent-admin-timeline-node">
-                <AgentAdminStateIcon state="success" />
-                {group.name}
+                <AgentAdminStateIcon state="ready" />
+                {emptyGroupLabel}
               </span>
-              <span>{group.status}</span>
-              <strong>{group.count}</strong>
+              <span>runtime manifest</span>
+              <strong>{emptyState}</strong>
             </article>
-          ))}
+          )}
         </div>
       </AgentAdminPanel>
     </>

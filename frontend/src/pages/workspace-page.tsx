@@ -600,6 +600,7 @@ export function WorkspacePage() {
           patient={patient.state}
           doctor={doctor.state}
           surfaceSwitcher={workspaceSurfaceSwitcher}
+          apiClient={apiClient}
         />
       </>
     );

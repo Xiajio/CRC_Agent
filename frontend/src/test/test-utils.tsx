@@ -6,6 +6,7 @@ import { AppProviders } from "../app/providers";
 import type { ApiClient } from "../app/api/client";
 import { ApiClientError } from "../app/api/client";
 import type {
+  AdminToolManifestResponse,
   DatabaseCaseDetailResponse,
   DatabaseSearchResponse,
   DatabaseStatsResponse,
@@ -227,6 +228,15 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
   const getPatientRegistryDetail = vi.fn(async () => makePatientRegistryDetail());
   const getPatientRecords = vi.fn(async () => makePatientRegistryRecordsResponse());
   const getPatientRegistryAlerts = vi.fn(async () => makePatientRegistryAlertsResponse());
+  const getAdminTools = vi.fn(async (): Promise<AdminToolManifestResponse> => ({
+    tools: [],
+    groups: [],
+    runtime: {
+      web_search_enabled: false,
+      auth: "admin",
+      source: "src.tools.manifest",
+    },
+  }));
   const deletePatientRegistryPatient = vi.fn(async () => ({
     patient_id: 33,
     deleted_records: 1,
@@ -243,6 +253,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
   }));
 
   return {
+    getAdminTools,
     createSession,
     getSession,
     getMessages,

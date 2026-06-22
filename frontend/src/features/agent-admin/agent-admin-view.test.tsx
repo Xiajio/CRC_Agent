@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
+import type { AdminToolManifestResponse } from "../../app/api/types";
 import type { SessionState } from "../../app/api/types";
 import { createInitialSessionState } from "../../app/store/stream-reducer";
 import {
@@ -33,6 +34,52 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
     ...createInitialSessionState(),
     ...overrides,
   };
+}
+
+function makeAdminToolsManifest(): AdminToolManifestResponse {
+  return {
+    tools: [
+      {
+        name: "search_clinical_guidelines",
+        category: "rag",
+        registries: ["graph", "graph_web", "executor"],
+        route_targets: ["knowledge"],
+        graph_scope: "both",
+        planner_aliases: ["search_clinical_guidelines", "search"],
+        requires_web: false,
+        available: true,
+        state: "available",
+      },
+      {
+        name: "search_latest_research",
+        category: "web",
+        registries: ["executor", "optional"],
+        route_targets: ["knowledge", "web_search"],
+        graph_scope: "executor_only",
+        planner_aliases: ["search_latest_research"],
+        requires_web: true,
+        available: false,
+        state: "candidate",
+      },
+    ],
+    groups: [
+      { category: "rag", count: 1, available_count: 1 },
+      { category: "web", count: 1, available_count: 0 },
+    ],
+    runtime: {
+      web_search_enabled: false,
+      auth: "admin",
+      source: "src.tools.manifest",
+    },
+  };
+}
+
+function clickToolsTask() {
+  const button = screen
+    .getAllByRole("button")
+    .find((candidate) => candidate.textContent?.includes("tool surfaces"));
+  expect(button).toBeDefined();
+  fireEvent.click(button!);
 }
 
 describe("AgentAdminView", () => {
@@ -284,6 +331,144 @@ describe("AgentAdminView", () => {
     expect(page).toHaveTextContent("search_latest_research");
     expect(page).toHaveTextContent("可达性矩阵");
     expect(page).toHaveTextContent("WEB_SEARCH_ENABLED");
+  });
+
+  it("renders tool rows from the admin runtime manifest", async () => {
+    const manifest = makeAdminToolsManifest();
+    const apiClient = { getAdminTools: vi.fn(async () => manifest) };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-tools-api" })}
+        doctor={makeState({ sessionId: "doctor-tools-api" })}
+        surfaceSwitcher={<button type="button">鍚庡彴鍒囨崲鑿滃崟</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickToolsTask();
+
+    await waitFor(() => expect(apiClient.getAdminTools).toHaveBeenCalledTimes(1));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("runtime manifest");
+    expect(page).toHaveTextContent("search_clinical_guidelines");
+    expect(page).toHaveTextContent("search_latest_research");
+    expect(page).toHaveTextContent("WEB_SEARCH_ENABLED");
+    expect(page).not.toHaveTextContent("query_case_database");
+    expect(page).not.toHaveTextContent("get_patient_registry");
+  });
+
+  it("keeps the loaded runtime manifest when the active tools task is clicked again", async () => {
+    const manifest = makeAdminToolsManifest();
+    const apiClient = { getAdminTools: vi.fn(async () => manifest) };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-tools-repeat" })}
+        doctor={makeState({ sessionId: "doctor-tools-repeat" })}
+        surfaceSwitcher={<button type="button">鍚庡彴鍒囨崲鑿滃崟</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickToolsTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("search_clinical_guidelines"));
+
+    clickToolsTask();
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(apiClient.getAdminTools).toHaveBeenCalledTimes(1);
+    expect(page).toHaveTextContent("search_clinical_guidelines");
+    expect(page).not.toHaveTextContent("reading runtime manifest");
+  });
+
+  it("does not render fallback inventory while the runtime manifest is loading", async () => {
+    const apiClient = {
+      getAdminTools: vi.fn(() => new Promise<AdminToolManifestResponse>(() => {})),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-tools-loading" })}
+        doctor={makeState({ sessionId: "doctor-tools-loading" })}
+        surfaceSwitcher={<button type="button">鍚庡彴鍒囨崲鑿滃崟</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickToolsTask();
+
+    await waitFor(() => expect(apiClient.getAdminTools).toHaveBeenCalledTimes(1));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("reading runtime manifest");
+    expect(page).not.toHaveTextContent("fallback inventory");
+    expect(page).not.toHaveTextContent("query_case_database");
+    expect(page).not.toHaveTextContent("get_patient_registry");
+  });
+
+  it("renders explicit empty states when the admin runtime manifest has no tools", async () => {
+    const manifest: AdminToolManifestResponse = {
+      tools: [],
+      groups: [],
+      runtime: {
+        web_search_enabled: false,
+        auth: "admin",
+        source: "src.tools.manifest",
+      },
+    };
+    const apiClient = { getAdminTools: vi.fn(async () => manifest) };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-tools-empty" })}
+        doctor={makeState({ sessionId: "doctor-tools-empty" })}
+        surfaceSwitcher={<button type="button">鍚庡彴鍒囨崲鑿滃崟</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickToolsTask();
+
+    await waitFor(() => expect(apiClient.getAdminTools).toHaveBeenCalledTimes(1));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("runtime manifest");
+    expect(page).toHaveTextContent("runtime manifest returned no tools");
+    expect(page).toHaveTextContent("runtime manifest returned no groups");
+    expect(page).not.toHaveTextContent("reading runtime manifest");
+    expect(page).not.toHaveTextContent("fallback inventory");
+  });
+
+  it("falls back to the static inventory when the admin runtime manifest fails", async () => {
+    const apiClient = { getAdminTools: vi.fn(async () => {
+      throw new Error("Forbidden");
+    }) };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-tools-fallback" })}
+        doctor={makeState({ sessionId: "doctor-tools-fallback" })}
+        surfaceSwitcher={<button type="button">鍚庡彴鍒囨崲鑿滃崟</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickToolsTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("runtime manifest unavailable"));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("fallback inventory");
+    expect(page).toHaveTextContent("Forbidden");
+    expect(page).toHaveTextContent("search_latest_research");
   });
 
   it.each([

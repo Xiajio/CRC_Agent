@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { SessionState } from "../../app/api/types";
+import type { AdminToolItem, AdminToolManifestResponse, SessionState } from "../../app/api/types";
 
 export type AgentAdminTaskId =
   | "overview"
@@ -189,7 +189,29 @@ export const RULE_CATALOG = [
   { id: "evaluation.critic_required", group: "评估规则", label: "回答前 Critic 检查", state: "enabled" },
 ];
 
-export const TOOL_INVENTORY = [
+type AgentAdminToolRowSource = "runtime" | "fallback";
+
+export type AgentAdminToolRow = {
+  name: string;
+  group: string;
+  state: string;
+  dependency: string;
+  available: boolean;
+  registries: string;
+  routeTargets: string;
+  graphScope: string;
+  source: AgentAdminToolRowSource;
+};
+
+export type AgentAdminToolGroupRow = {
+  name: string;
+  count: number;
+  status: string;
+  availableCount?: number;
+  source: AgentAdminToolRowSource;
+};
+
+export const FALLBACK_TOOL_INVENTORY = [
   { name: "search_latest_research", group: "Web search", state: "candidate" },
   { name: "query_case_database", group: "Database", state: "available" },
   { name: "get_patient_registry", group: "Database", state: "available" },
@@ -197,11 +219,25 @@ export const TOOL_INVENTORY = [
   { name: "clinical_graph", group: "Graph-level", state: "available" },
 ];
 
+export const TOOL_INVENTORY = FALLBACK_TOOL_INVENTORY;
+
 const TOOL_GROUP_STATUS: Record<string, string> = {
   "Graph-level": "随 graph 构建注入",
   Executor: "tool_executor 可见",
   Database: "case database 节点",
   "Web search": "WEB_SEARCH_ENABLED 控制",
+};
+
+export const CATEGORY_LABELS: Record<AdminToolItem["category"], string> = {
+  clinical: "Clinical",
+  rag: "RAG",
+  web: "Web search",
+  database: "Database",
+  imaging: "Imaging",
+  pathology: "Pathology",
+  tumor: "Tumor",
+  utility: "Utility",
+  formatting: "Formatting",
 };
 
 export function buildRuleCatalogRows() {
@@ -221,7 +257,36 @@ export function buildRuleCatalogGroups() {
   }));
 }
 
-export function buildToolInventoryRows() {
+export function dependencyForRuntimeTool(tool: AdminToolItem, manifest: AdminToolManifestResponse): string {
+  if (tool.requires_web) {
+    return manifest.runtime.web_search_enabled
+      ? "WEB_SEARCH_ENABLED controls Web search reachability"
+      : "WEB_SEARCH_ENABLED disabled for this runtime";
+  }
+  if (tool.registries.includes("executor")) {
+    return "tool_executor required for executor dispatch";
+  }
+  if (tool.registries.includes("graph") || tool.registries.includes("graph_web")) {
+    return "graph manifest registration required";
+  }
+  return "available";
+}
+
+export function buildToolInventoryRows(manifest?: AdminToolManifestResponse | null): AgentAdminToolRow[] {
+  if (manifest) {
+    return manifest.tools.map((tool) => ({
+      name: tool.name,
+      group: CATEGORY_LABELS[tool.category] ?? tool.category,
+      state: tool.available ? tool.state : `${tool.state} / unavailable`,
+      dependency: dependencyForRuntimeTool(tool, manifest),
+      available: tool.available,
+      registries: tool.registries.join(" / "),
+      routeTargets: tool.route_targets.join(" / "),
+      graphScope: tool.graph_scope,
+      source: "runtime",
+    }));
+  }
+
   return TOOL_INVENTORY.map((tool) => ({
     ...tool,
     dependency:
@@ -230,18 +295,42 @@ export function buildToolInventoryRows() {
         : tool.group === "Executor"
           ? "tool_executor required for executor dispatch"
           : TOOL_GROUP_STATUS[tool.group] ?? "available",
+    available: tool.state === "available",
+    registries: "fallback inventory",
+    routeTargets: "fallback inventory",
+    graphScope: "fallback inventory",
+    source: "fallback",
   }));
 }
 
-export function buildToolReachabilityRows() {
-  return buildToolGroupRows();
+export function buildToolReachabilityRows(manifest?: AdminToolManifestResponse | null) {
+  return buildToolGroupRows(manifest);
 }
 
-export function buildToolGroupRows() {
+export function buildToolGroupRows(manifest?: AdminToolManifestResponse | null): AgentAdminToolGroupRow[] {
+  if (manifest) {
+    return manifest.groups.map((group) => {
+      const name = CATEGORY_LABELS[group.category] ?? group.category;
+      const runtimeStatus =
+        group.category === "web"
+          ? `WEB_SEARCH_ENABLED ${manifest.runtime.web_search_enabled ? "enabled" : "disabled"}`
+          : `${group.available_count}/${group.count} available`;
+
+      return {
+        name,
+        count: group.count,
+        availableCount: group.available_count,
+        status: runtimeStatus,
+        source: "runtime",
+      };
+    });
+  }
+
   return ["Graph-level", "Executor", "Database", "Web search"].map((name) => ({
     name,
     count: TOOL_INVENTORY.filter((tool) => tool.group === name).length,
     status: TOOL_GROUP_STATUS[name] ?? "available",
+    source: "fallback",
   }));
 }
 
