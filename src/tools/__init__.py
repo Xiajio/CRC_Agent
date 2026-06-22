@@ -1,226 +1,311 @@
-from .clinical_tools import list_clinical_tools
-from .basic_tools import echo, word_count
-from .rag_tools import get_guideline_tool, get_all_rag_tools, get_enhanced_rag_tools
-from .web_search_tools import (
-    get_web_search_tool,
-    get_all_web_search_tools,
-    get_clinical_web_search_tools,
-    WebSearchTool,
-    ClinicalEvidenceSearchTool,
-    DrugInfoSearchTool,
-    GuidelineUpdateSearchTool,
-    LatestResearchSearchTool,
-)
-from .database_tools import (
-    get_database_tools,
-    list_database_tools,
-)
-from .card_formatter import (
-    CardFormatter,
-    formatter,
-)
-from .tumor_screening_tools import (
-    get_tumor_screening_tools,
-    list_tumor_screening_tools,
-    tumor_screening_tool,
-    quick_tumor_check,
-)
-from .tumor_localization_tools import (
-    get_tumor_localization_tools,
-    list_tumor_localization_tools,
-    tumor_localization_tool,
-    batch_tumor_localization,
-)
-from .radiomics_tools import (
-    list_radiomics_tools,
-    unet_segmentation_tool,
-    radiomics_feature_extraction_tool,
-    lasso_feature_selection_tool,
-    comprehensive_radiomics_analysis,
-)
-from .pathology_clam_tools import (
-    get_pathology_clam_tools,
-    list_pathology_clam_tools,
-    pathology_slide_classify,
-    quick_pathology_check,
-    get_pathology_clam_status,
-)
+"""Tool registry facade.
+
+The package keeps imports lazy so metadata-only modules such as
+``src.tools.manifest`` can be imported without loading retrievers, models, or
+other heavy runtime dependencies.
+"""
+
+from __future__ import annotations
+
+from importlib import import_module
+from typing import Any
+
+
+_LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    # Basic
+    "echo": ("src.tools.basic_tools", "echo"),
+    "word_count": ("src.tools.basic_tools", "word_count"),
+    # Clinical
+    "list_clinical_tools": ("src.tools.clinical_tools", "list_clinical_tools"),
+    # RAG
+    "get_guideline_tool": ("src.tools.rag_tools", "get_guideline_tool"),
+    "get_all_rag_tools": ("src.tools.rag_tools", "get_all_rag_tools"),
+    "get_enhanced_rag_tools": ("src.tools.rag_tools", "get_enhanced_rag_tools"),
+    # Web search
+    "get_web_search_tool": ("src.tools.web_search_tools", "get_web_search_tool"),
+    "get_all_web_search_tools": (
+        "src.tools.web_search_tools",
+        "get_all_web_search_tools",
+    ),
+    "get_clinical_web_search_tools": (
+        "src.tools.web_search_tools",
+        "get_clinical_web_search_tools",
+    ),
+    "WebSearchTool": ("src.tools.web_search_tools", "WebSearchTool"),
+    "ClinicalEvidenceSearchTool": (
+        "src.tools.web_search_tools",
+        "ClinicalEvidenceSearchTool",
+    ),
+    "DrugInfoSearchTool": ("src.tools.web_search_tools", "DrugInfoSearchTool"),
+    "GuidelineUpdateSearchTool": (
+        "src.tools.web_search_tools",
+        "GuidelineUpdateSearchTool",
+    ),
+    "LatestResearchSearchTool": (
+        "src.tools.web_search_tools",
+        "LatestResearchSearchTool",
+    ),
+    # Database and formatting
+    "get_database_tools": ("src.tools.database_tools", "get_database_tools"),
+    "list_database_tools": ("src.tools.database_tools", "list_database_tools"),
+    "CardFormatter": ("src.tools.card_formatter", "CardFormatter"),
+    "formatter": ("src.tools.card_formatter", "formatter"),
+    # Tumor screening
+    "get_tumor_screening_tools": (
+        "src.tools.tumor_screening_tools",
+        "get_tumor_screening_tools",
+    ),
+    "list_tumor_screening_tools": (
+        "src.tools.tumor_screening_tools",
+        "list_tumor_screening_tools",
+    ),
+    "tumor_screening_tool": (
+        "src.tools.tumor_screening_tools",
+        "tumor_screening_tool",
+    ),
+    "quick_tumor_check": ("src.tools.tumor_screening_tools", "quick_tumor_check"),
+    # Tumor localization
+    "get_tumor_localization_tools": (
+        "src.tools.tumor_localization_tools",
+        "get_tumor_localization_tools",
+    ),
+    "list_tumor_localization_tools": (
+        "src.tools.tumor_localization_tools",
+        "list_tumor_localization_tools",
+    ),
+    "tumor_localization_tool": (
+        "src.tools.tumor_localization_tools",
+        "tumor_localization_tool",
+    ),
+    "batch_tumor_localization": (
+        "src.tools.tumor_localization_tools",
+        "batch_tumor_localization",
+    ),
+    # Radiomics
+    "list_radiomics_tools": ("src.tools.radiomics_tools", "list_radiomics_tools"),
+    "unet_segmentation_tool": (
+        "src.tools.radiomics_tools",
+        "unet_segmentation_tool",
+    ),
+    "radiomics_feature_extraction_tool": (
+        "src.tools.radiomics_tools",
+        "radiomics_feature_extraction_tool",
+    ),
+    "lasso_feature_selection_tool": (
+        "src.tools.radiomics_tools",
+        "lasso_feature_selection_tool",
+    ),
+    "comprehensive_radiomics_analysis": (
+        "src.tools.radiomics_tools",
+        "comprehensive_radiomics_analysis",
+    ),
+    # Pathology CLAM
+    "get_pathology_clam_tools": (
+        "src.tools.pathology_clam_tools",
+        "get_pathology_clam_tools",
+    ),
+    "list_pathology_clam_tools": (
+        "src.tools.pathology_clam_tools",
+        "list_pathology_clam_tools",
+    ),
+    "pathology_slide_classify": (
+        "src.tools.pathology_clam_tools",
+        "pathology_slide_classify",
+    ),
+    "quick_pathology_check": (
+        "src.tools.pathology_clam_tools",
+        "quick_pathology_check",
+    ),
+    "get_pathology_clam_status": (
+        "src.tools.pathology_clam_tools",
+        "get_pathology_clam_status",
+    ),
+}
+
+
+def _load_export(name: str) -> Any:
+    module_name, attr_name = _LAZY_EXPORTS[name]
+    value = getattr(import_module(module_name), attr_name)
+    globals()[name] = value
+    return value
+
+
+def __getattr__(name: str) -> Any:
+    if name in _LAZY_EXPORTS:
+        return _load_export(name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+def list_clinical_tools():
+    return _load_export("list_clinical_tools")()
+
+
+def get_guideline_tool():
+    return _load_export("get_guideline_tool")()
+
+
+def get_all_rag_tools():
+    return _load_export("get_all_rag_tools")()
+
+
+def get_enhanced_rag_tools():
+    return _load_export("get_enhanced_rag_tools")()
+
+
+def get_web_search_tool():
+    return _load_export("get_web_search_tool")()
+
+
+def get_all_web_search_tools():
+    return _load_export("get_all_web_search_tools")()
+
+
+def get_clinical_web_search_tools():
+    return _load_export("get_clinical_web_search_tools")()
+
+
+def get_database_tools():
+    return _load_export("get_database_tools")()
+
+
+def list_database_tools():
+    return _load_export("list_database_tools")()
+
+
+def get_tumor_screening_tools():
+    return _load_export("get_tumor_screening_tools")()
+
+
+def list_tumor_screening_tools():
+    return _load_export("list_tumor_screening_tools")()
+
+
+def get_tumor_localization_tools():
+    return _load_export("get_tumor_localization_tools")()
+
+
+def list_tumor_localization_tools():
+    return _load_export("list_tumor_localization_tools")()
+
+
+def list_radiomics_tools():
+    return _load_export("list_radiomics_tools")()
+
+
+def get_pathology_clam_tools():
+    return _load_export("get_pathology_clam_tools")()
+
+
+def list_pathology_clam_tools():
+    return _load_export("list_pathology_clam_tools")()
 
 
 def list_tools():
-    """Return full tool registry including clinical and RAG utilities."""
+    """Return full graph tool registry including clinical and RAG utilities."""
 
     tools = list_clinical_tools()
-    
-    # 添加肿瘤筛选工具
+
     try:
         tools.extend(get_tumor_screening_tools())
-        print(f"[Tools] 已加载肿瘤筛选工具")
+        print("[Tools] Loaded tumor screening tools")
     except Exception as exc:
-        print(f"[Warning] 肿瘤筛选工具初始化失败: {exc}")
-    
-    # 添加肿瘤定位工具
+        print(f"[Warning] Tumor screening tools failed to initialize: {exc}")
+
     try:
         tools.extend(get_tumor_localization_tools())
-        print(f"[Tools] 已加载肿瘤定位工具")
+        print("[Tools] Loaded tumor localization tools")
     except Exception as exc:
-        print(f"[Warning] 肿瘤定位工具初始化失败: {exc}")
-    
-    # 添加影像组学工具
+        print(f"[Warning] Tumor localization tools failed to initialize: {exc}")
+
     try:
         tools.extend(list_radiomics_tools())
-        print(f"[Tools] 已加载影像组学工具（U-Net + PyRadiomics + LASSO）")
+        print("[Tools] Loaded radiomics tools")
     except Exception as exc:
-        print(f"[Warning] 影像组学工具初始化失败: {exc}")
-    
-    # 添加病理 CLAM 工具
+        print(f"[Warning] Radiomics tools failed to initialize: {exc}")
+
     try:
         tools.extend(get_pathology_clam_tools())
-        print(f"[Tools] 已加载病理 CLAM 工具（全切片分类 + 热力图）")
+        print("[Tools] Loaded pathology CLAM tools")
     except Exception as exc:
-        print(f"[Warning] 病理 CLAM 工具初始化失败: {exc}")
-    
-    # 使用增强版 RAG 工具集（包含 list_guideline_toc 和 read_guideline_chapter）
+        print(f"[Warning] Pathology CLAM tools failed to initialize: {exc}")
+
     try:
         tools.extend(get_enhanced_rag_tools())
-        print(f"[Tools] 已加载增强版 RAG 工具集")
-    except Exception as exc:  # noqa: BLE001
+        print("[Tools] Loaded enhanced RAG tools")
+    except Exception as exc:
         raise RuntimeError(
             "Failed to initialize guideline retriever. "
-            "Ensure OPENAI_API_KEY/OPENAI_API_BASE are set (or configure LLM_API_KEY/LLM_API_BASE as fallback) "
+            "Ensure OPENAI_API_KEY/OPENAI_API_BASE are set "
+            "(or configure LLM_API_KEY/LLM_API_BASE as fallback) "
             "and run python -m src.rag.ingest (use --reset to remove old sources)."
         ) from exc
     return tools
 
 
 def list_tools_with_web_search():
-    """
-    Return full tool registry including clinical, RAG, and web search tools.
-    
-    包含联网搜索能力，可以实时获取最新资料。
-    """
+    """Return full graph tool registry including clinical, RAG, and web tools."""
+
     tools = list_tools()
     try:
         tools.extend(get_clinical_web_search_tools())
     except Exception as exc:
-        print(f"[Warning] 联网搜索工具初始化失败: {exc}")
+        print(f"[Warning] Web search tools failed to initialize: {exc}")
     return tools
 
 
 def list_all_tools():
-    """
-    Return all available tools including:
-    - Clinical tools
-    - RAG tools (all variants)
-    - Web search tools
-    - Database tools
-    - Tumor screening tools
-    - Tumor localization tools
-    - Radiomics tools
-    - Pathology CLAM tools
-    """
+    """Return all executor tools, including utility and optional web/database tools."""
+
     tools = list_clinical_tools()
-    tools.extend([word_count, echo])
-    
+    tools.extend([_load_export("word_count"), _load_export("echo")])
+
     try:
         tools.extend(get_enhanced_rag_tools())
     except Exception as exc:
-        print(f"[Warning] RAG工具初始化失败: {exc}")
-    
+        print(f"[Warning] RAG tools failed to initialize: {exc}")
+
     try:
         tools.extend(get_all_web_search_tools())
     except Exception as exc:
-        print(f"[Warning] 联网搜索工具初始化失败: {exc}")
-    
-    # 添加数据库工具
+        print(f"[Warning] Web search tools failed to initialize: {exc}")
+
     try:
-        from .database_tools import get_database_tools as get_db_tools
-        tools.extend(get_db_tools())
-        # 添加卡片格式化工具
-        from .card_formatter import formatter
-        tools.append(formatter)
-        print(f"[Info] 已加载数据库工具")
+        tools.extend(get_database_tools())
+        tools.append(_load_export("formatter"))
+        print("[Info] Loaded database tools")
     except Exception as exc:
-        print(f"[Warning] 数据库工具初始化失败: {exc}")
-    
-    # 添加肿瘤筛选工具
+        print(f"[Warning] Database tools failed to initialize: {exc}")
+
     try:
         tools.extend(get_tumor_screening_tools())
-        print(f"[Info] 已加载肿瘤筛选工具")
+        print("[Info] Loaded tumor screening tools")
     except Exception as exc:
-        print(f"[Warning] 肿瘤筛选工具初始化失败: {exc}")
-    
-    # 添加肿瘤定位工具
+        print(f"[Warning] Tumor screening tools failed to initialize: {exc}")
+
     try:
         tools.extend(get_tumor_localization_tools())
-        print(f"[Info] 已加载肿瘤定位工具")
+        print("[Info] Loaded tumor localization tools")
     except Exception as exc:
-        print(f"[Warning] 肿瘤定位工具初始化失败: {exc}")
-    
-    # 添加影像组学工具
+        print(f"[Warning] Tumor localization tools failed to initialize: {exc}")
+
     try:
         tools.extend(list_radiomics_tools())
-        print(f"[Info] 已加载影像组学工具（U-Net + PyRadiomics + LASSO）")
+        print("[Info] Loaded radiomics tools")
     except Exception as exc:
-        print(f"[Warning] 影像组学工具初始化失败: {exc}")
-    
-    # 添加病理 CLAM 工具
+        print(f"[Warning] Radiomics tools failed to initialize: {exc}")
+
     try:
         tools.extend(get_pathology_clam_tools())
-        print(f"[Info] 已加载病理 CLAM 工具（全切片分类 + 热力图）")
+        print("[Info] Loaded pathology CLAM tools")
     except Exception as exc:
-        print(f"[Warning] 病理 CLAM 工具初始化失败: {exc}")
-    
+        print(f"[Warning] Pathology CLAM tools failed to initialize: {exc}")
+
     return tools
 
 
 __all__ = [
-    # Basic
     "list_tools",
     "list_tools_with_web_search",
     "list_all_tools",
-    "list_clinical_tools",
-    "echo",
-    "word_count",
-    # RAG
-    "get_guideline_tool",
-    "get_all_rag_tools",
-    "get_enhanced_rag_tools",
-    # Web Search
-    "get_web_search_tool",
-    "get_all_web_search_tools",
-    "get_clinical_web_search_tools",
-    "WebSearchTool",
-    "ClinicalEvidenceSearchTool",
-    "DrugInfoSearchTool",
-    "GuidelineUpdateSearchTool",
-    "LatestResearchSearchTool",
-    # Database Tools
-    "get_database_tools",
-    "list_database_tools",
-    # Card Formatter (replaced IntelligentCaseQueryTool)
-    "CardFormatter",
-    "formatter",
-    # Tumor Screening Tools (新增)
-    "get_tumor_screening_tools",
-    "list_tumor_screening_tools",
-    "tumor_screening_tool",
-    "quick_tumor_check",
-    # Tumor Localization Tools (新增)
-    "get_tumor_localization_tools",
-    "list_tumor_localization_tools",
-    "tumor_localization_tool",
-    "batch_tumor_localization",
-    # Radiomics Tools (新增)
-    "list_radiomics_tools",
-    "unet_segmentation_tool",
-    "radiomics_feature_extraction_tool",
-    "lasso_feature_selection_tool",
-    "comprehensive_radiomics_analysis",
-    # Pathology CLAM Tools (新增)
-    "get_pathology_clam_tools",
-    "list_pathology_clam_tools",
-    "pathology_slide_classify",
-    "quick_pathology_check",
-    "get_pathology_clam_status",
+    *sorted(_LAZY_EXPORTS),
 ]
