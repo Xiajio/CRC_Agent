@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
+from backend.api.routes import admin as admin_routes
 from backend.api.routes import assets as asset_routes
 from backend.api.routes import chat as chat_routes
 from backend.api.routes import database as database_routes
@@ -88,6 +89,8 @@ def _requires_admin_token(request: Request) -> bool:
     if method == "DELETE" and path == "/api/patient-registry/patients":
         return True
     if method == "DELETE" and path.startswith("/api/patient-registry/patients/"):
+        return True
+    if method == "GET" and path == "/api/admin/tools":
         return True
     return False
 
@@ -209,6 +212,7 @@ def create_app() -> FastAPI:
     app.include_router(patient_registry_routes.router)
     app.include_router(upload_routes.router)
     app.include_router(asset_routes.router)
+    app.include_router(admin_routes.router)
     return app
 
 
