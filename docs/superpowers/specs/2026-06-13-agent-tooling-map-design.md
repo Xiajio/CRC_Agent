@@ -1,5 +1,7 @@
 # LangG Agent Tooling Map - 2026-06-13
 
+> Update 2026-06-22: the runtime-facing tool inventory now lives in `src/tools/manifest.py` and is exposed through `GET /api/admin/tools`. This historical map remains useful for context, but the admin console should treat the backend manifest API as the current read-only source.
+
 This document captures the current tool surface of the LangG agent project. It focuses on how tools are defined, registered, injected into graphs, and actually reached at runtime.
 
 ## Scope
@@ -383,4 +385,3 @@ It exists in the full web-search registry, but the default clinical web-search s
 6. Replace `list_database_tools()` with names derived from `ATOMIC_DATABASE_TOOLS`.
 
 7. Add a lightweight registry smoke test that imports registries and checks names without loading model weights.
-
