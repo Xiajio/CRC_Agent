@@ -10,6 +10,70 @@ export interface JsonObject {
   [key: string]: JsonValue | unknown;
 }
 
+export type AdminToolCategory =
+  | "clinical"
+  | "rag"
+  | "web"
+  | "database"
+  | "imaging"
+  | "pathology"
+  | "tumor"
+  | "utility"
+  | "formatting";
+
+export type AdminToolRegistry =
+  | "graph"
+  | "graph_web"
+  | "executor"
+  | "database_node"
+  | "optional";
+
+export type AdminToolRouteTarget =
+  | "knowledge"
+  | "case_database"
+  | "rad_agent"
+  | "path_agent"
+  | "web_search"
+  | "tool_executor"
+  | "decision";
+
+export type AdminToolGraphScope =
+  | "doctor"
+  | "patient"
+  | "both"
+  | "node_local"
+  | "executor_only";
+
+export type AdminToolState = "available" | "candidate" | "internal" | "disabled";
+
+export interface AdminToolItem {
+  name: string;
+  category: AdminToolCategory;
+  registries: AdminToolRegistry[];
+  route_targets: AdminToolRouteTarget[];
+  graph_scope: AdminToolGraphScope;
+  planner_aliases: string[];
+  requires_web: boolean;
+  available: boolean;
+  state: AdminToolState;
+}
+
+export interface AdminToolGroup {
+  category: AdminToolCategory;
+  count: number;
+  available_count: number;
+}
+
+export interface AdminToolManifestResponse {
+  tools: AdminToolItem[];
+  groups: AdminToolGroup[];
+  runtime: {
+    web_search_enabled: boolean;
+    auth: "admin";
+    source: "src.tools.manifest";
+  };
+}
+
 export type Scene = "patient" | "doctor";
 
 export interface AssetRef {
