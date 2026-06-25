@@ -54,6 +54,7 @@ from .nodes.evaluation_nodes import node_llm_judge, route_after_evaluator
 from .nodes.memory_nodes import node_memory_manager
 from .nodes.chat_main_node import node_chat_main
 from .observability import init_observability
+from .policies.turn_facts import build_turn_facts
 # [Optimization] Global Retriever warmup
 from .rag import warmup_retriever
 from .services.llm_service import LLMService
@@ -157,6 +158,17 @@ def _instrument_node(node_name: NodeName, node_fn: Callable[..., Any]) -> Callab
 
 # === 2. 路由逻辑 (Routing Logic) ===
 
+def _requires_hard_clinical_flow(state: CRCAgentState) -> bool:
+    findings = state.findings or {}
+    user_intent = findings.get("user_intent", "")
+    sub_tasks = set(findings.get("sub_tasks") or [])
+    if user_intent == "treatment_decision" or "treatment_decision" in sub_tasks:
+        return True
+    if user_intent == "clinical_assessment" or "clinical_assessment" in sub_tasks:
+        return build_turn_facts(state).requires_complete_case
+    return False
+
+
 def _plan_driven_router(state: CRCAgentState) -> str:
     """Route planner-driven tasks after intent classification."""
     from .nodes.router import dynamic_router
@@ -213,7 +225,11 @@ def _plan_driven_router(state: CRCAgentState) -> str:
         print(f"[Graph Router] dispatch pending step without planner")
         print(f"  step: [{pending_step.id}] {pending_step.description}")
         print(f"  tool: {pending_step.tool_needed}")
-        
+
+        tool_name = (pending_step.tool_needed or "").strip().lower()
+        if tool_name in {"calculator", "tool_executor"}:
+            return "tool_executor"
+
         target = classify_pending_step_target(
             pending_step.tool_needed,
             getattr(pending_step, "assignee", "") or "",
@@ -232,16 +248,8 @@ def _plan_driven_router(state: CRCAgentState) -> str:
     print(f"[Graph Router] plan complete: {completed_count} completed steps")
 
     # 定义有需要进入临床评估流程的意图集合
-    CLINICAL_INTENTS = {"treatment_decision", "clinical_assessment"}
-
     user_intent = findings.get("user_intent", "")
-    sub_tasks = findings.get("sub_tasks", [])
-
-    # Use set intersection for clearer extensible logic.
-    needs_clinical_decision = (
-        user_intent in CLINICAL_INTENTS or
-        bool(set(sub_tasks) & CLINICAL_INTENTS)
-    )
+    needs_clinical_decision = _requires_hard_clinical_flow(state)
 
     if needs_clinical_decision:
         print(f"[Graph Router] clinical decision task detected (intent={user_intent}); route -> assessment")
@@ -278,16 +286,8 @@ def route_after_rad_agent(state: CRCAgentState) -> str:
     
     # Plan complete, decide by intent.
     # 定义有需要进入临床评估流程的意图集合
-    CLINICAL_INTENTS = {"treatment_decision", "clinical_assessment"}
-
     user_intent = findings.get("user_intent", "")
-    sub_tasks = findings.get("sub_tasks", [])
-
-    # Use set intersection for clearer extensible logic.
-    needs_clinical_decision = (
-        user_intent in CLINICAL_INTENTS or
-        bool(set(sub_tasks) & CLINICAL_INTENTS)
-    )
+    needs_clinical_decision = _requires_hard_clinical_flow(state)
 
     if needs_clinical_decision:
         print(f"[Graph Router] radiology complete; clinical decision task detected (intent={user_intent}); route -> assessment")
@@ -314,14 +314,8 @@ def route_after_path_agent(state: CRCAgentState) -> str:
     if pending_step:
         return _plan_driven_router(state)
 
-    CLINICAL_INTENTS = {"treatment_decision", "clinical_assessment"}
     user_intent = findings.get("user_intent", "")
-    sub_tasks = findings.get("sub_tasks", [])
-
-    needs_clinical_decision = (
-        user_intent in CLINICAL_INTENTS or
-        bool(set(sub_tasks) & CLINICAL_INTENTS)
-    )
+    needs_clinical_decision = _requires_hard_clinical_flow(state)
 
     if needs_clinical_decision:
         print(f"[Graph Router] pathology complete; clinical decision task detected (intent={user_intent}); route -> assessment")
@@ -359,6 +353,9 @@ def route_after_doctor_clinical_entry(state: CRCAgentState) -> str:
 
 
 def route_after_doctor_planner(state: CRCAgentState) -> str:
+    if state.current_plan:
+        return _plan_driven_router(state)
+
     target = dynamic_router(state)
     if target == "clinical_entry_resolver":
         return "assessment"
@@ -416,10 +413,7 @@ def route_after_patient_chat_main(state: CRCAgentState) -> str:
     if findings.get("active_inquiry") or findings.get("active_field"):
         return "end"
 
-    clinical_intents = {"clinical_assessment", "treatment_decision"}
-    user_intent = findings.get("user_intent", "")
-    sub_tasks = findings.get("sub_tasks", [])
-    if user_intent in clinical_intents or bool(set(sub_tasks) & clinical_intents):
+    if _requires_hard_clinical_flow(state):
         return "assessment"
 
     return "end"
@@ -558,6 +552,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "case_database": NodeName.CASE_DATABASE,  # Direct route to case_database.
             "rad_agent": NodeName.RAD_AGENT,   # Direct route to radiology analysis.
             "path_agent": NodeName.PATH_AGENT, # Direct route to pathology analysis.
+            "tool_executor": NodeName.TOOL_EXECUTOR,
             "assessment": NodeName.ASSESSMENT, # Plan complete; enter clinical decision flow.
             "general_chat": NodeName.GENERAL_CHAT,
             "chat_main": NodeName.CHAT_MAIN,
@@ -576,6 +571,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "case_database": NodeName.CASE_DATABASE,  # Direct route to another case_database step.
             "rad_agent": NodeName.RAD_AGENT,   # Direct route to radiology analysis.
             "path_agent": NodeName.PATH_AGENT, # Direct route to pathology analysis.
+            "tool_executor": NodeName.TOOL_EXECUTOR,
             "assessment": NodeName.ASSESSMENT, # Plan complete; enter clinical decision flow.
             "general_chat": NodeName.GENERAL_CHAT,
             "chat_main": NodeName.CHAT_MAIN,
@@ -655,6 +651,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "knowledge": NodeName.KNOWLEDGE,   # Direct route to knowledge.
             "case_database": NodeName.CASE_DATABASE,  # Direct route to case_database.
             "rad_agent": NodeName.RAD_AGENT,   # Direct route to the next radiology step.
+            "tool_executor": NodeName.TOOL_EXECUTOR,
             "assessment": NodeName.ASSESSMENT, # Includes treatment decision; enter clinical flow.
             "general_chat": NodeName.GENERAL_CHAT,
             "chat_main": NodeName.CHAT_MAIN,
@@ -672,6 +669,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "knowledge": NodeName.KNOWLEDGE,   # Direct route to knowledge.
             "case_database": NodeName.CASE_DATABASE,  # Direct route to case_database.
             "path_agent": NodeName.PATH_AGENT, # Direct route to the next pathology step.
+            "tool_executor": NodeName.TOOL_EXECUTOR,
             "assessment": NodeName.ASSESSMENT, # Includes treatment decision; enter clinical flow.
             "general_chat": NodeName.GENERAL_CHAT,
             "chat_main": NodeName.CHAT_MAIN,
@@ -690,6 +688,7 @@ def build_doctor_graph(settings: Settings) -> Runnable:
             "case_database": NodeName.CASE_DATABASE,
             "rad_agent": NodeName.RAD_AGENT,
             "path_agent": NodeName.PATH_AGENT,
+            "tool_executor": NodeName.TOOL_EXECUTOR,
             "assessment": NodeName.ASSESSMENT,
             "general_chat": NodeName.GENERAL_CHAT,
             "chat_main": NodeName.CHAT_MAIN,

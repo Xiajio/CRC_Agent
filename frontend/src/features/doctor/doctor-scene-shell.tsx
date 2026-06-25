@@ -35,6 +35,7 @@ import {
 } from "./doctor-consultation-view";
 import { DoctorDatabaseView } from "./doctor-database-view";
 import { DoctorMultimodalView } from "./doctor-multimodal-view";
+import { DoctorReportDraftView } from "./doctor-report-draft-view";
 import { useDoctorViewState, type DoctorTab } from "./use-doctor-view-state";
 
 type DoctorSceneShellProps = {
@@ -81,7 +82,7 @@ const DOCTOR_NAV_ITEMS: NavItem[] = [
   { key: "consultation", label: "会诊" },
   { key: "database", label: "患者数据库" },
   { key: "multimodal", label: "多模态" },
-  { key: "reports", label: "报表", disabled: true },
+  { key: "reports", label: "报表" },
 ];
 
 const PRODUCTION_DOCTOR_NAV_ITEMS = DOCTOR_NAV_ITEMS.filter((item) => !item.disabled);
@@ -538,7 +539,7 @@ export function DoctorSceneShell({
   }
 
   function handleTabChange(tab: string) {
-    if (tab !== "consultation" && tab !== "database" && tab !== "multimodal") {
+    if (tab !== "consultation" && tab !== "database" && tab !== "multimodal" && tab !== "reports") {
       return;
     }
 
@@ -622,6 +623,41 @@ export function DoctorSceneShell({
           isStreaming={isStreaming}
           disabled={disabled}
           onCardPromptRequest={onCardPromptRequest}
+          patientContext={cardPatientContext}
+        />
+      </div>
+    );
+  }
+
+  if (activeDoctorTab === "reports") {
+    const patientContext: CardPatientContext = {};
+    if (registryPatientId !== null) {
+      patientContext.registry_patient_id = registryPatientId;
+    }
+    if (caseDatabasePatientId !== null) {
+      patientContext.case_database_patient_id = caseDatabasePatientId;
+    }
+    const cardPatientContext =
+      providedPatientContext && Object.keys(providedPatientContext).length > 0
+        ? { ...patientContext, ...providedPatientContext }
+        : Object.keys(patientContext).length > 0
+          ? patientContext
+          : undefined;
+
+    return (
+      <div
+        ref={setSceneElement}
+        className="clinical-app-shell clinical-app-shell-doctor clinical-app-shell-reports"
+        data-testid="doctor-scene"
+      >
+        {topNav}
+        <DoctorReportDraftView
+          registryPatientId={registryPatientId}
+          caseDatabasePatientId={caseDatabasePatientId}
+          messages={messages}
+          isStreaming={isStreaming}
+          disabled={disabled}
+          onReportPromptRequest={onCardPromptRequest}
           patientContext={cardPatientContext}
         />
       </div>

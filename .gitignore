@@ -32,10 +32,16 @@ tests/backend/*
 !tests/backend/test_assets_api.py
 !tests/backend/test_auth_security.py
 !tests/backend/test_context_maintenance.py
+!tests/backend/test_general_nodes.py
+!tests/backend/test_graph_builder_routing.py
 !tests/backend/test_graph_service_streaming.py
+!tests/backend/test_intent_nodes.py
+!tests/backend/test_planner_scenario_missing_context.py
 !tests/backend/test_patient_context_resolver.py
 !tests/backend/test_patient_event_sourcing.py
 !tests/backend/test_patient_registry_anatomy_regions.py
+!tests/backend/test_routing_policy_scenario_fields.py
+!tests/backend/test_restore_legacy_database_and_assessment.py
 !tests/backend/test_anatomy_region_map.py
 !tests/backend/test_backfill_tumor_region_codes.py
 !tests/backend/test_scene_sessions.py

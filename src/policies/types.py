@@ -21,6 +21,9 @@ class TurnFacts(BaseModel):
     active_field: str = ""
     pending_patient_data: str = ""
     pending_patient_id: str = ""
+    requires_complete_case: bool = False
+    response_mode: str = "clinical_answer"
+    missing_info_policy: str = "soft_context"
     encounter_track: str = ""
     clinical_stage: str = ""
     triage_switch_prompt_active: bool = False

@@ -42,6 +42,8 @@ from ..prompts.general_prompts import (
     PLAN_FOLLOWUP_USER_PROMPT_TEMPLATE,
     SIMPLE_FACT_SYSTEM_PROMPT,
     SIMPLE_FACT_USER_PROMPT_TEMPLATE,
+    GENERAL_WITH_GAPS_SYSTEM_PROMPT,
+    GENERAL_WITH_GAPS_USER_PROMPT_TEMPLATE,
 )
 
 
@@ -107,6 +109,23 @@ def _fast_general_chat_reply(user_input: str) -> Optional[str]:
     if normalized in _GOODBYE_INPUTS:
         return _FAST_GENERAL_CHAT_REPLIES["goodbye"]
     return None
+
+
+GENERAL_WITH_GAPS_RESPONSE_MODES = {
+    "general_with_gaps",
+    "case_summary_with_gaps",
+    "partial_explanation",
+    "guided_collection",
+}
+
+
+def _clear_stale_inquiry_fields() -> Dict[str, Any]:
+    return {
+        "active_inquiry": False,
+        "active_field": None,
+        "inquiry_message": None,
+        "inquiry_type": None,
+    }
 
 def _is_simple_fact_question(user_input: str) -> bool:
     """
@@ -249,6 +268,11 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
         ("system", PLAN_FOLLOWUP_SYSTEM_PROMPT),
         ("human", PLAN_FOLLOWUP_USER_PROMPT_TEMPLATE),
     ])
+
+    general_with_gaps_prompt = ChatPromptTemplate.from_messages([
+        ("system", GENERAL_WITH_GAPS_SYSTEM_PROMPT),
+        ("human", GENERAL_WITH_GAPS_USER_PROMPT_TEMPLATE),
+    ])
     
     base_chain = base_prompt | model
     redirect_chain = redirect_prompt | model
@@ -262,6 +286,37 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
         pinned_context = _build_pinned_context(state)
         summary_memory = _build_summary_memory(state)
         recent_conversation = _get_recent_conversation_history(state, max_turns=5)
+        response_mode = str((state.findings or {}).get("response_mode") or "")
+        information_gaps = (state.findings or {}).get("information_gaps") or []
+
+        if response_mode in GENERAL_WITH_GAPS_RESPONSE_MODES or information_gaps:
+            response = _invoke_with_streaming(
+                general_with_gaps_prompt | model,
+                {
+                    "user_question": user_text,
+                    "information_gaps": information_gaps,
+                    "summary_memory": summary_memory,
+                    "pinned_context": pinned_context,
+                    "recent_conversation": recent_conversation,
+                },
+                streaming,
+                show_thinking,
+                node_name=stream_node_name,
+            )
+            msg = _ensure_message(response, include_thinking=show_thinking)
+            return {
+                "messages": [msg],
+                "clinical_stage": "General",
+                "missing_critical_data": [],
+                "findings": {
+                    **_clear_stale_inquiry_fields(),
+                    "response_mode": "general_answer",
+                    "information_gaps": [],
+                    "missing_info_policy": "none",
+                },
+                "error": None,
+            }
+
         fast_reply = _fast_general_chat_reply(user_text)
         if fast_reply is not None:
             return {

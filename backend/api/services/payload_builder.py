@@ -13,6 +13,7 @@ CONTEXT_PAYLOAD_ALLOWLIST = {
     "fixture_case",
     "fixture_tick_delay_ms",
     "case_database_patient_id",
+    "registry_patient_id",
 }
 PATIENT_CONTEXT_REQUIRED_KEYS = {
     "patient_version",

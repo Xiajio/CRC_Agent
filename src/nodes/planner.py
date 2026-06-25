@@ -18,6 +18,7 @@ from ..prompts import (
     PLANNING_USER_PROMPT_TEMPLATE,
     MULTI_TASK_USER_PROMPT_TEMPLATE,
 )
+from ..policies.turn_facts import build_turn_facts
 from .patient_identity import first_present as _first_present
 
 
@@ -281,7 +282,7 @@ def _detect_missing_context(state: CRCAgentState) -> Dict[str, str]:
             missing["sub_tasks"] = "ask_user"  # 让 LLM/用户澄清子任务列表
 
     # 4. 临床评估：需要病理确认和基本分期
-    if intent == "clinical_assessment":
+    if intent == "clinical_assessment" and build_turn_facts(state).requires_complete_case:
         if not ((profile and profile.pathology_confirmed) or inline_ctx["pathology_confirmed"]):
             missing["pathology_confirmed"] = "case_database_query"
         tnm = (profile and profile.tnm_staging) or findings.get("tnm_staging") or {}

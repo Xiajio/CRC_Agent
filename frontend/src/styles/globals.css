@@ -1717,6 +1717,53 @@ body {
   padding: var(--space-4) var(--space-5) var(--space-5);
 }
 
+.clinical-report-draft-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, min(980px, 100%));
+  justify-content: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+}
+
+.clinical-report-draft-card {
+  min-width: 0;
+}
+
+.clinical-report-draft-body,
+.clinical-report-draft-print-area {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+.clinical-report-draft-context {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-sm);
+}
+
+.clinical-report-draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.clinical-report-draft-preview .clinical-panel-header {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.clinical-report-draft-text {
+  margin: 0;
+  max-height: min(62vh, 760px);
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--color-text);
+  font: 500 var(--font-sm) / 1.75 var(--font-family-base);
+}
+
 .anatomy-highlight-card {
   min-width: 0;
 }
@@ -3494,7 +3541,7 @@ body {
   }
 
   .clinical-top-nav-doctor .clinical-nav-tabs {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .clinical-top-nav-patient .clinical-nav-tabs {
@@ -3537,6 +3584,16 @@ body {
       "right";
     padding: 8px;
     gap: 8px;
+  }
+
+  .clinical-report-draft-dashboard {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .clinical-report-draft-body,
+  .clinical-report-draft-print-area {
+    padding: var(--space-3) var(--space-4) var(--space-4);
   }
 
   .clinical-summary-row {
@@ -5017,5 +5074,41 @@ body {
   .clinical-surface-menu {
     right: auto;
     left: 0;
+  }
+}
+
+@media print {
+  .clinical-app-shell-reports {
+    background: white;
+    color: black;
+  }
+
+  .clinical-app-shell-reports .clinical-top-nav,
+  .clinical-app-shell-reports .clinical-report-draft-card:not(.clinical-report-draft-preview),
+  .clinical-app-shell-reports .clinical-report-draft-preview .clinical-panel-header {
+    display: none !important;
+  }
+
+  .clinical-app-shell-reports .clinical-report-draft-dashboard {
+    display: block;
+    padding: 0;
+  }
+
+  .clinical-app-shell-reports .clinical-report-draft-preview {
+    border: 0;
+    background: white;
+    box-shadow: none;
+  }
+
+  .clinical-app-shell-reports .clinical-report-draft-print-area {
+    padding: 0;
+  }
+
+  .clinical-app-shell-reports .clinical-report-draft-text {
+    max-height: none;
+    overflow: visible;
+    color: black;
+    font-size: 12pt;
+    line-height: 1.65;
   }
 }

@@ -22,12 +22,17 @@ def decide_after_intent(facts: TurnFacts, flags: DerivedRoutingFlags) -> RouteDe
         return _decision("knowledge", "intent_knowledge_query")
 
     if not facts.multi_task_mode and facts.user_intent == "clinical_assessment":
+        if not facts.requires_complete_case:
+            return _decision("chat_main", "intent_clinical_assessment_soft")
         return _decision("clinical_entry_resolver", "intent_clinical_assessment")
 
     if not facts.multi_task_mode and facts.user_intent in {"case_database_query", "imaging_query"}:
         return _decision("case_database", f"intent_{facts.user_intent}")
 
-    if facts.user_intent in {"clinical_assessment", "treatment_decision"}:
+    if facts.user_intent == "clinical_assessment" and facts.requires_complete_case:
+        return _decision("clinical_entry_resolver", "intent_clinical_assessment")
+
+    if facts.user_intent == "treatment_decision":
         return _decision("clinical_entry_resolver", f"intent_{facts.user_intent}")
 
     return _decision("planner", "fallback_planner")
@@ -49,7 +54,11 @@ def decide_dynamic(facts: TurnFacts, flags: DerivedRoutingFlags) -> RouteDecisio
     if flags.should_shortcut_to_general_chat:
         return _decision("general_chat", f"intent_{facts.user_intent or 'general_chat'}")
 
-    if facts.active_inquiry and facts.user_intent in {"clinical_assessment", "treatment_decision"}:
+    if (
+        facts.active_inquiry
+        and facts.user_intent in {"clinical_assessment", "treatment_decision"}
+        and facts.requires_complete_case
+    ):
         return _decision("assessment", "active_inquiry_assessment")
 
     if facts.user_intent == "imaging_analysis":
@@ -67,7 +76,9 @@ def decide_dynamic(facts: TurnFacts, flags: DerivedRoutingFlags) -> RouteDecisio
         return _decision("clinical_entry_resolver", "intent_treatment_decision")
 
     if facts.user_intent == "clinical_assessment":
-        return _decision("clinical_entry_resolver", "intent_clinical_assessment")
+        if facts.requires_complete_case:
+            return _decision("clinical_entry_resolver", "intent_clinical_assessment")
+        return _decision("chat_main", "intent_clinical_assessment_soft")
 
     return _decision("assessment", "fallback_assessment")
 
@@ -84,6 +95,9 @@ def decide_after_assessment(facts: TurnFacts, flags: DerivedRoutingFlags) -> Rou
 
     if facts.clinical_stage == "Inquiry_Pending":
         return _decision("end_turn", "clinical_stage_inquiry_pending")
+
+    if facts.user_intent == "clinical_assessment" and not facts.requires_complete_case:
+        return _decision("chat_main", "soft_clinical_assessment_complete")
 
     if flags.can_fast_pass_decision:
         return _decision("decision", "fast_pass_decision")

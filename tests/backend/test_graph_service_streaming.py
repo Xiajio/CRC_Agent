@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, StateGraph
 
 from backend.api.services.graph_service import (
@@ -29,6 +30,7 @@ from backend.api.services.patient_context_resolver import (
 from backend.api.services.patient_registry_service import PatientRegistryService
 from backend.api.services.session_store import InMemorySessionStore, SessionMeta
 from src.nodes.assessment_nodes import node_doctor_assessment, node_patient_assessment
+from src.nodes.intent_nodes import node_intent_classifier
 from src.nodes.node_utils import _invoke_with_streaming
 from src.state import CRCAgentState
 
@@ -232,6 +234,33 @@ class _UnusedAssessmentModel:
         return _unexpected_invoke
 
 
+class _UnusedIntentModel:
+    def __init__(self) -> None:
+        self.structured_invocations = 0
+        self.raw_invocations = 0
+
+    def with_structured_output(self, _schema):
+        class _UnexpectedStructuredChain:
+            def __init__(self, owner: "_UnusedIntentModel") -> None:
+                self._owner = owner
+
+            def bind(self, **_kwargs):
+                def _unexpected_invoke(_payload):
+                    self._owner.structured_invocations += 1
+                    raise AssertionError("report draft fast path should not invoke structured intent output.")
+
+                return RunnableLambda(_unexpected_invoke)
+
+        return _UnexpectedStructuredChain(self)
+
+    def bind(self, **_kwargs):
+        def _unexpected_invoke(_payload):
+            self.raw_invocations += 1
+            raise AssertionError("report draft fast path should not invoke raw intent fallback.")
+
+        return RunnableLambda(_unexpected_invoke)
+
+
 
 def make_chat_request(text: str, *, trace_id: str | None = None) -> dict[str, object]:
     request: dict[str, object] = {
@@ -249,6 +278,44 @@ async def collect_sse_events(stream: AsyncIterator[str]) -> list[dict[str, objec
             continue
         events.append(_decode_sse_event(chunk))
     return events
+
+
+def test_report_draft_intent_routes_to_general_chat_without_model_calls() -> None:
+    model = _UnusedIntentModel()
+    runnable = node_intent_classifier(model=model, streaming=False, show_thinking=False)
+    report_prompt = (
+        "\u8bf7\u751f\u6210\u75c5\u4f8b\u6458\u8981\u8349\u7a3f\u3002"
+        "\u5373\u4f7f\u8d44\u6599\u7f3a\u5931\uff0c\u4e5f\u5fc5\u987b\u5148\u8f93\u51fa"
+        "\u75c5\u4f8b/\u62a5\u544a\u8349\u7a3f\u6a21\u677f\u3002"
+    )
+
+    result = runnable(
+        CRCAgentState(
+            messages=[HumanMessage(content=report_prompt)],
+            registry_patient_id=128,
+            findings={
+                "encounter_track": "crc_clinical",
+                "active_inquiry": True,
+                "active_field": "pathology",
+                "inquiry_message": "\u8bf7\u8865\u5145\u75c5\u7406\u62a5\u544a",
+                "inquiry_type": "pathology_required",
+            },
+        )
+    )
+
+    assert model.structured_invocations == 0
+    assert model.raw_invocations == 0
+    assert result["findings"]["user_intent"] == "general_chat"
+    assert result["findings"]["active_inquiry"] is False
+    assert result["findings"]["active_field"] is None
+    assert result["findings"]["inquiry_message"] is None
+    assert result["findings"]["inquiry_type"] is None
+    assert result["findings"]["clinical_task_profile"]["task_type"] == "document_draft"
+    assert result["findings"]["requires_complete_case"] is False
+    assert result["findings"]["missing_info_policy"] == "answer_with_gaps"
+    assert result["findings"]["response_mode"] != "decision_blocked"
+    assert result["clinical_stage"] == "Intent"
+    assert result["error"] is None
 
 
 @pytest.mark.asyncio

@@ -71,6 +71,31 @@ def _normalize_dict(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
 
 
+def _finding_or_profile_value(findings: dict[str, Any], field_name: str) -> Any:
+    if field_name in findings:
+        return findings.get(field_name)
+    profile = _normalize_dict(findings.get("clinical_task_profile"))
+    return profile.get(field_name)
+
+
+def _scenario_fields(findings: dict[str, Any], user_intent: str) -> tuple[bool, str, str]:
+    requires_complete_case = _normalize_bool(
+        _finding_or_profile_value(findings, "requires_complete_case")
+    )
+    response_mode = _normalize_text(
+        _finding_or_profile_value(findings, "response_mode")
+    ) or "clinical_answer"
+    missing_info_policy = _normalize_text(
+        _finding_or_profile_value(findings, "missing_info_policy")
+    ) or "soft_context"
+
+    if user_intent == "treatment_decision":
+        requires_complete_case = True
+        missing_info_policy = "hard_inquiry"
+
+    return requires_complete_case, response_mode, missing_info_policy
+
+
 def _latest_user_text(state: CRCAgentState) -> str:
     for message in reversed(state.messages or []):
         content = getattr(message, "content", None)
@@ -264,12 +289,12 @@ def _stage_complete(state: CRCAgentState) -> bool:
     return all(stage.values())
 
 
-def _needs_full_decision(state: CRCAgentState, user_intent: str) -> bool:
+def _needs_full_decision(state: CRCAgentState, user_intent: str, requires_complete_case: bool) -> bool:
     if _normalize_text(state.critic_verdict).upper() == "REJECTED":
         return True
     if user_intent == "treatment_decision":
         return True
-    if _pathology_confirmed(state) and not _decision_exists(state):
+    if requires_complete_case and _pathology_confirmed(state) and not _decision_exists(state):
         return True
     return False
 
@@ -293,6 +318,7 @@ def build_turn_facts(state: CRCAgentState) -> TurnFacts:
     can_fast_pass_decision = pathology_confirmed and patient_profile_locked and stage_complete
     decision_strategy = _normalize_text(findings.get("decision_strategy"))
     evaluator_scores = _normalize_evaluator_scores(evaluation_report)
+    requires_complete_case, response_mode, missing_info_policy = _scenario_fields(findings, user_intent)
 
     return TurnFacts(
         user_intent=user_intent,
@@ -306,6 +332,9 @@ def build_turn_facts(state: CRCAgentState) -> TurnFacts:
         active_field=_normalize_text(findings.get("active_field")),
         pending_patient_data=_normalize_text(findings.get("pending_patient_data")),
         pending_patient_id=_normalize_text(findings.get("pending_patient_id")),
+        requires_complete_case=requires_complete_case,
+        response_mode=response_mode,
+        missing_info_policy=missing_info_policy,
         encounter_track=_normalize_text(state.encounter_track or findings.get("encounter_track")),
         clinical_stage=_normalize_text(state.clinical_stage or findings.get("clinical_stage")),
         triage_switch_prompt_active=_normalize_bool(findings.get("triage_switch_prompt_active")),
@@ -316,7 +345,7 @@ def build_turn_facts(state: CRCAgentState) -> TurnFacts:
         stage_complete=stage_complete,
         tumor_location=_normalize_text(findings.get("tumor_location")),
         patient_profile_locked=patient_profile_locked,
-        needs_full_decision=_needs_full_decision(state, user_intent),
+        needs_full_decision=_needs_full_decision(state, user_intent, requires_complete_case),
         decision_exists=decision_exists,
         decision_strategy=decision_strategy or "full",
         iteration_count=_safe_int(state.iteration_count, default=0),
@@ -338,6 +367,7 @@ def derive_routing_flags(facts: TurnFacts) -> DerivedRoutingFlags:
         facts.pathology_confirmed
         and facts.patient_profile_locked
         and facts.stage_complete
+        and facts.requires_complete_case
     )
 
     return DerivedRoutingFlags(

@@ -90,9 +90,224 @@ _TRIAGE_SWITCH_INTENT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "off_topic_redirect": ("\u5929\u6c14", "\u804a\u5929", "\u95f2\u804a", "\u7b11\u8bdd"),
 }
 
+_REPORT_DRAFT_EXACT_MARKERS = (
+    "\u75c5\u4f8b\u6458\u8981\u8349\u7a3f",
+    "\u4f1a\u8bca\u62a5\u544a\u8349\u7a3f",
+    "\u4ea4\u63a5\u8bb0\u5f55\u8349\u7a3f",
+    "\u75c5\u4f8b/\u62a5\u544a\u8349\u7a3f",
+    "\u62a5\u544a\u8349\u7a3f",
+    "case summary draft",
+    "report draft",
+)
+
+_REPORT_DRAFT_DOCUMENT_MARKERS = (
+    "\u75c5\u4f8b",
+    "\u75c5\u5386",
+    "\u62a5\u544a",
+    "\u4f1a\u8bca",
+    "\u4ea4\u63a5\u8bb0\u5f55",
+    "case",
+    "report",
+    "summary",
+)
+
+_REPORT_DRAFT_ACTION_MARKERS = (
+    "\u8bf7\u751f\u6210",
+    "\u751f\u6210",
+    "\u8f93\u51fa",
+    "\u6574\u7406",
+    "\u64b0\u5199",
+    "draft",
+    "write",
+    "generate",
+)
+
+_DOCUMENT_DRAFT_MARKERS = _REPORT_DRAFT_EXACT_MARKERS + (
+    "\u8349\u7a3f",
+    "\u6587\u4e66",
+    "\u6a21\u677f",
+    "\u5199\u4e00\u4efd",
+)
+
+_CASE_SUMMARY_MARKERS = (
+    "\u75c5\u4f8b\u6458\u8981",
+    "\u75c5\u5386\u6458\u8981",
+    "\u75c5\u60c5\u6458\u8981",
+    "\u603b\u7ed3\u75c5\u4f8b",
+    "\u6574\u7406\u75c5\u4f8b",
+    "\u75c5\u60c5\u603b\u7ed3",
+)
+
+_MISSING_INFO_GUIDANCE_MARKERS = (
+    "\u8fd8\u7f3a\u4ec0\u4e48",
+    "\u7f3a\u4ec0\u4e48\u8d44\u6599",
+    "\u9700\u8981\u8865\u5145\u4ec0\u4e48",
+    "\u8fd8\u9700\u8981\u54ea\u4e9b",
+    "\u9700\u8981\u54ea\u4e9b\u8d44\u6599",
+    "\u8d44\u6599\u9f50\u4e0d\u9f50",
+)
+
+_EXPLANATION_MARKERS = (
+    "\u5e2e\u6211\u770b\u770b",
+    "\u770b\u770b",
+    "\u89e3\u91ca",
+    "\u4ec0\u4e48\u610f\u601d",
+    "\u600e\u4e48\u7406\u89e3",
+    "\u75c5\u7406\u600e\u4e48\u770b",
+    "\u62a5\u544a\u600e\u4e48\u770b",
+    "\u89e3\u8bfb",
+)
+
+_TREATMENT_DECISION_MARKERS = (
+    "\u6cbb\u7597\u65b9\u6848",
+    "\u6cbb\u7597\u5efa\u8bae",
+    "\u600e\u4e48\u6cbb",
+    "\u5982\u4f55\u6cbb\u7597",
+    "\u4e0b\u4e00\u6b65",
+    "\u4e0b\u4e00\u6b65\u600e\u4e48\u529e",
+    "\u540e\u7eed\u600e\u4e48\u529e",
+    "\u9700\u8981\u624b\u672f",
+    "\u9700\u8981\u5316\u7597",
+    "\u9700\u8981\u653e\u7597",
+    "\u7528\u836f",
+    "\u65b9\u6848\u600e\u4e48\u5b9a",
+)
+
+_STAGING_DECISION_MARKERS = (
+    "\u5206\u671f",
+    "tnm",
+    "\u4e34\u5e8a\u5206\u671f",
+    "\u75c5\u7406\u5206\u671f",
+    "\u8bc4\u4f30\u5206\u671f",
+)
+
+_SYMPTOM_TRIAGE_MARKERS = (
+    "\u8179\u75db",
+    "\u4fbf\u8840",
+    "\u53d1\u70ed",
+    "\u5455\u5410",
+    "\u8179\u6cfb",
+    "\u75bc",
+    "\u4e0d\u8212\u670d",
+)
+
+
+def _has_any_marker(compact_text: str, markers: tuple[str, ...]) -> bool:
+    return any(marker.lower() in compact_text for marker in markers)
+
 
 def _compact_lower_text(text: str) -> str:
     return "".join((text or "").strip().split()).lower()
+
+
+def _looks_like_report_draft_request(user_text: str) -> bool:
+    compact = _compact_lower_text(user_text)
+    if not compact:
+        return False
+    if any(marker in compact for marker in _REPORT_DRAFT_EXACT_MARKERS):
+        return True
+    return (
+        ("\u8349\u7a3f" in compact or "draft" in compact)
+        and any(marker in compact for marker in _REPORT_DRAFT_DOCUMENT_MARKERS)
+        and any(marker in compact for marker in _REPORT_DRAFT_ACTION_MARKERS)
+    )
+
+
+def _clinical_task_profile_from_text(
+    user_text: str,
+    intent: str,
+    sub_tasks: list[str] | None = None,
+) -> dict[str, Any]:
+    compact = _compact_lower_text(user_text)
+    tasks = set(sub_tasks or [])
+
+    if _has_any_marker(compact, _MISSING_INFO_GUIDANCE_MARKERS):
+        return {
+            "task_type": "missing_info_guidance",
+            "requires_complete_case": False,
+            "missing_info_policy": "guide_collection",
+            "response_mode": "guided_collection",
+            "reason": "deterministic_rule:missing_info_guidance",
+        }
+
+    if (
+        intent != "treatment_decision"
+        and "treatment_decision" not in tasks
+        and _has_any_marker(compact, _EXPLANATION_MARKERS)
+    ):
+        return {
+            "task_type": "explain_existing_info",
+            "requires_complete_case": False,
+            "missing_info_policy": "answer_with_gaps",
+            "response_mode": "partial_explanation",
+            "reason": "deterministic_rule:explain_existing_info",
+        }
+
+    if (
+        intent == "treatment_decision"
+        or "treatment_decision" in tasks
+        or _has_any_marker(compact, _TREATMENT_DECISION_MARKERS)
+    ):
+        return {
+            "task_type": "treatment_decision",
+            "requires_complete_case": True,
+            "missing_info_policy": "hard_inquiry",
+            "response_mode": "decision_blocked",
+            "reason": "deterministic_rule:treatment_or_next_step_decision",
+        }
+
+    if _has_any_marker(compact, _STAGING_DECISION_MARKERS):
+        return {
+            "task_type": "staging_assessment",
+            "requires_complete_case": True,
+            "missing_info_policy": "hard_inquiry",
+            "response_mode": "decision_blocked",
+            "reason": "deterministic_rule:staging_assessment",
+        }
+
+    if _looks_like_report_draft_request(user_text) or _has_any_marker(compact, _DOCUMENT_DRAFT_MARKERS):
+        return {
+            "task_type": "document_draft",
+            "requires_complete_case": False,
+            "missing_info_policy": "answer_with_gaps",
+            "response_mode": "case_summary_with_gaps",
+            "reason": "deterministic_rule:document_draft",
+        }
+
+    if _has_any_marker(compact, _CASE_SUMMARY_MARKERS):
+        return {
+            "task_type": "case_summary",
+            "requires_complete_case": False,
+            "missing_info_policy": "answer_with_gaps",
+            "response_mode": "case_summary_with_gaps",
+            "reason": "deterministic_rule:case_summary",
+        }
+
+    if _has_any_marker(compact, _EXPLANATION_MARKERS):
+        return {
+            "task_type": "explain_existing_info",
+            "requires_complete_case": False,
+            "missing_info_policy": "answer_with_gaps",
+            "response_mode": "partial_explanation",
+            "reason": "deterministic_rule:explain_existing_info",
+        }
+
+    if intent == "clinical_assessment" and _has_any_marker(compact, _SYMPTOM_TRIAGE_MARKERS):
+        return {
+            "task_type": "symptom_triage",
+            "requires_complete_case": False,
+            "missing_info_policy": "none",
+            "response_mode": "clinical_answer",
+            "reason": "deterministic_rule:symptom_triage",
+        }
+
+    return {
+        "task_type": "general_clinical_question",
+        "requires_complete_case": False,
+        "missing_info_policy": "none",
+        "response_mode": "general_with_gaps",
+        "reason": "deterministic_rule:general_clinical_question",
+    }
 
 
 def _looks_like_triage_switch_request(user_text: str, intent: str) -> bool:
@@ -167,14 +382,32 @@ def node_intent_classifier(model, streaming: bool = False, show_thinking: bool =
         intent: str,
         preserve_outpatient_triage: bool,
         explicit_switch_request: bool,
+        *,
+        user_text: str,
+        sub_tasks: list[str] | None = None,
+        clear_inquiry: bool = False,
     ) -> Dict[str, Any]:
+        profile = _clinical_task_profile_from_text(user_text, intent, sub_tasks)
         findings_update: Dict[str, Any] = {
             "user_intent": intent,
             "plan_followup": False,
             "multi_task_mode": False,
+            "clinical_task_profile": profile,
+            "requires_complete_case": profile["requires_complete_case"],
+            "missing_info_policy": profile["missing_info_policy"],
+            "response_mode": profile["response_mode"],
         }
         if _is_active_outpatient_triage(state):
             findings_update["triage_explicit_switch_request"] = explicit_switch_request
+        if clear_inquiry:
+            findings_update.update(
+                {
+                    "active_inquiry": False,
+                    "active_field": None,
+                    "inquiry_message": None,
+                    "inquiry_type": None,
+                }
+            )
         if not preserve_outpatient_triage and intent in {"general_chat", "knowledge_query", "off_topic_redirect"}:
             findings_update.update(
                 {
@@ -202,15 +435,28 @@ def node_intent_classifier(model, streaming: bool = False, show_thinking: bool =
         text_compact = "".join(user_text.strip().split())
         preserve_outpatient_triage = _is_active_outpatient_triage(state)
 
-        # lightweight fast-paths to save tokens and avoid unnecessary model calls
-        if text_lower in {"", " ", "\n", "\t"}:
+        def _fast_path_updates(intent: str, *, clear_inquiry: bool = False) -> Dict[str, Any]:
+            findings_update = _base_findings(
+                state,
+                intent,
+                preserve_outpatient_triage,
+                False,
+                user_text=user_text,
+                clear_inquiry=clear_inquiry,
+            )
             updates = {
-                "findings": _base_findings(state, "off_topic_redirect", preserve_outpatient_triage, False),
+                "findings": findings_update,
                 "clinical_stage": "Intent",
                 "error": None,
             }
-            updates.update(_track_runtime_resets("off_topic_redirect", preserve_outpatient_triage))
+            if not preserve_outpatient_triage and findings_update.get("active_inquiry") is False:
+                updates["missing_critical_data"] = []
+            updates.update(_track_runtime_resets(intent, preserve_outpatient_triage))
             return updates
+
+        # lightweight fast-paths to save tokens and avoid unnecessary model calls
+        if text_lower in {"", " ", "\n", "\t"}:
+            return _fast_path_updates("off_topic_redirect")
 
         if text_lower in {"hi", "hello", "hey"} or text_compact in {
             "\u4f60\u597d",
@@ -221,18 +467,10 @@ def node_intent_classifier(model, streaming: bool = False, show_thinking: bool =
             "\u5728\u5417",
             "\u5728\u55ce",
         }:
-            return {
-                "findings": _base_findings(state, "general_chat", preserve_outpatient_triage, False),
-                "clinical_stage": "Intent",
-                "error": None,
-            }
+            return _fast_path_updates("general_chat")
 
         if text_compact in _META_CAPABILITY_QUERIES:
-            return {
-                "findings": _base_findings(state, "general_chat", preserve_outpatient_triage, False),
-                "clinical_stage": "Intent",
-                "error": None,
-            }
+            return _fast_path_updates("general_chat")
 
         if text_compact in {
             "\u8c22\u8c22",
@@ -245,18 +483,13 @@ def node_intent_classifier(model, streaming: bool = False, show_thinking: bool =
             "thankyou!",
             "thankyou.",
         }:
-            return {
-                "findings": _base_findings(state, "general_chat", preserve_outpatient_triage, False),
-                "clinical_stage": "Intent",
-                "error": None,
-            }
+            return _fast_path_updates("general_chat")
 
         if any(k in text_lower for k in ["chat history", "conversation history", "chat log"]):
-            return {
-                "findings": _base_findings(state, "general_chat", preserve_outpatient_triage, False),
-                "clinical_stage": "Intent",
-                "error": None,
-            }
+            return _fast_path_updates("general_chat")
+
+        if _looks_like_report_draft_request(user_text):
+            return _fast_path_updates("general_chat", clear_inquiry=True)
 
         findings = state.findings or {}
         ctx = {
@@ -305,14 +538,25 @@ def node_intent_classifier(model, streaming: bool = False, show_thinking: bool =
 
         except Exception as e:
             print(f"[Intent Fail] LLM Routing failed: {e}")
-            intent = "general_chat" if len(user_text) < 10 else "clinical_assessment"
+            fallback_profile = _clinical_task_profile_from_text(user_text, "general_chat")
+            if fallback_profile["requires_complete_case"]:
+                intent = (
+                    "treatment_decision"
+                    if fallback_profile["task_type"] == "treatment_decision"
+                    else "clinical_assessment"
+                )
+            else:
+                intent = "general_chat"
 
         explicit_switch_request = _has_explicit_triage_switch_request(intent, user_text, state)
+        profile_sub_tasks = result.sub_tasks if result is not None else None
         findings_update: Dict[str, Any] = _base_findings(
             state,
             intent,
             preserve_outpatient_triage,
             explicit_switch_request,
+            user_text=user_text,
+            sub_tasks=profile_sub_tasks,
         )
 
         if result is not None:
@@ -330,6 +574,8 @@ def node_intent_classifier(model, streaming: bool = False, show_thinking: bool =
             "clinical_stage": "Intent",
             "error": None,
         }
+        if not preserve_outpatient_triage and findings_update.get("active_inquiry") is False:
+            updates["missing_critical_data"] = []
         updates.update(_track_runtime_resets(intent, preserve_outpatient_triage))
         return updates
 

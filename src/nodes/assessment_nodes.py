@@ -356,6 +356,60 @@ def _should_use_non_crc_symptom_clarification(text: str, integrity: "CaseIntegri
     return _looks_like_non_gi_vague_symptom(text) and not integrity.has_confirmed_diagnosis and not _has_crc_assessment_anchor(text)
 
 
+SOFT_MISSING_INFO_POLICIES = {"answer_with_gaps", "guide_collection", "soft_context"}
+SOFT_RESPONSE_MODES = {
+    "general_with_gaps",
+    "case_summary_with_gaps",
+    "partial_explanation",
+    "guided_collection",
+}
+
+
+def _is_soft_missing_info_context(findings: Dict[str, Any], intent: str) -> bool:
+    if intent in {"treatment_decision", "staging_decision", "treatment_plan"}:
+        return False
+    if findings.get("requires_complete_case") is True:
+        return False
+    missing_info_policy = str(findings.get("missing_info_policy") or "").strip()
+    response_mode = str(findings.get("response_mode") or "").strip()
+    return missing_info_policy in SOFT_MISSING_INFO_POLICIES or response_mode in SOFT_RESPONSE_MODES
+
+
+def _soft_context_should_answer_now(findings: Dict[str, Any]) -> bool:
+    response_mode = str(findings.get("response_mode") or "").strip()
+    task_profile = findings.get("clinical_task_profile") or {}
+    task_type = str(task_profile.get("task_type") or "").strip()
+    return response_mode in SOFT_RESPONSE_MODES or task_type in {
+        "document_draft",
+        "case_summary",
+        "explanation",
+        "guidance",
+        "missing_info_guidance",
+    }
+
+
+def _information_gaps_from_integrity(integrity: "CaseIntegrity") -> List[str]:
+    gaps: List[str] = []
+    if not integrity.has_confirmed_diagnosis:
+        gaps.append("Pathology Report")
+    if integrity.tnm_status != "Complete":
+        gaps.append("TNM Staging")
+    if integrity.tumor_location_category == "Unknown":
+        gaps.append("Tumor Location")
+    if integrity.mmr_status_availability == "Not_Provided":
+        gaps.append("MMR/MSI Status")
+    return gaps
+
+
+def _clear_stale_inquiry_fields() -> Dict[str, Any]:
+    return {
+        "active_inquiry": False,
+        "active_field": None,
+        "inquiry_message": None,
+        "inquiry_type": None,
+    }
+
+
 def _create_non_crc_symptom_clarification_message() -> str:
     return (
         "这句话更像是一般身体不适描述，还不足以直接进入结直肠癌评估。\n"
@@ -788,7 +842,12 @@ def _semantic_extract_diagnosis(
 def node_assessment(model, tools: List[BaseTool], streaming: bool = False, show_thinking: bool = True) -> Runnable:
     
     # 从统一的 prompts 模块导入 System Prompt
-    system_prompt = ASSESSMENT_SYSTEM_PROMPT
+    system_prompt = ASSESSMENT_SYSTEM_PROMPT + """
+
+Schema clarification:
+- missing_critical_data is only for hard blockers before staging or treatment decisions.
+- Soft missing items for summaries, drafts, explanations, and guidance belong in findings.information_gaps and must not interrupt the answer.
+"""
     chain = (
         ChatPromptTemplate.from_messages([
             ("system", system_prompt),
@@ -959,6 +1018,36 @@ MMR状态: {db_mmr_status or '未知'}
             print(f"[Semantic Guard] Location: {integrity.tumor_location_category}, "
                   f"MMR Status: {integrity.mmr_status_availability}, "
                   f"Reasoning: {reasoning_preview}")
+
+        is_soft_missing_info_context = _is_soft_missing_info_context(current_findings, intent)
+        should_answer_soft_context = is_soft_missing_info_context and _soft_context_should_answer_now(current_findings)
+        if should_answer_soft_context:
+            information_gaps = _information_gaps_from_integrity(integrity)
+            risk_level = "High" if integrity.is_advanced_stage else "Moderate"
+            findings_delta = {
+                **_clear_stale_inquiry_fields(),
+                "risk_level": risk_level,
+                "semantic_integrity": integrity.model_dump(),
+                "is_advanced_stage": integrity.is_advanced_stage,
+                "information_gaps": information_gaps,
+                "response_mode": current_findings.get("response_mode", "general_with_gaps"),
+                "missing_info_policy": current_findings.get("missing_info_policy", "soft_context"),
+                "requires_complete_case": False,
+                "fast_pass_mode": False,
+            }
+            return {
+                "findings": findings_delta,
+                "assessment_draft": json.dumps({
+                    "risk": risk_level,
+                    "summary": "Soft assessment context; answer should proceed with explicit information gaps.",
+                    "information_gaps": information_gaps,
+                    "reasoning": integrity.reasoning,
+                }, ensure_ascii=False),
+                "missing_critical_data": [],
+                "clinical_stage": "Assessment",
+                "error": None,
+                "roadmap": auto_update_roadmap_from_state(state),
+            }
 
         # ================================================================
         # 策略分支 0: 症状描述反问（最高优先级）

@@ -4,9 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mockConversationPanel = vi.hoisted(() => vi.fn());
 const mockDoctorMultimodalView = vi.hoisted(() => vi.fn());
+const mockDoctorReportDraftView = vi.hoisted(() => vi.fn());
 const mockDoctorViewState = vi.hoisted(() => {
   const state = {
-    activeDoctorTab: "consultation" as "consultation" | "database" | "multimodal",
+    activeDoctorTab: "consultation" as "consultation" | "database" | "multimodal" | "reports",
     activeDatabaseSource: "patient_registry" as "historical_case_base" | "patient_registry",
   };
 
@@ -91,12 +92,20 @@ vi.mock("./doctor-multimodal-view", () => ({
   },
 }));
 
+vi.mock("./doctor-report-draft-view", () => ({
+  DoctorReportDraftView: (props: Record<string, unknown>) => {
+    mockDoctorReportDraftView(props);
+    return <div data-testid="doctor-report-draft-view" />;
+  },
+}));
+
 import { DoctorSceneShell } from "./doctor-scene-shell";
 
 describe("DoctorSceneShell", () => {
   beforeEach(() => {
     mockConversationPanel.mockClear();
     mockDoctorMultimodalView.mockClear();
+    mockDoctorReportDraftView.mockClear();
     mockDoctorViewState.state.activeDoctorTab = "consultation";
     mockDoctorViewState.state.activeDatabaseSource = "patient_registry";
     mockDoctorViewState.setActiveDoctorTab.mockClear();
@@ -156,20 +165,20 @@ describe("DoctorSceneShell", () => {
     );
   }
 
-  it("renders production doctor top nav items and hides reports", () => {
+  it("renders production doctor top nav items including reports", () => {
     renderDoctorSceneShell();
 
     const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
-    expect(navButtons.map((navButton) => navButton.textContent)).toEqual([
+    expect(navButtons.slice(0, 3).map((navButton) => navButton.textContent)).toEqual([
       "会诊",
       "患者数据库",
       "多模态",
     ]);
-    expect(navButtons).toHaveLength(3);
+    expect(navButtons).toHaveLength(4);
+    expect(navButtons[3]?.textContent).toBeTruthy();
     for (const navButton of navButtons) {
       expect(navButton).not.toBeDisabled();
     }
-    expect(screen.queryByRole("button", { name: "报表" })).not.toBeInTheDocument();
   });
 
   it("calls setActiveDoctorTab with multimodal when the multimodal nav item is clicked", () => {
@@ -178,6 +187,15 @@ describe("DoctorSceneShell", () => {
     screen.getByRole("button", { name: "多模态" }).click();
 
     expect(mockDoctorViewState.setActiveDoctorTab).toHaveBeenCalledWith("multimodal");
+  });
+
+  it("calls setActiveDoctorTab with reports when the reports nav item is clicked", () => {
+    renderDoctorSceneShell();
+
+    const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
+    fireEvent.click(navButtons[3]);
+
+    expect(mockDoctorViewState.setActiveDoctorTab).toHaveBeenCalledWith("reports");
   });
 
   it("marks each doctor route with stable shell classes for theme effects", () => {
@@ -202,6 +220,14 @@ describe("DoctorSceneShell", () => {
       "clinical-app-shell",
       "clinical-app-shell-doctor",
       "clinical-app-shell-multimodal",
+    );
+
+    cleanup();
+    renderDoctorSceneShell({}, { activeDoctorTab: "reports" });
+    expect(screen.getByTestId("doctor-scene")).toHaveClass(
+      "clinical-app-shell",
+      "clinical-app-shell-doctor",
+      "clinical-app-shell-reports",
     );
   });
 
@@ -340,6 +366,34 @@ describe("DoctorSceneShell", () => {
           registry_patient_id: 1024,
           case_database_patient_id: "093",
         },
+      }),
+    );
+  });
+
+  it("renders the report draft route with shell-derived patient context", () => {
+    const onCardPromptRequest = vi.fn();
+    renderDoctorSceneShell(
+      {
+        registryPatientId: 1024,
+        caseDatabasePatientId: "093",
+        patientContext: {},
+        onCardPromptRequest,
+      },
+      {
+        activeDoctorTab: "reports",
+      },
+    );
+
+    expect(screen.getByTestId("doctor-report-draft-view")).toBeInTheDocument();
+    expect(mockDoctorReportDraftView).toHaveBeenCalledWith(
+      expect.objectContaining({
+        registryPatientId: 1024,
+        caseDatabasePatientId: "093",
+        patientContext: {
+          registry_patient_id: 1024,
+          case_database_patient_id: "093",
+        },
+        onReportPromptRequest: onCardPromptRequest,
       }),
     );
   });
