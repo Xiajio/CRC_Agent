@@ -16,6 +16,7 @@ import type {
   PatientRegistryListResponse,
   PatientRegistryRecordsResponse,
   RecoverySnapshot,
+  SaveCrcTriageAssessmentResponse,
   Scene,
   SessionResponse,
 } from "../app/api/types";
@@ -202,6 +203,14 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
       },
     }),
   );
+  const saveCrcTriageAssessment = vi.fn(async (): Promise<SaveCrcTriageAssessmentResponse> => ({
+    patient_id: 101,
+    patient_version: 1,
+    projection_version: 1,
+    event_ids: ["event-1"],
+    record_id: 1,
+    reused: false,
+  }));
   const getDatabaseStats = vi.fn(async () => makeDatabaseStatsResponse());
   const searchDatabaseCases = vi.fn(async () => makeDatabaseSearchResponse());
   const getDatabaseCaseDetail = vi.fn(async (patientId: number): Promise<DatabaseCaseDetailResponse> => ({
@@ -263,6 +272,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
     resetSession,
     bindPatient,
     saveSessionPatientIdentity,
+    saveCrcTriageAssessment,
     getDatabaseStats,
     searchDatabaseCases,
     getDatabaseCaseDetail,

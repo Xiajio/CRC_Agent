@@ -536,6 +536,10 @@ def node_outpatient_triage(
         user_text = _latest_user_text(state) or ""
         combined_user_text = _conversation_user_text(state) or user_text
         previous_findings = dict(state.findings or {})
+        is_crc_subflow = (
+            state.patient_subflow == "crc_triage"
+            or state.source_subflow == "crc_triage"
+        )
         previous_snapshot = dict(state.symptom_snapshot or previous_findings.get("symptom_snapshot") or {})
         previous_field = previous_findings.get("triage_current_field")
         previous_no_progress_count = int(previous_findings.get("triage_no_progress_count") or 0)
@@ -634,6 +638,7 @@ def node_outpatient_triage(
             "triage_switch_prompt_active": triage_switch_prompt_active,
             "triage_explicit_switch_request": False,
         }
+        findings = _apply_crc_subflow_scope(findings, is_crc_subflow)
 
         additional_kwargs: dict[str, Any] = {}
         if active_inquiry and not triage_switch_prompt_active:
@@ -665,6 +670,7 @@ def node_outpatient_triage(
             "clinical_stage": "Inquiry_Pending" if active_inquiry else "Outpatient_Triage",
             "error": None,
         }
+        result.update(_crc_subflow_state_update(is_crc_subflow))
         projected_card = project_patient_self_report_card(state.model_copy(update=result))
         if projected_card is not None:
             result["patient_card"] = projected_card
@@ -709,6 +715,58 @@ def _looks_like_outpatient_triage(text: str) -> bool:
     return _looks_like_generic_vague_discomfort(compact)
 
 
+def _apply_crc_subflow_scope(findings: dict[str, Any], is_crc_subflow: bool) -> dict[str, Any]:
+    scoped_findings = dict(findings)
+    if is_crc_subflow:
+        scoped_findings["patient_subflow"] = "crc_triage"
+        scoped_findings["source_subflow"] = "crc_triage"
+    else:
+        scoped_findings["patient_subflow"] = None
+        scoped_findings["source_subflow"] = None
+        scoped_findings["crc_triage"] = {}
+    return scoped_findings
+
+
+def _has_stale_crc_subflow(findings: dict[str, Any], is_crc_subflow: bool) -> bool:
+    return (
+        not is_crc_subflow
+        and (
+            findings.get("patient_subflow") == "crc_triage"
+            or findings.get("source_subflow") == "crc_triage"
+        )
+    )
+
+
+def _clear_triage_inquiry_state(findings: dict[str, Any]) -> dict[str, Any]:
+    cleared_findings = dict(findings)
+    cleared_findings.update(
+        {
+            "active_inquiry": False,
+            "inquiry_type": None,
+            "inquiry_message": None,
+            "triage_pending_fields": [],
+            "triage_current_field": None,
+            "triage_no_progress_count": 0,
+            "triage_switch_prompt_active": False,
+            "triage_explicit_switch_request": False,
+        }
+    )
+    return cleared_findings
+
+
+def _crc_subflow_state_update(is_crc_subflow: bool) -> dict[str, Any]:
+    if is_crc_subflow:
+        return {
+            "patient_subflow": "crc_triage",
+            "source_subflow": "crc_triage",
+        }
+    return {
+        "patient_subflow": None,
+        "source_subflow": None,
+        "crc_triage": {},
+    }
+
+
 def node_clinical_entry_resolver(
     model: Any = None,
     *,
@@ -720,7 +778,14 @@ def node_clinical_entry_resolver(
 
     def _run(state: CRCAgentState) -> dict[str, Any]:
         findings = dict(state.findings or {})
-        encounter_track = state.encounter_track or findings.get("encounter_track")
+        is_crc_subflow = (
+            state.patient_subflow == "crc_triage"
+            or state.source_subflow == "crc_triage"
+        )
+        stale_crc_subflow = _has_stale_crc_subflow(findings, is_crc_subflow)
+        if stale_crc_subflow:
+            findings = _clear_triage_inquiry_state(findings)
+        encounter_track = None if stale_crc_subflow else state.encounter_track or findings.get("encounter_track")
         user_text = _latest_user_text(state) or ""
         explicit_switch_request = bool(findings.get("triage_switch_prompt_active")) and (
             bool(findings.get("triage_explicit_switch_request"))
@@ -728,27 +793,32 @@ def node_clinical_entry_resolver(
         )
 
         if encounter_track == "outpatient_triage" and findings.get("active_inquiry") and not explicit_switch_request:
-            return {
+            result = {
                 "encounter_track": "outpatient_triage",
                 "triage_risk_level": None,
                 "triage_disposition": None,
                 "triage_suggested_tests": [],
                 "triage_summary": None,
                 "triage_card": None,
-                "findings": {
-                    **findings,
-                    "encounter_track": "outpatient_triage",
-                    "triage_risk_level": None,
-                    "triage_disposition": None,
-                    "triage_suggested_tests": [],
-                    "triage_summary": None,
-                    "triage_card": None,
-                },
+                "findings": _apply_crc_subflow_scope(
+                    {
+                        **findings,
+                        "encounter_track": "outpatient_triage",
+                        "triage_risk_level": None,
+                        "triage_disposition": None,
+                        "triage_suggested_tests": [],
+                        "triage_summary": None,
+                        "triage_card": None,
+                    },
+                    is_crc_subflow,
+                ),
                 "clinical_stage": "Clinical_Entry",
                 "error": None,
             }
+            result.update(_crc_subflow_state_update(is_crc_subflow))
+            return result
 
-        next_track = "outpatient_triage" if _looks_like_outpatient_triage(user_text) else "crc_clinical"
+        next_track = "outpatient_triage" if (is_crc_subflow or _looks_like_outpatient_triage(user_text)) else "crc_clinical"
         if explicit_switch_request:
             next_track = "crc_clinical"
 
@@ -758,9 +828,14 @@ def node_clinical_entry_resolver(
         next_findings = {
             **findings,
             "encounter_track": next_track,
-            "clinical_entry_reason": "symptom_based_triage" if next_track == "outpatient_triage" else "clinical_assessment",
+            "clinical_entry_reason": "crc_triage"
+            if is_crc_subflow and next_track == "outpatient_triage"
+            else "symptom_based_triage"
+            if next_track == "outpatient_triage"
+            else "clinical_assessment",
             "entry_explanation_shown": False,
         }
+        next_findings = _apply_crc_subflow_scope(next_findings, is_crc_subflow)
         if explicit_switch_request:
             next_findings.update(
                 {
@@ -775,14 +850,20 @@ def node_clinical_entry_resolver(
                 }
             )
 
-        return {
+        result = {
             "encounter_track": next_track,
-            "clinical_entry_reason": "symptom_based_triage" if next_track == "outpatient_triage" else "clinical_assessment",
+            "clinical_entry_reason": "crc_triage"
+            if is_crc_subflow and next_track == "outpatient_triage"
+            else "symptom_based_triage"
+            if next_track == "outpatient_triage"
+            else "clinical_assessment",
             "entry_explanation_shown": False,
             "findings": next_findings,
             "clinical_stage": "Clinical_Entry",
             "error": None,
         }
+        result.update(_crc_subflow_state_update(is_crc_subflow))
+        return result
 
     return _run
 
@@ -814,5 +895,3 @@ __all__ = [
     "route_after_clinical_entry",
     "route_after_outpatient_triage",
 ]
-
-

@@ -327,6 +327,36 @@ export interface ChatTurnRequest {
   context?: Record<string, unknown>;
 }
 
+export interface CrcTriageAssessmentPayload {
+  record_type: "crc_triage_assessment";
+  chief_complaint: string;
+  symptom_group: string;
+  risk_level: string;
+  disposition: string;
+  red_flags: string[];
+  known_crc_signals: Record<string, unknown>;
+  suggested_tests: string[];
+  missing_information: string[];
+  qa_summary: Array<Record<string, unknown>>;
+  patient_summary: string;
+  next_step: string;
+  source_session_id: string;
+  source_subflow: "crc_triage";
+}
+
+export interface SaveCrcTriageAssessmentRequest {
+  assessment: CrcTriageAssessmentPayload;
+}
+
+export interface SaveCrcTriageAssessmentResponse {
+  patient_id: number;
+  patient_version: number;
+  projection_version: number;
+  event_ids: string[];
+  record_id: number;
+  reused: boolean;
+}
+
 export interface UploadResponse {
   asset_id: string;
   asset_url: string;

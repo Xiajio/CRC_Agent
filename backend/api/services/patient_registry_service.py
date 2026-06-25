@@ -45,6 +45,7 @@ SOURCE_PRIORITY = {
     "unknown": 10,
     "guideline_or_education": 0,
 }
+SNAPSHOT_OPTIONAL_DOCUMENT_TYPES = {"crc_triage_assessment"}
 
 
 def _utc_now() -> str:
@@ -1228,7 +1229,7 @@ class PatientRegistryService:
                         message=f"Document type {document_type} is low confidence.",
                     )
                 )
-            elif not snapshot_contributed:
+            elif not snapshot_contributed and document_type not in SNAPSHOT_OPTIONAL_DOCUMENT_TYPES:
                 alerts.append(
                     _row_to_alert(
                         patient_id=patient_id,

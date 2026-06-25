@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { buildChatLatencyTraceAnalysis, createChatLatencyTraceStore } from "../app/api/chat-latency-trace";
-import type { FrontendMessage, Scene, SessionState } from "../app/api/types";
+import type { CrcTriageAssessmentPayload, FrontendMessage, Scene, SessionState } from "../app/api/types";
 import { useApiClient } from "../app/providers";
 import { ConversationPanel } from "../features/chat/conversation-panel";
 import { ClinicalTopNav } from "../components/layout/clinical-top-nav";
@@ -18,10 +18,16 @@ import { usePatientRegistry } from "../features/patient-registry/use-patient-reg
 import { useRegistryBrowser } from "../features/patient-registry/use-registry-browser";
 import {
   PATIENT_ASSISTANT_TAB,
+  PATIENT_CRC_TRIAGE_TAB,
   PATIENT_PROFILE_TAB,
   PATIENT_UPLOAD_TAB,
   usePatientWorkspaceNav,
 } from "../features/workspace/use-patient-workspace-nav";
+import {
+  PatientCrcTriagePanel,
+  type CrcTriageSaveStatus,
+} from "../features/patient-crc-triage/patient-crc-triage-panel";
+import { buildCrcTriageContext } from "../features/patient-crc-triage/crc-triage-context";
 import { useSceneSessions } from "../features/workspace/use-scene-sessions";
 import { WorkspaceSurfaceSwitcher, type WorkspaceSurface } from "../features/workspace/workspace-surface-switcher";
 import { usePatientUploads } from "../features/workspace/use-patient-uploads";
@@ -160,6 +166,8 @@ export function WorkspacePage() {
     doctor: "",
   });
   const [sceneError, setSceneError] = useState<string | null>(null);
+  const [crcTriageSaveStatus, setCrcTriageSaveStatus] = useState<CrcTriageSaveStatus>("idle");
+  const [crcTriageSaveError, setCrcTriageSaveError] = useState<string | null>(null);
   const {
     activeProbeRef,
     activeProbe,
@@ -277,6 +285,11 @@ export function WorkspacePage() {
     }
     patientUploads.clearError();
   }, [activeScene]);
+
+  useEffect(() => {
+    setCrcTriageSaveStatus("idle");
+    setCrcTriageSaveError(null);
+  }, [patient.state.sessionId]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !isChatLatencyDebugEnabled()) {
@@ -493,6 +506,49 @@ export function WorkspacePage() {
     await activeTurn.submitPrompt(prompt, buildReplayDemoContext(activeScene, prompt, baseContext));
   }
 
+  async function submitCrcTriagePrompt(prompt: string, context: Record<string, unknown>) {
+    if (!patient.state.sessionId || patientTurn.isStreaming) {
+      return;
+    }
+
+    setCrcTriageSaveStatus("idle");
+    setCrcTriageSaveError(null);
+    await patientTurn.submitPrompt(prompt, buildReplayDemoContext("patient", prompt, context));
+  }
+
+  async function submitCrcTriageDraft() {
+    const prompt = drafts.patient.trim();
+
+    if (!patient.state.sessionId || !prompt) {
+      return;
+    }
+
+    updateDraft("patient", "");
+    await submitCrcTriagePrompt(prompt, buildCrcTriageContext("answer"));
+  }
+
+  async function handleSaveCrcTriageAssessment(assessment: CrcTriageAssessmentPayload) {
+    const sessionId = patient.state.sessionId;
+    if (!sessionId) {
+      setCrcTriageSaveStatus("error");
+      setCrcTriageSaveError("\u60a3\u8005\u4f1a\u8bdd\u5c1a\u672a\u51c6\u5907\u597d\u3002");
+      return;
+    }
+
+    setCrcTriageSaveStatus("saving");
+    setCrcTriageSaveError(null);
+
+    try {
+      await apiClient.saveCrcTriageAssessment(sessionId, { assessment });
+      const refreshed = await apiClient.getSession(sessionId);
+      applyResponseToScene("patient", refreshed);
+      setCrcTriageSaveStatus("saved");
+    } catch (error) {
+      setCrcTriageSaveStatus("error");
+      setCrcTriageSaveError(readWorkspaceErrorMessage(error));
+    }
+  }
+
   async function handleResetActiveScene() {
     const didReset = await activeTurn.resetScene();
     if (!didReset) {
@@ -651,6 +707,7 @@ export function WorkspacePage() {
 
   const patientActiveTab = patientNav.activeTab;
   const patientIsAssistant = patientActiveTab === PATIENT_ASSISTANT_TAB;
+  const patientIsCrcTriage = patientActiveTab === PATIENT_CRC_TRIAGE_TAB;
   const patientIsProfile = patientActiveTab === PATIENT_PROFILE_TAB;
   const patientIsUpload = patientActiveTab === PATIENT_UPLOAD_TAB;
 
@@ -700,11 +757,58 @@ export function WorkspacePage() {
     />
   );
 
+  const patientCrcTriagePanel = (
+    <PatientCrcTriagePanel
+      sessionState={patient.state}
+      disabled={patientTurn.isStreaming || patientUploads.isUploading}
+      saveStatus={crcTriageSaveStatus}
+      saveErrorMessage={crcTriageSaveError}
+      onStart={(prompt, context) => void submitCrcTriagePrompt(prompt, context)}
+      onUploadRequest={() => patientNav.selectTab(PATIENT_UPLOAD_TAB)}
+      onSaveAssessment={(assessment) => void handleSaveCrcTriageAssessment(assessment)}
+    />
+  );
+
+  const patientCrcConversationPanel = (
+    <ConversationPanel
+      messages={patient.state.messages}
+      draft={activeDraft}
+      activeTriageQuestionId={workspaceCards.activePatientTriageQuestionId}
+      statusNode={patient.state.statusNode}
+      isStreaming={patientTurn.isStreaming}
+      isLoadingHistory={patientTurn.isLoadingHistory}
+      canLoadHistory={Boolean(patient.state.messagesNextBeforeCursor)}
+      disabled={patientTurn.isStreaming || patientUploads.isUploading}
+      errorMessage={null}
+      latencyStatus={patientLatencyStatus}
+      emptyStateVariant="patient-assistant"
+      quickActions={[]}
+      onQuickActionSelect={(prompt) => updateDraft("patient", prompt)}
+      onUploadRequest={() => patientNav.selectTab(PATIENT_UPLOAD_TAB)}
+      onLoadHistory={() => void patientTurn.loadMessageHistory()}
+      onDraftChange={(value) => updateDraft("patient", value)}
+      onSubmit={() => void submitCrcTriageDraft()}
+      patientContext={patientPatientContext}
+      onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
+        void submitCrcTriagePrompt(prompt, buildCrcTriageContext("answer", context ?? {}))
+      }
+    />
+  );
+
+  const patientCrcTriageContent = (
+    <>
+      {patientCrcTriagePanel}
+      {patientCrcConversationPanel}
+    </>
+  );
+
   const patientCenterContent = patientIsUpload
     ? patientUploadsPanel
     : patientIsProfile
       ? patientProfilePanel
-      : patientAssistantPanel;
+      : patientIsCrcTriage
+        ? patientCrcTriageContent
+        : patientAssistantPanel;
   const patientPanelError = activeError && !patientIsAssistant ? (
     <p className="clinical-copy clinical-copy-alert clinical-error-copy" data-testid="patient-active-error">
       {activeError}

@@ -17,6 +17,8 @@ import type {
   PatientRegistryRecordsResponse,
   PatientRegistrySearchRequest,
   Scene,
+  SaveCrcTriageAssessmentRequest,
+  SaveCrcTriageAssessmentResponse,
   SessionResponse,
   StreamEvent,
   UploadResponse,
@@ -102,6 +104,10 @@ export interface ApiClient {
     patient_name: string,
     patient_number: string,
   ): Promise<SessionResponse>;
+  saveCrcTriageAssessment(
+    sessionId: string,
+    request: SaveCrcTriageAssessmentRequest,
+  ): Promise<SaveCrcTriageAssessmentResponse>;
   getDatabaseStats(): Promise<DatabaseStatsResponse>;
   searchDatabaseCases(request: DatabaseSearchRequest): Promise<DatabaseSearchResponse>;
   getDatabaseCaseDetail(patientId: number): Promise<DatabaseCaseDetailResponse>;
@@ -234,6 +240,15 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         }),
       });
       return parseJsonResponse<SessionResponse>(response);
+    },
+
+    async saveCrcTriageAssessment(sessionId, request) {
+      const response = await fetchImpl(buildUrl(`/api/sessions/${sessionId}/crc-triage/assessments`, baseUrl), {
+        method: "POST",
+        headers: buildJsonHeaders(defaultHeaders),
+        body: JSON.stringify(request),
+      });
+      return parseJsonResponse<SaveCrcTriageAssessmentResponse>(response);
     },
 
     async getDatabaseStats() {

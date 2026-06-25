@@ -65,4 +65,59 @@ describe("createApiClient", () => {
       { headers: { Authorization: "Bearer dev-token" } },
     );
   });
+
+  it("saves crc triage assessments through the patient session endpoint", async () => {
+    const payload = {
+      patient_id: 101,
+      patient_version: 2,
+      projection_version: 2,
+      event_ids: ["event-1"],
+      record_id: 9,
+      reused: false,
+    };
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    let latestInit: RequestInit | undefined;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      latestInit = init;
+      return response;
+    });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+    const assessment = {
+      record_type: "crc_triage_assessment" as const,
+      chief_complaint: "bleeding",
+      symptom_group: "crc_triage",
+      risk_level: "medium",
+      disposition: "urgent_gi_clinic",
+      red_flags: ["rectal_bleeding"],
+      known_crc_signals: { rectal_bleeding: true },
+      suggested_tests: ["colonoscopy"],
+      missing_information: [],
+      qa_summary: [],
+      patient_summary: "summary",
+      next_step: "urgent_gi_clinic",
+      source_session_id: "sess-1",
+      source_subflow: "crc_triage" as const,
+    };
+
+    await expect(client.saveCrcTriageAssessment("sess-1", { assessment })).resolves.toEqual(payload);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/sessions/sess-1/crc-triage/assessments",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify({ assessment }),
+      },
+    );
+    const headers = latestInit?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer dev-token");
+    expect(headers.get("Content-Type")).toBe("application/json");
+  });
 });

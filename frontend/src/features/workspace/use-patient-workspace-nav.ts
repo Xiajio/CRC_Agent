@@ -2,13 +2,19 @@ import { useState } from "react";
 
 import {
   PATIENT_ASSISTANT_TAB,
+  PATIENT_CRC_TRIAGE_TAB,
   PATIENT_PROFILE_TAB,
   PATIENT_WORKSPACE_NAV_ITEMS,
   type PatientWorkspaceTab,
   isPatientWorkspaceTab,
 } from "./patient-workspace-nav";
 
-export { PATIENT_ASSISTANT_TAB, PATIENT_PROFILE_TAB, PATIENT_UPLOAD_TAB } from "./patient-workspace-nav";
+export {
+  PATIENT_ASSISTANT_TAB,
+  PATIENT_CRC_TRIAGE_TAB,
+  PATIENT_PROFILE_TAB,
+  PATIENT_UPLOAD_TAB,
+} from "./patient-workspace-nav";
 export type { PatientWorkspaceNavItem, PatientWorkspaceTab } from "./patient-workspace-nav";
 
 export function usePatientWorkspaceNav() {

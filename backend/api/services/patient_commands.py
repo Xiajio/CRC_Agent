@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from hashlib import sha256
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -119,6 +120,19 @@ class PatientCommandService:
             else:
                 merged[key] = value
         return merged
+
+    def _crc_triage_payload_hash(self, assessment: Mapping[str, Any]) -> str:
+        payload_json = json.dumps(dict(assessment), ensure_ascii=False, sort_keys=True)
+        return sha256(payload_json.encode("utf-8")).hexdigest()
+
+    def _crc_triage_summary(self, assessment: Mapping[str, Any]) -> str:
+        summary = assessment.get("patient_summary")
+        if isinstance(summary, str) and summary.strip():
+            return summary.strip()
+        chief = assessment.get("chief_complaint")
+        if isinstance(chief, str) and chief.strip():
+            return f"CRC专项预问诊：{chief.strip()}"
+        return "CRC专项预问诊记录"
 
     def _snapshot_asset_refs_with(
         self,
@@ -735,6 +749,146 @@ class PatientCommandService:
             patient_version=version,
             projection_version=version,
             event_ids=[event_id],
+            snapshot_changed=True,
+        )
+
+    def record_crc_triage_assessment(
+        self,
+        *,
+        patient_id: int,
+        assessment: Mapping[str, Any],
+        source_session_id: str,
+    ) -> PatientCommandResult:
+        normalized = dict(assessment)
+        normalized["record_type"] = "crc_triage_assessment"
+        normalized["source_subflow"] = "crc_triage"
+        normalized["source_session_id"] = source_session_id
+        payload_hash = self._crc_triage_payload_hash(normalized)
+        idempotency_key = f"patient.crc_triage_assessed:{patient_id}:{source_session_id}:{payload_hash}"
+        summary_text = self._crc_triage_summary(normalized)
+
+        with self._registry.transaction() as connection:
+            patient_row = connection.execute(
+                "SELECT id FROM patients WHERE id = ?",
+                (patient_id,),
+            ).fetchone()
+            if patient_row is None:
+                raise KeyError(f"Patient not found: {patient_id}")
+
+            existing_event = connection.execute(
+                """
+                SELECT event_id, patient_version
+                FROM patient_events
+                WHERE patient_id = ? AND idempotency_key = ?
+                """,
+                (patient_id, idempotency_key),
+            ).fetchone()
+            if existing_event is not None:
+                asset_row = connection.execute(
+                    """
+                    SELECT asset_id
+                    FROM patient_assets
+                    WHERE patient_id = ? AND sha256 = ?
+                    """,
+                    (patient_id, payload_hash),
+                ).fetchone()
+                record_row = connection.execute(
+                    """
+                    SELECT record_id
+                    FROM patient_records
+                    WHERE patient_id = ? AND record_type = 'crc_triage_assessment'
+                      AND source_event_id = ?
+                    ORDER BY record_id ASC
+                    LIMIT 1
+                    """,
+                    (patient_id, existing_event["event_id"]),
+                ).fetchone()
+                snapshot = connection.execute(
+                    """
+                    SELECT projection_version
+                    FROM patient_snapshots
+                    WHERE patient_id = ?
+                    """,
+                    (patient_id,),
+                ).fetchone()
+                patient_version = int(existing_event["patient_version"])
+                return PatientCommandResult(
+                    patient_id=patient_id,
+                    patient_version=patient_version,
+                    projection_version=int(snapshot["projection_version"]) if snapshot is not None else patient_version,
+                    event_ids=[str(existing_event["event_id"])],
+                    asset_id=int(asset_row["asset_id"]) if asset_row is not None else None,
+                    record_id=int(record_row["record_id"]) if record_row is not None else None,
+                    reused=True,
+                )
+
+            event_id, version = self._append_event(
+                connection,
+                patient_id=patient_id,
+                event_type="patient.crc_triage_assessed",
+                payload={"assessment": normalized},
+                source_session_id=source_session_id,
+                idempotency_key=idempotency_key,
+                actor_type="patient",
+            )
+            asset_row = {
+                "filename": f"crc-triage-{payload_hash[:12]}.json",
+                "content_type": "application/json",
+                "sha256": payload_hash,
+                "storage_path": f"patient-generated://crc-triage/{patient_id}/{payload_hash}",
+                "source": "patient_generated",
+            }
+            record_result = self._registry.write_medical_card_record_in_transaction(
+                connection,
+                patient_id=patient_id,
+                asset_id=None,
+                source_event_id=event_id,
+                patient_version=version,
+                asset_row=asset_row,
+                patient_snapshot={},
+                record_payload={**normalized, "document_type": "crc_triage_assessment"},
+                summary_text=summary_text,
+                record_type="crc_triage_assessment",
+            )
+            asset_id = int(record_result["asset_id"])
+            record_id = int(record_result["record_id"])
+            connection.execute(
+                """
+                UPDATE patient_assets
+                SET parse_status = ?,
+                    record_ids_json = ?,
+                    patient_version = ?
+                WHERE patient_id = ? AND asset_id = ?
+                """,
+                (
+                    "parsed",
+                    json.dumps([record_id], ensure_ascii=False),
+                    version,
+                    patient_id,
+                    asset_id,
+                ),
+            )
+            self._upsert_snapshot(
+                connection,
+                patient_id=patient_id,
+                patient_version=version,
+                record_refs=[{"record_id": record_id, "document_type": "crc_triage_assessment"}],
+                asset_refs=[
+                    {
+                        "asset_id": asset_id,
+                        "sha256": payload_hash,
+                        "parse_status": "parsed",
+                    }
+                ],
+                source_event_ids=[event_id],
+            )
+        return PatientCommandResult(
+            patient_id=patient_id,
+            patient_version=version,
+            projection_version=version,
+            event_ids=[event_id],
+            asset_id=asset_id,
+            record_id=record_id,
             snapshot_changed=True,
         )
 

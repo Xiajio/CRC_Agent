@@ -602,6 +602,9 @@ class CRCAgentState(BaseModel):
     triage_suggested_tests: List[str] = Field(default_factory=list)
     triage_summary: Optional[str] = None
     symptom_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    patient_subflow: Optional[str] = None
+    source_subflow: Optional[str] = None
+    crc_triage: Dict[str, Any] = Field(default_factory=dict)
 
     # --- 7. 自主规划上下文 (Autonomous Planning Context) ===
     # [新增] 动态计划列表：Agent 的待办事项，支持主动上下文构建

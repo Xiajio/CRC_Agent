@@ -332,6 +332,9 @@ def route_after_path_agent(state: CRCAgentState) -> str:
 
 
 def route_after_patient_intent(state: CRCAgentState) -> str:
+    if state.patient_subflow == "crc_triage" or state.source_subflow == "crc_triage":
+        return "clinical_entry_resolver"
+
     target = route_after_intent(state)
     if target == "case_database":
         return "knowledge"

@@ -32,6 +32,10 @@ tests/backend/*
 !tests/backend/test_assets_api.py
 !tests/backend/test_auth_security.py
 !tests/backend/test_context_maintenance.py
+!tests/backend/test_crc_triage_patient_commands.py
+!tests/backend/test_crc_triage_routing_scope.py
+!tests/backend/test_outpatient_triage_gating.py
+!tests/backend/test_payload_builder_crc_triage.py
 !tests/backend/test_general_nodes.py
 !tests/backend/test_graph_builder_routing.py
 !tests/backend/test_graph_service_streaming.py

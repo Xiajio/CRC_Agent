@@ -6,6 +6,7 @@ import { AppProviders } from "../app/providers";
 import { ApiClientError } from "../app/api/client";
 import type { SessionState, StreamEvent } from "../app/api/types";
 import { createInitialSessionState, hydrateSessionState } from "../app/store/stream-reducer";
+import { CRC_TRIAGE_START_PROMPT } from "../features/patient-crc-triage/crc-triage-context";
 import { WorkspacePage } from "../pages/workspace-page";
 import { buildApiClientStub, makeSessionResponse, renderWorkspaceWithSceneSessions } from "../test/test-utils";
 
@@ -925,7 +926,12 @@ describe("WorkspacePage patient triage submission wiring", () => {
     const navButtons = within(navigation).getAllByRole("button");
 
     expect(screen.getByText("临床助手")).toBeInTheDocument();
-    expect(navButtons.map((navButton) => navButton.textContent)).toEqual(["问助手", "我的资料", "上传报告"]);
+    expect(navButtons.map((navButton) => navButton.textContent)).toEqual([
+      "问助手",
+      "专项问诊",
+      "我的资料",
+      "上传报告",
+    ]);
     expect(screen.getByRole("button", { name: "问助手" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByTestId("empty-state-variant")).toHaveTextContent("patient-assistant");
     expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-assistant");
@@ -944,10 +950,141 @@ describe("WorkspacePage patient triage submission wiring", () => {
     renderWorkspaceWithSceneSessions(buildApiClientStub());
 
     const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
-    expect(navButtons).toHaveLength(3);
+    expect(navButtons).toHaveLength(4);
     for (const navButton of navButtons) {
       expect(navButton).not.toBeDisabled();
     }
+  });
+
+  it("starts crc triage from the dedicated patient tab with subflow context", async () => {
+    const { streamTurn } = createControlledStreamTurn();
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: "专项问诊" }));
+    expect(screen.getByTestId("crc-triage-panel")).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("crc-triage-start"));
+      await Promise.resolve();
+    });
+
+    expect(streamTurn).toHaveBeenCalledWith(
+      "patient-session",
+      {
+        message: {
+          role: "user",
+          content: CRC_TRIAGE_START_PROMPT,
+        },
+        context: {
+          patient_subflow: "crc_triage",
+          crc_triage: {
+            action: "start",
+            interaction_source: "patient_crc_triage_tab",
+          },
+        },
+        trace_id: "trace-123",
+      },
+      expect.any(Function),
+      expect.any(AbortSignal),
+      expect.any(Function),
+    );
+  });
+
+  it("submits crc triage follow-up answers with subflow context", async () => {
+    const { streamTurn } = createControlledStreamTurn();
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: "专项问诊" }));
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
+      await Promise.resolve();
+    });
+
+    expect(streamTurn).toHaveBeenCalledWith(
+      "patient-session",
+      {
+        message: {
+          role: "user",
+          content: "typed composer",
+        },
+        context: {
+          patient_subflow: "crc_triage",
+          crc_triage: {
+            action: "answer",
+            interaction_source: "patient_crc_triage_tab",
+          },
+        },
+        trace_id: "trace-123",
+      },
+      expect.any(Function),
+      expect.any(AbortSignal),
+      expect.any(Function),
+    );
+  });
+
+  it("saves completed crc triage assessments through the patient session", async () => {
+    mockSceneSessions.patient.state = makeSessionState({
+      sessionId: "patient-session",
+      findings: {
+        source_subflow: "crc_triage",
+        active_inquiry: false,
+        triage_summary: "患者近两周反复便血。",
+        triage_risk_level: "medium",
+        triage_disposition: "urgent_gi_clinic",
+        triage_suggested_tests: ["肠镜"],
+        symptom_snapshot: {
+          chief_symptoms: "反复便血",
+          symptom_focus: "便血",
+        },
+      },
+    });
+    const refreshedResponse = makeSessionResponse({
+      session_id: "patient-session",
+      snapshot: {
+        findings: {
+          source_subflow: "crc_triage",
+          active_inquiry: false,
+          triage_summary: "患者近两周反复便血。",
+          triage_risk_level: "medium",
+          triage_disposition: "urgent_gi_clinic",
+        },
+      },
+    });
+    const saveCrcTriageAssessment = vi.fn(async () => ({
+      patient_id: 101,
+      patient_version: 2,
+      projection_version: 2,
+      event_ids: ["event-2"],
+      record_id: 9,
+      reused: false,
+    }));
+    const getSession = vi.fn(async () => refreshedResponse);
+    const apiClient = buildApiClientStub({ saveCrcTriageAssessment, getSession });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: "专项问诊" }));
+    fireEvent.click(screen.getByTestId("crc-triage-save"));
+
+    await waitFor(() => expect(saveCrcTriageAssessment).toHaveBeenCalledTimes(1));
+    expect(saveCrcTriageAssessment).toHaveBeenCalledWith(
+      "patient-session",
+      {
+        assessment: expect.objectContaining({
+          record_type: "crc_triage_assessment",
+          chief_complaint: "反复便血",
+          source_session_id: "patient-session",
+          source_subflow: "crc_triage",
+        }),
+      },
+    );
+    await waitFor(() => expect(getSession).toHaveBeenCalledWith("patient-session"));
+    expect(mockSceneSessions.applyResponseToScene).toHaveBeenCalledWith("patient", refreshedResponse);
   });
 
   it("keeps patient profile and upload reachable without making them the default layout", async () => {

@@ -14,6 +14,8 @@ CONTEXT_PAYLOAD_ALLOWLIST = {
     "fixture_tick_delay_ms",
     "case_database_patient_id",
     "registry_patient_id",
+    "patient_subflow",
+    "crc_triage",
 }
 PATIENT_CONTEXT_REQUIRED_KEYS = {
     "patient_version",
@@ -137,6 +139,24 @@ def build_graph_payload(
             value = chat_request_context.get(key)
             if value is not None:
                 payload[key] = value
+        if chat_request_context.get("patient_subflow") == "crc_triage":
+            payload["source_subflow"] = "crc_triage"
+            payload_findings = dict(payload.get("findings") or {})
+            payload_findings["patient_subflow"] = "crc_triage"
+            payload_findings["source_subflow"] = "crc_triage"
+            crc_triage_context = chat_request_context.get("crc_triage")
+            if isinstance(crc_triage_context, Mapping):
+                payload_findings["crc_triage"] = dict(crc_triage_context)
+            payload["findings"] = payload_findings
+        else:
+            payload["patient_subflow"] = None
+            payload["source_subflow"] = None
+            payload["crc_triage"] = {}
+            payload_findings = dict(payload.get("findings") or {})
+            payload_findings["patient_subflow"] = None
+            payload_findings["source_subflow"] = None
+            payload_findings["crc_triage"] = {}
+            payload["findings"] = payload_findings
 
     if should_clear_session_pending:
         session_meta.pending_context_messages.clear()
