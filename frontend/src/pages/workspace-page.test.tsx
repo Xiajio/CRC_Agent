@@ -1337,6 +1337,22 @@ describe("WorkspacePage patient triage submission wiring", () => {
     });
   });
 
+  it("passes the active doctor session into the review cockpit shell props", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    mockSceneSessions.doctor.state = makeSessionState({
+      sessionId: "doctor-session-review",
+    });
+
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    expect(lastDoctorSceneProps).toEqual(
+      expect.objectContaining({
+        sessionId: "doctor-session-review",
+        doctorReviewCockpitEnabled: true,
+      }),
+    );
+  });
+
   it("does not bind patient registry from case database sample context", async () => {
     mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
     mockSceneSessions.doctor.state = makeSessionState({

@@ -31,10 +31,11 @@ export function DoctorReviewCockpit({ sessionId, enabled }: DoctorReviewCockpitP
     let isCurrent = true;
     setIsLoading(true);
     setErrorMessage(null);
+    setReview(null);
     apiClient
       .getDoctorReview(sessionId)
       .then((nextReview) => {
-        if (isCurrent) {
+        if (isCurrent && nextReview.session_id === sessionId) {
           setReview(nextReview);
         }
       })
@@ -58,7 +59,9 @@ export function DoctorReviewCockpit({ sessionId, enabled }: DoctorReviewCockpitP
     return null;
   }
 
-  if (isLoading && review === null) {
+  const isReviewCurrent = review?.session_id === sessionId;
+
+  if (isLoading && !isReviewCurrent) {
     return <section aria-label="doctor review cockpit">Loading review.</section>;
   }
 
@@ -66,14 +69,14 @@ export function DoctorReviewCockpit({ sessionId, enabled }: DoctorReviewCockpitP
     return <section aria-label="doctor review cockpit">Review error: {errorMessage}</section>;
   }
 
-  if (!review) {
+  if (!review || !isReviewCurrent) {
     return null;
   }
 
   const firstAssertionId = review.assertions[0]?.assertion_id;
 
   function handleAcceptRiskSummary() {
-    if (!review) {
+    if (!review || review.session_id !== sessionId) {
       return;
     }
     void apiClient.recordDoctorActionTrace(
@@ -86,7 +89,7 @@ export function DoctorReviewCockpit({ sessionId, enabled }: DoctorReviewCockpitP
   }
 
   function handleMarkFirstAssertionUnsafe() {
-    if (!review || !firstAssertionId) {
+    if (!review || review.session_id !== sessionId || !firstAssertionId) {
       return;
     }
     void apiClient.recordDoctorActionTrace(

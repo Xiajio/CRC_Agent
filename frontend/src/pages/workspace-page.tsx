@@ -799,6 +799,8 @@ export function WorkspacePage() {
         onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
           void doctorTurn.submitPrompt(prompt, buildReplayDemoContext("doctor", prompt, context))
         }
+        sessionId={doctor.state.sessionId}
+        doctorReviewCockpitEnabled={true}
       />
       </>
     );

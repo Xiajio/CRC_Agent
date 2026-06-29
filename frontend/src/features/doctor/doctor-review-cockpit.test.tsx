@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -103,5 +103,131 @@ describe("DoctorReviewCockpit", () => {
 
     expect(container).toBeEmptyDOMElement();
     expect(getDoctorReview).not.toHaveBeenCalled();
+  });
+
+  it("hides stale review actions while a new session review is pending", async () => {
+    let resolveSessionB!: (value: ReturnType<typeof makeDoctorReviewResponse>) => void;
+    const sessionBReview = new Promise<ReturnType<typeof makeDoctorReviewResponse>>((resolve) => {
+      resolveSessionB = resolve;
+    });
+    const getDoctorReview = vi.fn((sessionId: string) => {
+      if (sessionId === "sess-a") {
+        return Promise.resolve(
+          makeDoctorReviewResponse({
+            session_id: "sess-a",
+            timeline: [
+              {
+                item_id: "timeline-a",
+                kind: "draft_generated",
+                title: "Session A risk summary",
+                created_at: "2026-06-29T10:00:00Z",
+                assertion_refs: ["assertion-a"],
+              },
+            ],
+            assertions: [
+              {
+                assertion_id: "assertion-a",
+                patient_id: "101",
+                source: "clinical_review",
+                normalized_fact: { name: "session_a_fact" },
+                evidence_refs: [],
+                confidence: "high",
+                reviewed_status: "unreviewed",
+              },
+            ],
+            draft: {
+              draft_id: "draft-a",
+              sections: [
+                {
+                  section_id: "risk_summary",
+                  text: "Session A draft.",
+                  verification_status: "traceable",
+                  provenance: [],
+                },
+              ],
+            },
+          }),
+        );
+      }
+
+      return sessionBReview;
+    });
+    const recordDoctorActionTrace = vi.fn(async () => makeDoctorActionTraceResponse());
+    const apiClient = buildApiClientStub({
+      getDoctorReview,
+      recordDoctorActionTrace,
+    });
+
+    const { rerender } = renderWithProviders(
+      <DoctorReviewCockpit sessionId="sess-a" enabled={true} />,
+      apiClient,
+    );
+
+    expect(await screen.findByText("Session A risk summary")).toBeInTheDocument();
+
+    rerender(<DoctorReviewCockpit sessionId="sess-b" enabled={true} />);
+
+    expect(screen.queryByText("Session A risk summary")).not.toBeInTheDocument();
+    const pendingAcceptButton = screen.queryByRole("button", { name: "accept risk summary" });
+    if (pendingAcceptButton) {
+      fireEvent.click(pendingAcceptButton);
+    }
+    expect(recordDoctorActionTrace).not.toHaveBeenCalledWith("sess-a", expect.anything());
+
+    await act(async () => {
+      resolveSessionB(
+        makeDoctorReviewResponse({
+          session_id: "sess-b",
+          timeline: [
+            {
+              item_id: "timeline-b",
+              kind: "draft_generated",
+              title: "Session B risk summary",
+              created_at: "2026-06-29T10:01:00Z",
+              assertion_refs: ["assertion-b"],
+            },
+          ],
+          assertions: [
+            {
+              assertion_id: "assertion-b",
+              patient_id: "101",
+              source: "clinical_review",
+              normalized_fact: { name: "session_b_fact" },
+              evidence_refs: [],
+              confidence: "high",
+              reviewed_status: "unreviewed",
+            },
+          ],
+          draft: {
+            draft_id: "draft-b",
+            sections: [
+              {
+                section_id: "risk_summary",
+                text: "Session B draft.",
+                verification_status: "traceable",
+                provenance: [],
+              },
+            ],
+          },
+        }),
+      );
+      await sessionBReview;
+    });
+
+    expect(await screen.findByText("Session B risk summary")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "accept risk summary" }));
+
+    await waitFor(() => {
+      expect(recordDoctorActionTrace).toHaveBeenCalledTimes(1);
+    });
+    expect(recordDoctorActionTrace).toHaveBeenCalledWith(
+      "sess-b",
+      expect.objectContaining({
+        target_refs: {
+          draft_id: "draft-b",
+          assertion_id: "assertion-b",
+        },
+      }),
+    );
   });
 });
