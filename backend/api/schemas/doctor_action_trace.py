@@ -56,6 +56,17 @@ class DoctorActionTargetRefs(BaseModel):
             )
         )
 
+    def has_clinical_or_safety_ref(self) -> bool:
+        return any(
+            isinstance(value, str) and value.strip()
+            for value in (
+                self.assertion_id,
+                self.assessment_id,
+                self.record_id,
+                self.care_card_id,
+            )
+        )
+
 
 class DoctorActionBeforeAfter(BaseModel):
     before: str = Field(min_length=1)
@@ -96,7 +107,28 @@ class DoctorActionTraceRequest(BaseModel):
             "unsupported_claim",
         }:
             raise ValueError("Invalid reason_code for mark_unsafe")
+        if self.action_type == "mark_unsafe" and not self._has_safety_target():
+            raise ValueError("mark_unsafe requires a clinical or safety target")
         return self
+
+    def _has_safety_target(self) -> bool:
+        if self.target_refs.has_clinical_or_safety_ref():
+            return True
+        target_object = (self.target_object or "").strip().lower()
+        return target_object in {
+            "assertion",
+            "clinical_assertion",
+            "assessment",
+            "record",
+            "patient_record",
+            "care_card",
+            "safety",
+            "safety_alert",
+            "safety_rule",
+            "disposition",
+            "risk_disposition",
+            "red_flag",
+        }
 
 
 class DoctorActionTrace(BaseModel):

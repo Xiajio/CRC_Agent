@@ -147,6 +147,42 @@ def test_record_doctor_action_trace_returns_stable_null_optional_fields(tmp_path
     assert trace["before_after"] is None
 
 
+def test_record_doctor_action_trace_accepts_mark_unsafe_assertion_target(tmp_path) -> None:
+    client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json={
+            "action_type": "mark_unsafe",
+            "target_object": "assertion",
+            "target_refs": {"assertion_id": "assertion-1"},
+            "reason_code": "unsafe_disposition",
+        },
+    )
+
+    assert response.status_code == 200
+    trace = response.json()["trace"]
+    assert trace["action_type"] == "mark_unsafe"
+    assert trace["target_object"] == "assertion"
+    assert trace["target_refs"]["assertion_id"] == "assertion-1"
+
+
+def test_record_doctor_action_trace_rejects_mark_unsafe_nonclinical_target(tmp_path) -> None:
+    client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json={
+            "action_type": "mark_unsafe",
+            "target_object": "draft.tone",
+            "target_refs": {"draft_id": "draft_crc_review_1_latest"},
+            "reason_code": "unsafe_disposition",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_patient_command_service_records_plain_dict_trace_payload(tmp_path) -> None:
     _client_instance, patient_id, doctor_session_id, registry = _client(tmp_path)
     commands = PatientCommandService(registry)
