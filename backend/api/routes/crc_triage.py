@@ -25,6 +25,11 @@ class CrcTriageAssessmentPayload(BaseModel):
     next_step: str = Field(min_length=1)
     source_session_id: str = Field(min_length=1)
     source_subflow: Literal["crc_triage"]
+    safety_policy_version: str | None = None
+    matched_rules: list[str] = Field(default_factory=list)
+    hard_fail_flags: list[str] = Field(default_factory=list)
+    patient_message_key: str | None = None
+    assessment_id: str | None = None
 
     @field_validator(
         "chief_complaint",

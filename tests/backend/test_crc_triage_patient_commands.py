@@ -133,6 +133,38 @@ def test_record_crc_triage_assessment_persists_node_results_and_qa_summary(tmp_p
     assert event_payload["assessment"]["protocol_state"]["stage"] == "final"
 
 
+def test_record_crc_triage_assessment_generates_default_assessment_id(
+    tmp_path: Path,
+) -> None:
+    registry = PatientRegistryService(tmp_path / "patients.db")
+    commands = PatientCommandService(registry)
+    patient = commands.create_patient(created_by_session_id="sess_patient")
+
+    result = commands.record_crc_triage_assessment(
+        patient_id=patient.patient_id,
+        assessment=_crc_triage_assessment(),
+        source_session_id="sess_patient",
+    )
+
+    record = registry.list_patient_records(patient.patient_id)[0]
+    payload = json.loads(record["normalized_payload_json"])
+
+    assert payload["assessment_id"].startswith("crc_assessment_")
+    assert len(payload["assessment_id"]) == len("crc_assessment_") + 12
+    with registry._connect() as connection:
+        event = connection.execute(
+            """
+            SELECT event_payload_json
+            FROM patient_events
+            WHERE event_id = ?
+            """,
+            (result.event_ids[0],),
+        ).fetchone()
+
+    event_payload = json.loads(event["event_payload_json"])
+    assert event_payload["assessment"]["assessment_id"] == payload["assessment_id"]
+
+
 def test_record_crc_triage_assessment_is_idempotent_by_session_and_payload(tmp_path: Path) -> None:
     registry = PatientRegistryService(tmp_path / "patient_registry.db")
     commands = PatientCommandService(registry)

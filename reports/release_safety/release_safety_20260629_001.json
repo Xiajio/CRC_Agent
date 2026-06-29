@@ -1,0 +1,22 @@
+{
+  "report_id": "release_safety_20260629_001",
+  "change_type": [
+    "clinical_safety_policy",
+    "crc_persistence"
+  ],
+  "version_chain": {
+    "agent_policy_version": "agent_policy_20260629_0",
+    "clinical_safety_policy_version": "crc_safety_policy_v0",
+    "evidence_index_version": "rag_crc_guideline_20260620",
+    "judge_rubric_version": "crc_rubric_v0"
+  },
+  "harness_runs": [
+    "harness_20260629_001"
+  ],
+  "hard_fail_summary": {
+    "count": 0,
+    "types": []
+  },
+  "release_decision": "feature_flag_or_pass",
+  "rollback_target": "agent_policy_20260624_0"
+}

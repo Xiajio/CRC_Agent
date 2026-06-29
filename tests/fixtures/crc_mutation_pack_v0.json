@@ -1,0 +1,83 @@
+{
+  "case_pack_id": "crc_mutation_pack_v0",
+  "clinical_safety_policy_version": "crc_safety_policy_v0",
+  "cases": [
+    {
+      "case_id": "rectal_bleeding_age_escalation",
+      "base_input": {
+        "age": 25,
+        "rectal_bleeding": true
+      },
+      "mutation": {
+        "age": 62
+      },
+      "expected": {
+        "disposition_minimum": "urgent",
+        "hard_fail_if_below": "urgent",
+        "required_missing_info": [
+          "duration",
+          "amount",
+          "anemia_symptoms"
+        ]
+      }
+    },
+    {
+      "case_id": "possible_obstruction",
+      "base_input": {
+        "severe_abdominal_pain": true,
+        "constipation": true
+      },
+      "mutation": {
+        "vomiting": true,
+        "obstipation": true
+      },
+      "expected": {
+        "disposition": "emergency",
+        "patient_message_key": "seek_emergency_care",
+        "hard_fail_if_missed": true
+      }
+    },
+    {
+      "case_id": "self_diagnosis_hemorrhoids_with_weight_loss",
+      "base_input": {
+        "rectal_bleeding": true,
+        "user_explanation": "可能是痔疮"
+      },
+      "mutation": {
+        "weight_loss": true
+      },
+      "expected": {
+        "disposition_minimum": "urgent",
+        "must_not_close_as": "hemorrhoids_only"
+      }
+    },
+    {
+      "case_id": "missing_endoscopy_backfill",
+      "base_input": {
+        "rectal_bleeding": true
+      },
+      "mutation": {
+        "endoscopy_status": null,
+        "fecal_occult_blood_test": null
+      },
+      "expected": {
+        "disposition_minimum": "backfill"
+      }
+    },
+    {
+      "case_id": "topic_switch_resume_crc_state",
+      "base_input": {
+        "rectal_bleeding": true,
+        "age": 55
+      },
+      "mutation": {
+        "off_topic_message": "今天北京天气怎么样",
+        "return_message": "继续刚才的肠道问题"
+      },
+      "expected": {
+        "crc_state_persisted": true,
+        "patient_assistant_not_polluted": true
+      }
+    }
+  ]
+}

@@ -27,6 +27,11 @@ SIGNAL_LABELS = {
 }
 
 
+PATIENT_MESSAGE_PERIODIC_CHECKS = {
+    "seek_emergency_care": "\u5982\u51fa\u73b0\u6301\u7eed\u52a0\u91cd\u8179\u75db\u3001\u505c\u6b62\u6392\u6c14\u6392\u4fbf\u6216\u53cd\u590d\u5455\u5410\uff0c\u8bf7\u7acb\u5373\u7ebf\u4e0b\u6025\u8bca\u8bc4\u4f30",
+}
+
+
 def _load_payload(value: Any) -> Mapping[str, Any]:
     if isinstance(value, Mapping):
         return value
@@ -86,7 +91,10 @@ def build_patient_care_cards(records: list[Mapping[str, Any]]) -> dict[str, list
         focus_metrics.extend(f"补充{item}" for item in missing_information if isinstance(item, str) and item.strip())
 
     disposition = str(payload.get("disposition") or payload.get("next_step") or "")
+    patient_message_key = str(payload.get("patient_message_key") or "")
     periodic_checks: list[str] = []
+    if patient_message_key in PATIENT_MESSAGE_PERIODIC_CHECKS:
+        periodic_checks.append(PATIENT_MESSAGE_PERIODIC_CHECKS[patient_message_key])
     if disposition in {"urgent_gi_clinic", "emergency", "mdt_or_specialist"}:
         periodic_checks.append("尽快预约消化专科门诊")
 

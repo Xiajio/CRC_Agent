@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+import json
+import re
 from copy import deepcopy
 from dataclasses import dataclass
+from hashlib import sha256
 from types import MappingProxyType
 from typing import Any, Literal, Mapping
+
+from src.services.clinical_safety_policy import (
+    evaluate_clinical_safety_policy,
+    merge_policy_disposition,
+)
 
 
 CrcTriageStage = Literal[
@@ -171,9 +179,130 @@ def _vitals_result(qa_summary: list[dict[str, Any]]) -> dict[str, str]:
 
 def _is_no_recent_test_answer(answer: Any) -> bool:
     normalized = str(answer or "").strip().replace(" ", "")
-    if normalized in {"没有", "没有做过", "没有检查", "没做", "没做过", "未做", "未检查"}:
+    if normalized in {
+        "没有",
+        "没有做过",
+        "没有检查",
+        "没做",
+        "没做过",
+        "未做",
+        "未检查",
+    }:
         return True
     return normalized.startswith(("没有做过", "没做过", "未做过"))
+
+
+def _combined_answer_text(qa_summary: list[dict[str, Any]]) -> str:
+    return "\n".join(str(item.get("answer") or "") for item in qa_summary)
+
+
+def _contains_any(text: str, needles: tuple[str, ...]) -> bool:
+    normalized = text.lower()
+    return any(needle.lower() in normalized for needle in needles)
+
+
+def _extract_age(text: str) -> int | None:
+    for pattern in (
+        r"\u5e74\u9f84\s*(\d{1,3})\s*\u5c81",
+        r"age\s*(\d{1,3})",
+        r"(\d{1,3})\s*\u5c81",
+    ):
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _answer_for_question(
+    qa_summary: list[dict[str, Any]],
+    question_id: str,
+) -> str:
+    for item in qa_summary:
+        if item.get("question_id") == question_id:
+            return str(item.get("answer") or "")
+    return ""
+
+
+def _is_affirmative_answer(answer: Any) -> bool:
+    normalized = str(answer or "").strip().replace(" ", "")
+    return normalized.startswith("有")
+
+
+def _derive_safety_policy_input(qa_summary: list[dict[str, Any]]) -> dict[str, Any]:
+    answer_text = _combined_answer_text(qa_summary)
+    red_flags_pain_or_obstruction_answer = _answer_for_question(
+        qa_summary,
+        "red_flags_pain_or_obstruction",
+    )
+    symptom_cluster_chief_answer = _answer_for_question(
+        qa_summary,
+        "symptom_cluster_chief",
+    )
+    differential_duration_answer = _answer_for_question(
+        qa_summary,
+        "differential_duration",
+    )
+    tests_recent_exam_answer = next(
+        (
+            item.get("answer")
+            for item in qa_summary
+            if item.get("question_id") == "tests_recent_exam"
+        ),
+        None,
+    )
+    has_recent_tests = tests_recent_exam_answer is not None and not _is_no_recent_test_answer(
+        tests_recent_exam_answer
+    )
+    pain_or_obstruction_positive = _is_affirmative_answer(
+        red_flags_pain_or_obstruction_answer
+    )
+    worsening_abdominal_pain = _contains_any(
+        f"{symptom_cluster_chief_answer}\n{differential_duration_answer}",
+        ("腹痛", "腹胀", "逐渐加重"),
+    )
+
+    return {
+        "age": _extract_age(answer_text),
+        "rectal_bleeding": _contains_any(
+            answer_text,
+            ("便血", "出血", "rectal bleeding"),
+        ),
+        "weight_loss": _contains_any(
+            answer_text,
+            ("体重下降", "消瘦", "weight loss"),
+        ),
+        "vomiting": _contains_any(answer_text, ("呕吐", "vomiting")),
+        "obstipation": pain_or_obstruction_positive
+        or _contains_any(
+            answer_text,
+            ("停止排气排便", "停止排便", "obstipation"),
+        ),
+        "severe_abdominal_pain": pain_or_obstruction_positive
+        or worsening_abdominal_pain
+        or _contains_any(
+            answer_text,
+            ("剧烈腹痛", "持续加重的腹痛", "严重腹痛"),
+        ),
+        "user_explanation": answer_text,
+        "endoscopy_status": "available" if has_recent_tests else None,
+        "fecal_occult_blood_test": "available" if has_recent_tests else None,
+    }
+
+
+def _risk_level_after_disposition(current_risk_level: str, disposition: str) -> str:
+    if disposition in {"emergency", "urgent_gi_clinic", "urgent"}:
+        return "high"
+    return current_risk_level
+
+
+def _default_assessment_id(assessment: Mapping[str, Any]) -> str:
+    payload = {
+        key: value
+        for key, value in dict(assessment).items()
+        if key != "assessment_id"
+    }
+    payload_json = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return f"crc_assessment_{sha256(payload_json.encode('utf-8')).hexdigest()[:12]}"
 
 
 def _build_final_assessment(state: dict[str, Any]) -> dict[str, Any]:
@@ -191,7 +320,7 @@ def _build_final_assessment(state: dict[str, Any]) -> dict[str, Any]:
         and not _is_no_recent_test_answer(item.get("answer"))
         for item in qa_summary
     )
-    return {
+    assessment = {
         "record_type": "crc_triage_assessment",
         "chief_complaint": chief_complaint,
         "symptom_group": "CRC相关门诊分诊",
@@ -208,6 +337,23 @@ def _build_final_assessment(state: dict[str, Any]) -> dict[str, Any]:
         "source_subflow": "crc_triage",
         "node_results": list(state.get("node_results") or []),
     }
+    policy_result = evaluate_clinical_safety_policy(
+        _derive_safety_policy_input(qa_summary)
+    )
+    assessment["disposition"] = merge_policy_disposition(
+        assessment["disposition"],
+        policy_result["disposition"],
+    )
+    assessment["risk_level"] = _risk_level_after_disposition(
+        assessment["risk_level"],
+        assessment["disposition"],
+    )
+    assessment["safety_policy_version"] = policy_result["safety_policy_version"]
+    assessment["matched_rules"] = list(policy_result["matched_rules"])
+    assessment["hard_fail_flags"] = list(policy_result["hard_fail_flags"])
+    assessment["patient_message_key"] = policy_result["patient_message_key"]
+    assessment["assessment_id"] = _default_assessment_id(assessment)
+    return assessment
 
 
 def start_crc_triage_state(registry_patient_id: int) -> dict[str, Any]:

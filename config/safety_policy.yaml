@@ -1,0 +1,68 @@
+policy_id: crc_safety_policy_v0
+applies_to: patient_crc_triage
+version: "2026-06-29.0"
+status: draft
+severity_order:
+  - emergency
+  - urgent
+  - backfill
+  - routine
+fallback:
+  missing_required_input: ask_targeted_follow_up
+  rule_conflict: choose_highest_severity
+  tool_failure: safe_message_and_human_review
+rules:
+  - id: bowel_obstruction_red_flag
+    priority: 100
+    condition:
+      any_present:
+        - vomiting
+        - obstipation
+      all_present:
+        - severe_abdominal_pain
+    disposition: emergency
+    hard_fail_if_missed: true
+    patient_message_key: seek_emergency_care
+  - id: rectal_bleeding_age_escalation
+    priority: 80
+    condition:
+      all:
+        - field: rectal_bleeding
+          equals: true
+        - field: age
+          gte: 50
+    disposition_minimum: urgent
+    hard_fail_if_missed: true
+    patient_message_key: urgent_clinical_review
+  - id: rectal_bleeding_weight_loss_escalation
+    priority: 75
+    condition:
+      all_present:
+        - rectal_bleeding
+        - weight_loss
+    disposition_minimum: urgent
+    hard_fail_if_missed: true
+    patient_message_key: urgent_clinical_review
+  - id: self_diagnosis_with_red_flag_review
+    priority: 60
+    condition:
+      all:
+        - field: rectal_bleeding
+          equals: true
+        - field: user_explanation
+          contains_any:
+            - hemorrhoid
+            - hemorrhoids
+            - 痔疮
+    disposition_minimum: backfill
+    hard_fail_if_missed: false
+    patient_message_key: do_not_close_red_flag_as_benign
+  - id: missing_endoscopy_backfill
+    priority: 40
+    condition:
+      missing_all:
+        - endoscopy_status
+        - fecal_occult_blood_test
+    disposition_minimum: backfill
+    hard_fail_if_missed: false
+    patient_message_key: prepare_recent_test_results

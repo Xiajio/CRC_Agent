@@ -35,6 +35,12 @@ tests/backend/*
 !tests/backend/test_crc_triage_patient_commands.py
 !tests/backend/test_crc_triage_flow.py
 !tests/backend/test_crc_triage_routing_scope.py
+!tests/backend/test_intended_use_profiles.py
+!tests/backend/test_clinical_safety_policy.py
+!tests/backend/test_crc_triage_mutation_pack.py
+!tests/backend/test_crc_triage_save.py
+!tests/backend/test_crc_harness_replay.py
+!tests/backend/test_crc_safety_gitignore_contract.py
 !tests/backend/test_outpatient_triage_gating.py
 !tests/backend/test_payload_builder_crc_triage.py
 !tests/backend/test_patient_care_cards.py
@@ -77,6 +83,7 @@ tests/fixtures/*
 !tests/fixtures/acceptance_case_db/
 tests/fixtures/acceptance_case_db/*
 !tests/fixtures/acceptance_case_db/seed.json
+!tests/fixtures/crc_mutation_pack_v0.json
 !tests/fixtures/graph_ticks/
 tests/fixtures/graph_ticks/*
 !tests/fixtures/graph_ticks/demo_patient_triage_question.json
@@ -138,6 +145,9 @@ Thumbs.db
 generated_reports/
 docs/*
 !docs/current-architecture-map.md
+!docs/safety/
+docs/safety/*
+!docs/safety/*.md
 !docs/superpowers/
 docs/superpowers/*
 !docs/superpowers/specs/

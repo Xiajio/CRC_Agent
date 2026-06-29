@@ -34,3 +34,21 @@ def test_build_patient_care_cards_returns_default_guidance_without_records() -> 
     assert cards["focusMetrics"]
     assert cards["periodicChecks"]
     assert cards["dailyActions"]
+
+
+def test_build_patient_care_cards_projects_emergency_safety_message_key() -> None:
+    cards = build_patient_care_cards(
+        [
+            {
+                "record_type": "crc_triage_assessment",
+                "normalized_payload_json": {
+                    "disposition": "emergency",
+                    "patient_message_key": "seek_emergency_care",
+                    "matched_rules": ["bowel_obstruction_red_flag"],
+                    "hard_fail_flags": ["bowel_obstruction_red_flag"],
+                },
+            }
+        ]
+    )
+
+    assert "如出现持续加重腹痛、停止排气排便或反复呕吐，请立即线下急诊评估" in cards["periodicChecks"]

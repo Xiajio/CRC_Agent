@@ -225,12 +225,70 @@ def test_final_state_contains_assessment_payload_fields() -> None:
     assert state["active_inquiry"] is False
     assert state["assessment"]["record_type"] == "crc_triage_assessment"
     assert state["assessment"]["source_subflow"] == "crc_triage"
+    assert state["assessment"]["risk_level"] == "medium"
+    assert state["assessment"]["disposition"] == "complete_basic_tests"
+    assert state["assessment"]["assessment_id"].startswith("crc_assessment_")
+    assert state["assessment"]["safety_policy_version"] == "crc_safety_policy_v0"
+    assert isinstance(state["assessment"]["matched_rules"], list)
+    assert isinstance(state["assessment"]["hard_fail_flags"], list)
+    assert "patient_message_key" in state["assessment"]
     assert state["assessment"]["qa_summary"][0]["question_id"] == "vitals_shock_or_consciousness"
     assert state["assessment"]["missing_information"] == ["内镜或粪便潜血等辅助检查结果"]
     assert state["assessment"]["node_results"] == state["node_results"]
     assert state["assessment"]["suggested_tests"] == ["血常规", "粪便潜血", "肠镜或结肠镜相关检查"]
     assert state["assessment"]["patient_summary"] == "已完成 CRC 专项预问诊，建议结合辅助检查结果进一步判断。"
     assert state["assessment"]["next_step"] == "上传或携带近期检查结果，必要时预约消化专科门诊。"
+
+
+def test_final_state_escalates_rectal_bleeding_with_older_age_to_urgent_safety_path() -> None:
+    state = start_crc_triage_state(registry_patient_id=7)
+    for question_id, answer in [
+        ("vitals_shock_or_consciousness", "没有"),
+        ("vitals_heart_or_breathing", "没有"),
+        ("red_flags_weight_or_bleeding", "有，便血，年龄62岁"),
+        ("red_flags_pain_or_obstruction", "没有"),
+        ("symptom_cluster_chief", "大便习惯改变"),
+        ("differential_duration", "1个月以上"),
+        ("tests_recent_exam", "没有做过"),
+    ]:
+        state = advance_crc_triage(
+            state,
+            CrcTriageAnswer(question_id=question_id, answer_text=answer),
+        )
+
+    assessment = state["assessment"]
+    assert state["stage"] == "final"
+    assert assessment["disposition"] == "urgent_gi_clinic"
+    assert assessment["risk_level"] == "high"
+    assert assessment["safety_policy_version"] == "crc_safety_policy_v0"
+    assert "rectal_bleeding_age_escalation" in assessment["matched_rules"]
+    assert "rectal_bleeding_age_escalation" in assessment["hard_fail_flags"]
+    assert assessment["patient_message_key"] == "urgent_clinical_review"
+
+
+def test_final_state_escalates_obstruction_option_answer_to_emergency() -> None:
+    state = start_crc_triage_state(registry_patient_id=7)
+    for question_id, answer in [
+        ("vitals_shock_or_consciousness", "没有"),
+        ("vitals_heart_or_breathing", "没有"),
+        ("red_flags_weight_or_bleeding", "没有"),
+        ("red_flags_pain_or_obstruction", "有"),
+        ("symptom_cluster_chief", "腹痛腹胀"),
+        ("differential_duration", "逐渐加重"),
+        ("tests_recent_exam", "没有做过"),
+    ]:
+        state = advance_crc_triage(
+            state,
+            CrcTriageAnswer(question_id=question_id, answer_text=answer),
+        )
+
+    assessment = state["assessment"]
+
+    assert assessment["disposition"] == "emergency"
+    assert assessment["risk_level"] == "high"
+    assert assessment["patient_message_key"] == "seek_emergency_care"
+    assert assessment["matched_rules"] == ["bowel_obstruction_red_flag"]
+    assert assessment["hard_fail_flags"] == ["bowel_obstruction_red_flag"]
 
 
 def test_final_state_with_recent_test_results_uses_high_urgent_assessment_path() -> None:

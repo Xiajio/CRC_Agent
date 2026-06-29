@@ -1,0 +1,40 @@
+profiles:
+  patient_crc_triage:
+    user_type: patient
+    allowed_tasks:
+      - collect_symptoms
+      - explain_triage_support
+      - suggest_next_information_to_prepare
+      - escalate_urgent_or_emergency_safety_message
+    forbidden_tasks:
+      - final_diagnosis
+      - treatment_decision
+      - screening_conclusion
+      - reassure_red_flag_as_benign
+      - replace_clinician_review
+    disclaimer_key: patient_crc_triage_disclaimer
+    evidence_required: false
+  doctor_review:
+    user_type: clinician
+    allowed_tasks:
+      - summarize_patient_context
+      - draft_review_note
+      - show_evidence_provenance
+    forbidden_tasks:
+      - auto_sign
+      - override_clinician_decision
+      - convert_edits_to_model_truth
+    disclaimer_key: doctor_assistive_draft_disclaimer
+    evidence_required: true
+  research_workspace:
+    user_type: pi_or_researcher
+    allowed_tasks:
+      - literature_radar
+      - cohort_feasibility
+      - hypothesis_draft
+    forbidden_tasks:
+      - patient_advice
+      - clinical_decision
+      - export_patient_level_data_without_review
+    disclaimer_key: research_only_disclaimer
+    evidence_required: true

@@ -125,6 +125,15 @@ class PatientCommandService:
         payload_json = json.dumps(dict(assessment), ensure_ascii=False, sort_keys=True)
         return sha256(payload_json.encode("utf-8")).hexdigest()
 
+    def _default_crc_assessment_id(self, assessment: Mapping[str, Any]) -> str:
+        payload = {
+            key: value
+            for key, value in dict(assessment).items()
+            if key != "assessment_id"
+        }
+        payload_json = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        return f"crc_assessment_{sha256(payload_json.encode('utf-8')).hexdigest()[:12]}"
+
     def _canonical_crc_triage_assessment(
         self,
         assessment: Mapping[str, Any],
@@ -138,6 +147,13 @@ class PatientCommandService:
         normalized.setdefault("qa_summary", [])
         normalized.setdefault("node_results", [])
         normalized.setdefault("protocol_state", {})
+        normalized.setdefault("safety_policy_version", None)
+        normalized.setdefault("matched_rules", [])
+        normalized.setdefault("hard_fail_flags", [])
+        normalized.setdefault("patient_message_key", None)
+        normalized["assessment_id"] = str(
+            normalized.get("assessment_id") or self._default_crc_assessment_id(normalized)
+        )
         return normalized
 
     def _crc_triage_summary(self, assessment: Mapping[str, Any]) -> str:

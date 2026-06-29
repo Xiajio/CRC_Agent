@@ -91,6 +91,11 @@ def test_save_crc_triage_assessment_persists_rich_payload_fields(tmp_path) -> No
         }
     ]
     payload["protocol_state"] = {"stage": "final", "active_inquiry": False}
+    payload["safety_policy_version"] = "crc_safety_policy_v0"
+    payload["matched_rules"] = ["rectal_bleeding_age_escalation"]
+    payload["hard_fail_flags"] = ["rectal_bleeding_age_escalation"]
+    payload["patient_message_key"] = "urgent_clinical_review"
+    payload["assessment_id"] = "crc-assessment-1"
 
     response = client.post(
         f"/api/sessions/{session_id}/crc-triage/assessments",
@@ -103,6 +108,11 @@ def test_save_crc_triage_assessment_persists_rich_payload_fields(tmp_path) -> No
     assert normalized_payload["qa_summary"][0]["question_id"] == "vitals_shock_or_consciousness"
     assert normalized_payload["node_results"][0]["stage"] == "vitals"
     assert normalized_payload["protocol_state"]["stage"] == "final"
+    assert normalized_payload["safety_policy_version"] == "crc_safety_policy_v0"
+    assert normalized_payload["matched_rules"] == ["rectal_bleeding_age_escalation"]
+    assert normalized_payload["hard_fail_flags"] == ["rectal_bleeding_age_escalation"]
+    assert normalized_payload["patient_message_key"] == "urgent_clinical_review"
+    assert normalized_payload["assessment_id"] == "crc-assessment-1"
 
 
 def test_save_crc_triage_assessment_rejects_doctor_session(tmp_path) -> None:
