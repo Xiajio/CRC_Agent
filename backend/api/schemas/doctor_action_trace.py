@@ -128,6 +128,9 @@ class DoctorActionTraceRequest(BaseModel):
             "disposition",
             "risk_disposition",
             "red_flag",
+            "draft.risk_summary",
+            "draft.disposition",
+            "draft.red_flags",
         }
 
 

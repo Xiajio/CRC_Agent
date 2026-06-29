@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Any
 
@@ -145,6 +146,64 @@ def _build_draft(patient_id: int, assertions: list[ClinicalAssertion]) -> Doctor
     )
 
 
+def _load_json_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    if not isinstance(value, str) or not value.strip():
+        return {}
+    try:
+        parsed = json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    return dict(parsed) if isinstance(parsed, Mapping) else {}
+
+
+def _resolvable_record_id(value: str | None) -> int | None:
+    if value is None:
+        return None
+    candidate = str(value).strip()
+    if candidate.isdigit():
+        return int(candidate)
+    if candidate.startswith("record_"):
+        suffix = candidate.removeprefix("record_")
+        if suffix.isdigit():
+            return int(suffix)
+    return None
+
+
+def _target_ref_error(
+    patient_registry: Any,
+    *,
+    patient_id: int,
+    payload: DoctorActionTraceRequest,
+) -> str | None:
+    refs = payload.target_refs
+    records = patient_registry.list_patient_records(patient_id)
+
+    record_id = _resolvable_record_id(refs.record_id)
+    if refs.record_id is not None and record_id is not None:
+        if not any(int(row["record_id"]) == record_id for row in records):
+            return "target_refs.record_id does not belong to the bound patient"
+
+    if refs.assessment_id is not None:
+        if not any(
+            str(row.get("record_type")) == "crc_triage_assessment"
+            and _load_json_mapping(row.get("normalized_payload_json")).get("assessment_id")
+            == refs.assessment_id
+            for row in records
+        ):
+            return "target_refs.assessment_id does not belong to the bound patient"
+
+    if isinstance(refs.assertion_id, str) and refs.assertion_id.startswith("assertion_triage_"):
+        projected_assertion_ids = set(
+            assertion_refs(project_clinical_assertions_from_records(records))
+        )
+        if refs.assertion_id not in projected_assertion_ids:
+            return "target_refs.assertion_id does not belong to the bound patient"
+
+    return None
+
+
 @router.get(
     "/{session_id}/doctor-review",
     response_model=DoctorReviewResponse,
@@ -199,6 +258,14 @@ async def record_doctor_action_trace(
         patient_registry.get_patient_detail(meta.patient_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Patient not found") from exc
+
+    target_ref_error = _target_ref_error(
+        patient_registry,
+        patient_id=int(meta.patient_id),
+        payload=payload,
+    )
+    if target_ref_error is not None:
+        raise HTTPException(status_code=422, detail=target_ref_error)
 
     trace = DoctorActionTrace(
         trace_id=new_trace_id(),

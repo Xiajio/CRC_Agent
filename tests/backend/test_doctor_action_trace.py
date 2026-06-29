@@ -13,6 +13,36 @@ from backend.api.services.patient_registry_service import PatientRegistryService
 from backend.api.services.session_store import InMemorySessionStore
 
 
+def _assessment(
+    patient_session_id: str,
+    *,
+    assessment_id: str = "crc_assessment_abc123",
+) -> dict[str, object]:
+    return {
+        "assessment_id": assessment_id,
+        "record_type": "crc_triage_assessment",
+        "chief_complaint": "rectal bleeding",
+        "symptom_group": "bowel habit change",
+        "risk_level": "high",
+        "disposition": "urgent_gi_clinic",
+        "red_flags": ["weight_loss"],
+        "known_crc_signals": {"rectal_bleeding": True},
+        "suggested_tests": ["colonoscopy"],
+        "missing_information": ["family_history"],
+        "qa_summary": [],
+        "node_results": [],
+        "protocol_state": {"stage": "final", "active_inquiry": False},
+        "patient_summary": "Rectal bleeding with weight loss needs urgent GI review.",
+        "next_step": "urgent_gi_clinic",
+        "source_session_id": patient_session_id,
+        "source_subflow": "crc_triage",
+        "safety_policy_version": "crc_safety_policy_v0",
+        "matched_rules": ["rectal_bleeding_age_escalation"],
+        "hard_fail_flags": [],
+        "patient_message_key": "urgent_clinical_review",
+    }
+
+
 def _client(tmp_path):
     app = FastAPI()
     session_store = InMemorySessionStore()
@@ -97,6 +127,23 @@ def _snapshot_row(registry: PatientRegistryService, patient_id: int) -> dict[str
     return dict(row)
 
 
+def _doctor_action_event_count(
+    registry: PatientRegistryService,
+    patient_id: int,
+) -> int:
+    with registry.transaction() as connection:
+        row = connection.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM patient_events
+            WHERE patient_id = ? AND event_type = 'doctor.action_trace_recorded'
+            """,
+            (patient_id,),
+        ).fetchone()
+    assert row is not None
+    return int(row["count"])
+
+
 def test_record_doctor_action_trace_stores_append_only_event(tmp_path) -> None:
     client, patient_id, doctor_session_id, registry = _client(tmp_path)
 
@@ -167,6 +214,23 @@ def test_record_doctor_action_trace_accepts_mark_unsafe_assertion_target(tmp_pat
     assert trace["target_refs"]["assertion_id"] == "assertion-1"
 
 
+def test_record_doctor_action_trace_accepts_mark_unsafe_draft_risk_summary(tmp_path) -> None:
+    client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json={
+            "action_type": "mark_unsafe",
+            "target_object": "draft.risk_summary",
+            "target_refs": {"draft_id": "draft_crc_review_1_latest"},
+            "reason_code": "missing_red_flag",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["trace"]["target_object"] == "draft.risk_summary"
+
+
 def test_record_doctor_action_trace_rejects_mark_unsafe_nonclinical_target(tmp_path) -> None:
     client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
 
@@ -181,6 +245,49 @@ def test_record_doctor_action_trace_rejects_mark_unsafe_nonclinical_target(tmp_p
     )
 
     assert response.status_code == 422
+
+
+def test_record_doctor_action_trace_rejects_cross_patient_record_ref(tmp_path) -> None:
+    client, patient_a_id, doctor_session_id, registry = _client(tmp_path)
+    commands = PatientCommandService(registry)
+    patient_b = commands.create_patient(created_by_session_id="patient_b_session")
+    patient_b_record = commands.record_crc_triage_assessment(
+        patient_id=patient_b.patient_id,
+        assessment=_assessment("patient_b_session", assessment_id="crc_assessment_b"),
+        source_session_id="patient_b_session",
+    )
+    before_count = _doctor_action_event_count(registry, patient_a_id)
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json={
+            "action_type": "request_evidence",
+            "target_object": "record",
+            "target_refs": {"record_id": str(patient_b_record.record_id)},
+            "reason_code": "unsupported_claim",
+        },
+    )
+
+    assert response.status_code == 422
+    assert _doctor_action_event_count(registry, patient_a_id) == before_count
+
+
+def test_record_doctor_action_trace_rejects_invalid_assessment_ref(tmp_path) -> None:
+    client, patient_id, doctor_session_id, registry = _client(tmp_path)
+    before_count = _doctor_action_event_count(registry, patient_id)
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json={
+            "action_type": "request_evidence",
+            "target_object": "assessment",
+            "target_refs": {"assessment_id": "crc_assessment_missing"},
+            "reason_code": "unsupported_claim",
+        },
+    )
+
+    assert response.status_code == 422
+    assert _doctor_action_event_count(registry, patient_id) == before_count
 
 
 def test_patient_command_service_records_plain_dict_trace_payload(tmp_path) -> None:
