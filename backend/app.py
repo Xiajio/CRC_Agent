@@ -16,6 +16,7 @@ from backend.api.routes import assets as asset_routes
 from backend.api.routes import chat as chat_routes
 from backend.api.routes import crc_triage as crc_triage_routes
 from backend.api.routes import database as database_routes
+from backend.api.routes import doctor_review as doctor_review_routes
 from backend.api.routes import patient_registry as patient_registry_routes
 from backend.api.routes import sessions as session_routes
 from backend.api.routes import uploads as upload_routes
@@ -210,6 +211,7 @@ def create_app() -> FastAPI:
     app.include_router(session_routes.router)
     app.include_router(chat_routes.router)
     app.include_router(crc_triage_routes.router)
+    app.include_router(doctor_review_routes.router)
     app.include_router(database_routes.router)
     app.include_router(patient_registry_routes.router)
     app.include_router(upload_routes.router)
