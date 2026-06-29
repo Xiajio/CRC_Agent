@@ -12,6 +12,9 @@ from src.contracts.clinical_assertion import (
     NormalizedFact,
     make_assertion_id,
 )
+from src.services.clinical_assertion_projection import (
+    project_clinical_assertions_from_records,
+)
 
 
 def test_make_assertion_id_is_stable_and_content_addressed() -> None:
@@ -250,3 +253,68 @@ def test_clinical_assertion_optional_fields_are_typed_as_optional() -> None:
     assert hints["source_assessment_id"] == str | None
     assert hints["safety_policy_version"] == str | None
     assert hints["created_from_projection_version"] == str | None
+
+
+def _crc_record() -> dict[str, object]:
+    return {
+        "record_id": 42,
+        "patient_id": 33,
+        "record_type": "crc_triage_assessment",
+        "document_type": "crc_triage_assessment",
+        "normalized_payload_json": {
+            "record_type": "crc_triage_assessment",
+            "assessment_id": "crc_assessment_abc123",
+            "source_session_id": "sess_patient_001",
+            "known_crc_signals": {"rectal_bleeding": True},
+            "red_flags": ["weight_loss"],
+            "disposition": "urgent_gi_clinic",
+            "missing_information": ["family_history"],
+            "matched_rules": ["rectal_bleeding_age_escalation"],
+            "safety_policy_version": "crc_safety_policy_v0",
+        },
+    }
+
+
+def test_project_crc_triage_record_to_assertions() -> None:
+    assertions = project_clinical_assertions_from_records([_crc_record()])
+    payloads = [assertion.to_dict() for assertion in assertions]
+    names = {
+        item["normalized_fact"]["name"]: item["normalized_fact"]["type"]
+        for item in payloads
+    }
+
+    assert names["rectal_bleeding"] == "condition_signal"
+    assert names["weight_loss"] == "symptom"
+    assert names["disposition"] == "risk_disposition"
+    assert names["family_history"] == "missing_information"
+    assert names["rectal_bleeding_age_escalation"] == "safety_rule_match"
+    assert all(item["source_assessment_id"] == "crc_assessment_abc123" for item in payloads)
+    assert all(item["source_record_id"] == "42" for item in payloads)
+    assert all(item["safety_policy_version"] == "crc_safety_policy_v0" for item in payloads)
+
+
+def test_project_crc_triage_record_is_stable_and_deduped() -> None:
+    first = project_clinical_assertions_from_records([_crc_record(), _crc_record()])
+    second = project_clinical_assertions_from_records([_crc_record()])
+
+    assert [item.assertion_id for item in first] == [item.assertion_id for item in second]
+
+
+def test_project_old_record_without_p0_metadata_does_not_fail() -> None:
+    assertions = project_clinical_assertions_from_records(
+        [
+            {
+                "record_id": 9,
+                "patient_id": 33,
+                "record_type": "crc_triage_assessment",
+                "normalized_payload_json": {
+                    "known_crc_signals": {"rectal_bleeding": True},
+                },
+            }
+        ]
+    )
+
+    assert len(assertions) == 1
+    payload = assertions[0].to_dict()
+    assert payload["source_record_id"] == "9"
+    assert "source_assessment_id" not in payload
