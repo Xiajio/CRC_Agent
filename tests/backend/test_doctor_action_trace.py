@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import FastAPI
@@ -55,6 +56,17 @@ def _valid_edit_payload() -> dict[str, object]:
     }
 
 
+def _valid_accept_payload() -> dict[str, object]:
+    return {
+        "action_type": "accept",
+        "target_object": None,
+        "target_refs": {
+            "draft_id": "draft_crc_review_1_latest",
+        },
+        "reason_code": "workflow_mismatch",
+    }
+
+
 def _latest_event(registry: PatientRegistryService, patient_id: int) -> dict[str, object]:
     with registry.transaction() as connection:
         row = connection.execute(
@@ -95,9 +107,13 @@ def test_record_doctor_action_trace_stores_append_only_event(tmp_path) -> None:
 
     assert response.status_code == 200
     body = response.json()
+    assert body["patient_id"] == patient_id
     assert body["trace"]["action_type"] == "edit"
+    assert body["trace"]["trace_id"].startswith("doctor_trace_")
     assert body["trace"]["patient_id"] == patient_id
     assert body["trace"]["session_id"] == doctor_session_id
+    assert "timestamp" in body["trace"]
+    assert "created_at" not in body["trace"]
     assert body["event_ids"]
     assert body["snapshot_changed"] is False
 
@@ -115,6 +131,57 @@ def test_record_doctor_action_trace_stores_append_only_event(tmp_path) -> None:
     )
     assert second.status_code == 200
     assert second.json()["event_ids"] != body["event_ids"]
+
+
+def test_record_doctor_action_trace_returns_stable_null_optional_fields(tmp_path) -> None:
+    client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json=_valid_accept_payload(),
+    )
+
+    assert response.status_code == 200
+    trace = response.json()["trace"]
+    assert trace["target_object"] is None
+    assert trace["before_after"] is None
+
+
+def test_patient_command_service_records_plain_dict_trace_payload(tmp_path) -> None:
+    _client_instance, patient_id, doctor_session_id, registry = _client(tmp_path)
+    commands = PatientCommandService(registry)
+    trace_payload = {
+        "trace_id": "doctor_trace_plain_dict",
+        "patient_id": patient_id,
+        "session_id": doctor_session_id,
+        "action_type": "accept",
+        "target_object": None,
+        "target_refs": {"draft_id": "draft_crc_review_1_latest"},
+        "before_after": None,
+        "reason_code": "workflow_mismatch",
+        "reviewer_role": "physician_reviewer",
+        "deidentified": True,
+        "timestamp": "2026-06-29T00:00:00Z",
+    }
+
+    result = commands.record_doctor_action_trace(
+        patient_id=patient_id,
+        trace=trace_payload,
+        source_session_id=doctor_session_id,
+    )
+
+    assert result.event_ids
+    latest_event = _latest_event(registry, patient_id)
+    payload = json.loads(str(latest_event["event_payload_json"]))
+    assert payload["trace"] == trace_payload
+
+
+def test_patient_command_service_does_not_import_api_schema() -> None:
+    service_source = Path("backend/api/services/patient_commands.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "backend.api.schemas.doctor_action_trace" not in service_source
 
 
 def test_record_doctor_action_trace_rejects_unknown_reason_code(tmp_path) -> None:

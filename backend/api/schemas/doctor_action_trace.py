@@ -30,7 +30,7 @@ DoctorActionReasonCode = Literal[
 
 
 def new_trace_id() -> str:
-    return f"trace_{uuid4().hex}"
+    return f"doctor_trace_{uuid4().hex}"
 
 
 class DoctorActionTargetRefs(BaseModel):
@@ -110,12 +110,13 @@ class DoctorActionTrace(BaseModel):
     reason_code: DoctorActionReasonCode
     reviewer_role: str = "physician_reviewer"
     deidentified: bool = True
-    created_at: str
+    timestamp: str
 
     model_config = ConfigDict(extra="forbid")
 
 
 class DoctorActionTraceResponse(BaseModel):
+    patient_id: int
     trace: DoctorActionTrace
     event_ids: list[str] = Field(default_factory=list)
     patient_version: int

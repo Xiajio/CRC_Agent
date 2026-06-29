@@ -180,7 +180,6 @@ async def get_doctor_review(session_id: str, request: Request) -> DoctorReviewRe
 @router.post(
     "/{session_id}/doctor-review/action-traces",
     response_model=DoctorActionTraceResponse,
-    response_model_exclude_none=True,
 )
 async def record_doctor_action_trace(
     session_id: str,
@@ -212,14 +211,15 @@ async def record_doctor_action_trace(
         reason_code=payload.reason_code,
         reviewer_role=payload.reviewer_role,
         deidentified=True,
-        created_at=_utc_now(),
+        timestamp=_utc_now(),
     )
     result = patient_commands.record_doctor_action_trace(
         patient_id=int(meta.patient_id),
-        trace=trace,
+        trace=trace.model_dump(mode="json"),
         source_session_id=meta.session_id,
     )
     return DoctorActionTraceResponse(
+        patient_id=int(meta.patient_id),
         trace=trace,
         event_ids=result.event_ids,
         patient_version=result.patient_version,

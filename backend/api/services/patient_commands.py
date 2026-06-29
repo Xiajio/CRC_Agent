@@ -16,7 +16,6 @@ from backend.api.services.patient_registry_service import (
     _utc_now,
     normalize_patient_number,
 )
-from backend.api.schemas.doctor_action_trace import DoctorActionTrace
 
 
 class PatientEventConflictError(RuntimeError):
@@ -928,7 +927,7 @@ class PatientCommandService:
         self,
         *,
         patient_id: int,
-        trace: DoctorActionTrace,
+        trace: Mapping[str, Any],
         source_session_id: str,
     ) -> PatientCommandResult:
         with self._registry.transaction() as connection:
@@ -943,7 +942,7 @@ class PatientCommandService:
                 connection,
                 patient_id=patient_id,
                 event_type="doctor.action_trace_recorded",
-                payload={"trace": trace.model_dump(mode="json")},
+                payload={"trace": dict(trace)},
                 source_session_id=source_session_id,
                 idempotency_key=None,
                 actor_type="physician_reviewer",
