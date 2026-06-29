@@ -16,6 +16,7 @@ from backend.api.services.patient_registry_service import (
     _utc_now,
     normalize_patient_number,
 )
+from backend.api.schemas.doctor_action_trace import DoctorActionTrace
 
 
 class PatientEventConflictError(RuntimeError):
@@ -921,6 +922,49 @@ class PatientCommandService:
             asset_id=asset_id,
             record_id=record_id,
             snapshot_changed=True,
+        )
+
+    def record_doctor_action_trace(
+        self,
+        *,
+        patient_id: int,
+        trace: DoctorActionTrace,
+        source_session_id: str,
+    ) -> PatientCommandResult:
+        with self._registry.transaction() as connection:
+            patient_row = connection.execute(
+                "SELECT id FROM patients WHERE id = ?",
+                (patient_id,),
+            ).fetchone()
+            if patient_row is None:
+                raise KeyError(f"Patient not found: {patient_id}")
+
+            event_id, version = self._append_event(
+                connection,
+                patient_id=patient_id,
+                event_type="doctor.action_trace_recorded",
+                payload={"trace": trace.model_dump(mode="json")},
+                source_session_id=source_session_id,
+                idempotency_key=None,
+                actor_type="physician_reviewer",
+            )
+            snapshot = connection.execute(
+                """
+                SELECT projection_version
+                FROM patient_snapshots
+                WHERE patient_id = ?
+                """,
+                (patient_id,),
+            ).fetchone()
+            projection_version = (
+                version if snapshot is None else int(snapshot["projection_version"])
+            )
+        return PatientCommandResult(
+            patient_id=patient_id,
+            patient_version=version,
+            projection_version=projection_version,
+            event_ids=[event_id],
+            snapshot_changed=False,
         )
 
     def record_upload_received(

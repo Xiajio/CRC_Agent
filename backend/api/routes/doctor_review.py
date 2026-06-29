@@ -5,6 +5,12 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from backend.api.schemas.doctor_action_trace import (
+    DoctorActionTrace,
+    DoctorActionTraceRequest,
+    DoctorActionTraceResponse,
+    new_trace_id,
+)
 from backend.api.schemas.doctor_review import (
     DoctorReviewDraft,
     DoctorReviewDraftSection,
@@ -12,6 +18,7 @@ from backend.api.schemas.doctor_review import (
     DoctorReviewResponse,
     DoctorReviewTimelineItem,
 )
+from backend.api.services.patient_registry_service import _utc_now
 from src.contracts.clinical_assertion import ClinicalAssertion
 from src.services.clinical_assertion_projection import (
     assertion_refs,
@@ -37,6 +44,16 @@ def _runtime_dependencies(request: Request) -> tuple[Any, Any]:
     if session_store is None or patient_registry is None:
         raise HTTPException(status_code=503, detail="Runtime is not initialized")
     return session_store, patient_registry
+
+
+def _action_trace_dependencies(request: Request) -> tuple[Any, Any, Any]:
+    runtime = getattr(request.app.state, "runtime", None)
+    session_store = getattr(runtime, "session_store", None)
+    patient_registry = getattr(runtime, "patient_registry_service", None)
+    patient_commands = getattr(runtime, "patient_command_service", None)
+    if session_store is None or patient_registry is None or patient_commands is None:
+        raise HTTPException(status_code=503, detail="Runtime is not initialized")
+    return session_store, patient_registry, patient_commands
 
 
 def _title_for_record(row: Mapping[str, Any]) -> str:
@@ -157,4 +174,55 @@ async def get_doctor_review(session_id: str, request: Request) -> DoctorReviewRe
         assertions=[assertion.to_dict() for assertion in assertions],
         draft=_build_draft(int(meta.patient_id), assertions),
         available_actions=list(AVAILABLE_ACTIONS),
+    )
+
+
+@router.post(
+    "/{session_id}/doctor-review/action-traces",
+    response_model=DoctorActionTraceResponse,
+    response_model_exclude_none=True,
+)
+async def record_doctor_action_trace(
+    session_id: str,
+    payload: DoctorActionTraceRequest,
+    request: Request,
+) -> DoctorActionTraceResponse:
+    session_store, patient_registry, patient_commands = _action_trace_dependencies(request)
+    meta = session_store.get_session(session_id)
+    if meta is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if meta.scene != "doctor":
+        raise HTTPException(status_code=409, detail="NOT_DOCTOR_SESSION")
+    if meta.patient_id is None:
+        raise HTTPException(status_code=409, detail="PATIENT_BINDING_REQUIRED")
+
+    try:
+        patient_registry.get_patient_detail(meta.patient_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Patient not found") from exc
+
+    trace = DoctorActionTrace(
+        trace_id=new_trace_id(),
+        patient_id=int(meta.patient_id),
+        session_id=meta.session_id,
+        action_type=payload.action_type,
+        target_object=payload.target_object,
+        target_refs=payload.target_refs,
+        before_after=payload.before_after,
+        reason_code=payload.reason_code,
+        reviewer_role=payload.reviewer_role,
+        deidentified=True,
+        created_at=_utc_now(),
+    )
+    result = patient_commands.record_doctor_action_trace(
+        patient_id=int(meta.patient_id),
+        trace=trace,
+        source_session_id=meta.session_id,
+    )
+    return DoctorActionTraceResponse(
+        trace=trace,
+        event_ids=result.event_ids,
+        patient_version=result.patient_version,
+        projection_version=result.projection_version,
+        snapshot_changed=result.snapshot_changed,
     )

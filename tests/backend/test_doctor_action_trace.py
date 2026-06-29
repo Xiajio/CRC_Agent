@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+import json
+from types import SimpleNamespace
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from backend.api.routes import doctor_review
+from backend.api.services.patient_commands import PatientCommandService
+from backend.api.services.patient_registry_service import PatientRegistryService
+from backend.api.services.session_store import InMemorySessionStore
+
+
+def _client(tmp_path):
+    app = FastAPI()
+    session_store = InMemorySessionStore()
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+
+    patient_session = session_store.create_session(scene="patient")
+    patient = commands.create_patient(created_by_session_id=patient_session.session_id)
+    session_store.set_patient_id(
+        patient_session.session_id,
+        patient.patient_id,
+        allow_replace=True,
+    )
+    doctor_session = session_store.create_session(
+        scene="doctor",
+        patient_id=patient.patient_id,
+    )
+
+    app.state.runtime = SimpleNamespace(
+        session_store=session_store,
+        patient_registry_service=registry,
+        patient_command_service=commands,
+    )
+    app.include_router(doctor_review.router)
+    return TestClient(app), patient.patient_id, doctor_session.session_id, registry
+
+
+def _valid_edit_payload() -> dict[str, object]:
+    return {
+        "action_type": "edit",
+        "target_object": "risk_summary",
+        "target_refs": {
+            "draft_id": "draft_crc_review_1_latest",
+            "assertion_id": "assertion_rectal_bleeding",
+        },
+        "before_after": {
+            "before": "Urgent clinic review is suggested.",
+            "after": "Urgent GI clinic review is required.",
+        },
+        "reason_code": "workflow_mismatch",
+    }
+
+
+def _latest_event(registry: PatientRegistryService, patient_id: int) -> dict[str, object]:
+    with registry.transaction() as connection:
+        row = connection.execute(
+            """
+            SELECT event_type, event_payload_json, actor_type, idempotency_key
+            FROM patient_events
+            WHERE patient_id = ?
+            ORDER BY patient_version DESC
+            LIMIT 1
+            """,
+            (patient_id,),
+        ).fetchone()
+    assert row is not None
+    return dict(row)
+
+
+def _snapshot_row(registry: PatientRegistryService, patient_id: int) -> dict[str, object]:
+    with registry.transaction() as connection:
+        row = connection.execute(
+            """
+            SELECT patient_version, projection_version, updated_at, source_event_ids_json
+            FROM patient_snapshots
+            WHERE patient_id = ?
+            """,
+            (patient_id,),
+        ).fetchone()
+    assert row is not None
+    return dict(row)
+
+
+def test_record_doctor_action_trace_stores_append_only_event(tmp_path) -> None:
+    client, patient_id, doctor_session_id, registry = _client(tmp_path)
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json=_valid_edit_payload(),
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["trace"]["action_type"] == "edit"
+    assert body["trace"]["patient_id"] == patient_id
+    assert body["trace"]["session_id"] == doctor_session_id
+    assert body["event_ids"]
+    assert body["snapshot_changed"] is False
+
+    latest_event = _latest_event(registry, patient_id)
+    assert latest_event["event_type"] == "doctor.action_trace_recorded"
+    assert latest_event["actor_type"] == "physician_reviewer"
+    assert latest_event["idempotency_key"] is None
+    payload = json.loads(str(latest_event["event_payload_json"]))
+    assert payload["trace"]["deidentified"] is True
+    assert payload["trace"]["reason_code"] == "workflow_mismatch"
+
+    second = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json=_valid_edit_payload(),
+    )
+    assert second.status_code == 200
+    assert second.json()["event_ids"] != body["event_ids"]
+
+
+def test_record_doctor_action_trace_rejects_unknown_reason_code(tmp_path) -> None:
+    client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
+    payload = {**_valid_edit_payload(), "reason_code": "unknown_reason"}
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+def test_record_doctor_action_trace_rejects_edit_without_before_after(tmp_path) -> None:
+    client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
+    payload = _valid_edit_payload()
+    payload.pop("before_after")
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+def test_record_doctor_action_trace_rejects_missing_target(tmp_path) -> None:
+    client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
+    payload = _valid_edit_payload()
+    payload["target_object"] = None
+    payload["target_refs"] = {}
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json=payload,
+    )
+
+    assert response.status_code == 422
+
+
+def test_record_doctor_action_trace_does_not_update_snapshot_projection(tmp_path) -> None:
+    client, patient_id, doctor_session_id, registry = _client(tmp_path)
+    before = _snapshot_row(registry, patient_id)
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json=_valid_edit_payload(),
+    )
+
+    assert response.status_code == 200
+    after = _snapshot_row(registry, patient_id)
+    assert after == before
+    assert response.json()["projection_version"] == before["projection_version"]
