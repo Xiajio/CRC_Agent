@@ -120,4 +120,66 @@ describe("createApiClient", () => {
     expect(headers.get("Authorization")).toBe("Bearer dev-token");
     expect(headers.get("Content-Type")).toBe("application/json");
   });
+
+  it("loads patient records through the current patient session endpoint", async () => {
+    const payload = {
+      items: [
+        {
+          record_id: 1,
+          patient_id: 101,
+          asset_id: 9,
+          record_type: "crc_triage_assessment",
+          document_type: "crc_triage_assessment",
+          ingest_decision: "record_only",
+          snapshot_contributed: false,
+          conflict_detected: false,
+          summary_text: "建议尽快消化专科评估。",
+          source: "patient_generated",
+          created_at: "2026-06-25T08:00:00Z",
+        },
+      ],
+    };
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    const fetchImpl = vi.fn(async () => response);
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+
+    await expect(client.getSessionPatientRecords("sess-1")).resolves.toEqual(payload);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/sessions/sess-1/patient-records",
+      { headers: { Authorization: "Bearer dev-token" } },
+    );
+  });
+
+  it("loads patient care cards through the current patient session endpoint", async () => {
+    const payload = {
+      focusMetrics: ["留意便血或黑便是否加重"],
+      periodicChecks: ["尽快预约消化专科门诊"],
+      dailyActions: ["记录便血颜色、次数和伴随症状"],
+    };
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    const fetchImpl = vi.fn(async () => response);
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+
+    await expect(client.getSessionCareCards("sess-1")).resolves.toEqual(payload);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/sessions/sess-1/care-cards",
+      { headers: { Authorization: "Bearer dev-token" } },
+    );
+  });
 });

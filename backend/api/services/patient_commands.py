@@ -125,6 +125,21 @@ class PatientCommandService:
         payload_json = json.dumps(dict(assessment), ensure_ascii=False, sort_keys=True)
         return sha256(payload_json.encode("utf-8")).hexdigest()
 
+    def _canonical_crc_triage_assessment(
+        self,
+        assessment: Mapping[str, Any],
+        *,
+        source_session_id: str,
+    ) -> dict[str, Any]:
+        normalized = dict(assessment)
+        normalized["record_type"] = "crc_triage_assessment"
+        normalized["source_subflow"] = "crc_triage"
+        normalized["source_session_id"] = source_session_id
+        normalized.setdefault("qa_summary", [])
+        normalized.setdefault("node_results", [])
+        normalized.setdefault("protocol_state", {})
+        return normalized
+
     def _crc_triage_summary(self, assessment: Mapping[str, Any]) -> str:
         summary = assessment.get("patient_summary")
         if isinstance(summary, str) and summary.strip():
@@ -759,10 +774,10 @@ class PatientCommandService:
         assessment: Mapping[str, Any],
         source_session_id: str,
     ) -> PatientCommandResult:
-        normalized = dict(assessment)
-        normalized["record_type"] = "crc_triage_assessment"
-        normalized["source_subflow"] = "crc_triage"
-        normalized["source_session_id"] = source_session_id
+        normalized = self._canonical_crc_triage_assessment(
+            assessment,
+            source_session_id=source_session_id,
+        )
         payload_hash = self._crc_triage_payload_hash(normalized)
         idempotency_key = f"patient.crc_triage_assessed:{patient_id}:{source_session_id}:{payload_hash}"
         summary_text = self._crc_triage_summary(normalized)

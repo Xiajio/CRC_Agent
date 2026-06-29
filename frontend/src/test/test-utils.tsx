@@ -11,6 +11,7 @@ import type {
   DatabaseSearchResponse,
   DatabaseStatsResponse,
   PatientIdentitySnapshot,
+  PatientCareCardsResponse,
   PatientRegistryAlertsResponse,
   PatientRegistryDetail,
   PatientRegistryListResponse,
@@ -148,6 +149,16 @@ export function makePatientRegistryRecordsResponse(
   };
 }
 
+export function makePatientCareCardsResponse(
+  overrides: Partial<PatientCareCardsResponse> = {},
+): PatientCareCardsResponse {
+  return {
+    focusMetrics: overrides.focusMetrics ?? [],
+    periodicChecks: overrides.periodicChecks ?? [],
+    dailyActions: overrides.dailyActions ?? [],
+  };
+}
+
 export function makePatientRegistryAlertsResponse(
   overrides: Partial<PatientRegistryAlertsResponse> = {},
 ): PatientRegistryAlertsResponse {
@@ -211,6 +222,8 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
     record_id: 1,
     reused: false,
   }));
+  const getSessionPatientRecords = vi.fn(async () => makePatientRegistryRecordsResponse());
+  const getSessionCareCards = vi.fn(async () => makePatientCareCardsResponse());
   const getDatabaseStats = vi.fn(async () => makeDatabaseStatsResponse());
   const searchDatabaseCases = vi.fn(async () => makeDatabaseSearchResponse());
   const getDatabaseCaseDetail = vi.fn(async (patientId: number): Promise<DatabaseCaseDetailResponse> => ({
@@ -273,6 +286,8 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
     bindPatient,
     saveSessionPatientIdentity,
     saveCrcTriageAssessment,
+    getSessionPatientRecords,
+    getSessionCareCards,
     getDatabaseStats,
     searchDatabaseCases,
     getDatabaseCaseDetail,

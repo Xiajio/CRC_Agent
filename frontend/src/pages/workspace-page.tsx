@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { buildChatLatencyTraceAnalysis, createChatLatencyTraceStore } from "../app/api/chat-latency-trace";
-import type { CrcTriageAssessmentPayload, FrontendMessage, Scene, SessionState } from "../app/api/types";
+import type {
+  CrcTriageAssessmentPayload,
+  FrontendMessage,
+  PatientCareCardsResponse,
+  PatientRegistryRecord,
+  Scene,
+  SessionState,
+} from "../app/api/types";
 import { useApiClient } from "../app/providers";
 import { ConversationPanel } from "../features/chat/conversation-panel";
 import { ClinicalTopNav } from "../components/layout/clinical-top-nav";
@@ -28,6 +35,8 @@ import {
   type CrcTriageSaveStatus,
 } from "../features/patient-crc-triage/patient-crc-triage-panel";
 import { buildCrcTriageContext } from "../features/patient-crc-triage/crc-triage-context";
+import { PatientCareCards } from "../features/patient-records/patient-care-cards";
+import { PatientRecordsPanel } from "../features/patient-records/patient-records-panel";
 import { useSceneSessions } from "../features/workspace/use-scene-sessions";
 import { WorkspaceSurfaceSwitcher, type WorkspaceSurface } from "../features/workspace/workspace-surface-switcher";
 import { usePatientUploads } from "../features/workspace/use-patient-uploads";
@@ -136,6 +145,21 @@ function promptPatientContext(scene: Scene, state: SessionState, prompt: string)
   return Object.keys(context).length > 0 ? context : undefined;
 }
 
+function isOptionalPatientRecordsError(error: unknown): boolean {
+  const status = error && typeof error === "object" && "status" in error
+    ? Number((error as { status?: unknown }).status)
+    : null;
+  const message = readWorkspaceErrorMessage(error);
+
+  if (status === 404) {
+    return true;
+  }
+  return status === 409 && (
+    message.includes("PATIENT_IDENTITY_NOT_FOUND")
+    || message.includes("NOT_PATIENT_SESSION")
+  );
+}
+
 export function WorkspacePage() {
   const apiClient = useApiClient();
   const traceStoreRef = useRef(createChatLatencyTraceStore());
@@ -168,6 +192,10 @@ export function WorkspacePage() {
   const [sceneError, setSceneError] = useState<string | null>(null);
   const [crcTriageSaveStatus, setCrcTriageSaveStatus] = useState<CrcTriageSaveStatus>("idle");
   const [crcTriageSaveError, setCrcTriageSaveError] = useState<string | null>(null);
+  const [patientRecords, setPatientRecords] = useState<PatientRegistryRecord[]>([]);
+  const [patientRecordsLoading, setPatientRecordsLoading] = useState(false);
+  const [patientCareCards, setPatientCareCards] = useState<PatientCareCardsResponse | null>(null);
+  const [patientCareCardsLoading, setPatientCareCardsLoading] = useState(false);
   const {
     activeProbeRef,
     activeProbe,
@@ -238,6 +266,11 @@ export function WorkspacePage() {
   const doctorPatientContext = sessionPatientContext(doctor.state);
   const patientPatientContext = sessionPatientContext(patient.state);
   const patientNav = usePatientWorkspaceNav();
+  const patientActiveTab = patientNav.activeTab;
+  const patientIsAssistant = patientActiveTab === PATIENT_ASSISTANT_TAB;
+  const patientIsCrcTriage = patientActiveTab === PATIENT_CRC_TRIAGE_TAB;
+  const patientIsProfile = patientActiveTab === PATIENT_PROFILE_TAB;
+  const patientIsUpload = patientActiveTab === PATIENT_UPLOAD_TAB;
   const workspaceCards = useWorkspaceCards({
     patient: patient.state,
     doctor: doctor.state,
@@ -527,6 +560,29 @@ export function WorkspacePage() {
     await submitCrcTriagePrompt(prompt, buildCrcTriageContext("answer"));
   }
 
+  async function refreshPatientRecordsAndCareCards(sessionId: string) {
+    setPatientRecordsLoading(true);
+    setPatientCareCardsLoading(true);
+    try {
+      const [recordsResponse, careCardsResponse] = await Promise.all([
+        apiClient.getSessionPatientRecords(sessionId),
+        apiClient.getSessionCareCards(sessionId),
+      ]);
+      setPatientRecords(recordsResponse.items);
+      setPatientCareCards(careCardsResponse);
+    } catch (error) {
+      if (isOptionalPatientRecordsError(error)) {
+        setPatientRecords([]);
+        setPatientCareCards(null);
+        return;
+      }
+      setSceneError(readWorkspaceErrorMessage(error));
+    } finally {
+      setPatientRecordsLoading(false);
+      setPatientCareCardsLoading(false);
+    }
+  }
+
   async function handleSaveCrcTriageAssessment(assessment: CrcTriageAssessmentPayload) {
     const sessionId = patient.state.sessionId;
     if (!sessionId) {
@@ -542,6 +598,7 @@ export function WorkspacePage() {
       await apiClient.saveCrcTriageAssessment(sessionId, { assessment });
       const refreshed = await apiClient.getSession(sessionId);
       applyResponseToScene("patient", refreshed);
+      await refreshPatientRecordsAndCareCards(sessionId);
       setCrcTriageSaveStatus("saved");
     } catch (error) {
       setCrcTriageSaveStatus("error");
@@ -591,6 +648,48 @@ export function WorkspacePage() {
       currentPatientId: caseDatabasePatientId,
     }));
   }
+
+  useEffect(() => {
+    const sessionId = patient.state.sessionId;
+    if (!patientIsProfile || !sessionId) {
+      return;
+    }
+
+    let cancelled = false;
+    setPatientRecordsLoading(true);
+    setPatientCareCardsLoading(true);
+    void Promise.all([
+      apiClient.getSessionPatientRecords(sessionId),
+      apiClient.getSessionCareCards(sessionId),
+    ]).then(
+      ([recordsResponse, careCardsResponse]) => {
+        if (cancelled) {
+          return;
+        }
+        setPatientRecords(recordsResponse.items);
+        setPatientCareCards(careCardsResponse);
+      },
+      (error) => {
+        if (!cancelled) {
+          if (isOptionalPatientRecordsError(error)) {
+            setPatientRecords([]);
+            setPatientCareCards(null);
+            return;
+          }
+          setSceneError(readWorkspaceErrorMessage(error));
+        }
+      },
+    ).finally(() => {
+      if (!cancelled) {
+        setPatientRecordsLoading(false);
+        setPatientCareCardsLoading(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiClient, patient.state.sessionId, patientIsProfile]);
 
   if (bootstrapStatus === "loading") {
     return <main className="clinical-page-shell"><Card variant="clinical-panel">正在加载工作区...</Card></main>;
@@ -705,12 +804,6 @@ export function WorkspacePage() {
     );
   }
 
-  const patientActiveTab = patientNav.activeTab;
-  const patientIsAssistant = patientActiveTab === PATIENT_ASSISTANT_TAB;
-  const patientIsCrcTriage = patientActiveTab === PATIENT_CRC_TRIAGE_TAB;
-  const patientIsProfile = patientActiveTab === PATIENT_PROFILE_TAB;
-  const patientIsUpload = patientActiveTab === PATIENT_UPLOAD_TAB;
-
   const patientProfilePanel = (
     <div className="clinical-panel-stack clinical-patient-profile-stack">
       <PatientIdentityPanel
@@ -728,6 +821,8 @@ export function WorkspacePage() {
         emptyMessage="当前暂无患者背景信息"
         cards={workspaceCards.patientVisibleCards}
       />
+      <PatientCareCards cards={patientCareCards} isLoading={patientCareCardsLoading} />
+      <PatientRecordsPanel records={patientRecords} isLoading={patientRecordsLoading} />
     </div>
   );
 

@@ -19,6 +19,8 @@ class CrcTriageAssessmentPayload(BaseModel):
     suggested_tests: list[str] = Field(default_factory=list)
     missing_information: list[str] = Field(default_factory=list)
     qa_summary: list[dict[str, Any]] = Field(default_factory=list)
+    node_results: list[dict[str, Any]] = Field(default_factory=list)
+    protocol_state: dict[str, Any] = Field(default_factory=dict)
     patient_summary: str = Field(min_length=1)
     next_step: str = Field(min_length=1)
     source_session_id: str = Field(min_length=1)

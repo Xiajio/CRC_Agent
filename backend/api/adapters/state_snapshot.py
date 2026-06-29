@@ -46,6 +46,19 @@ TRIAGE_STATE_KEYS = (
     "triage_suggested_tests",
     "triage_summary",
     "symptom_snapshot",
+    "patient_subflow",
+    "source_subflow",
+    "crc_triage",
+    "crc_triage_state",
+    "active_inquiry",
+    "inquiry_type",
+    "inquiry_message",
+    "triage_current_field",
+    "triage_pending_fields",
+    "triage_no_progress_count",
+    "triage_switch_prompt_active",
+    "triage_explicit_switch_request",
+    "missing_critical_data",
 )
 
 

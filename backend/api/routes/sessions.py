@@ -4,7 +4,9 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from backend.api.adapters.state_snapshot import build_message_history, build_session_snapshot
+from backend.api.schemas.patient_registry import PatientRegistryRecord, PatientRegistryRecordsResponse
 from backend.api.schemas.responses import MessageHistoryResponse, SessionResponse
+from backend.api.services.patient_care_cards import build_patient_care_cards
 from backend.api.services.patient_registry_service import (
     PatientIdentityLockedError,
     PatientIdentityNotFoundError,
@@ -24,6 +26,12 @@ class CreateSessionRequest(BaseModel):
 
 class BindPatientRequest(BaseModel):
     patient_id: int
+
+
+class PatientCareCardsResponse(BaseModel):
+    focusMetrics: list[str] = Field(default_factory=list)
+    periodicChecks: list[str] = Field(default_factory=list)
+    dailyActions: list[str] = Field(default_factory=list)
 
 
 class UpdatePatientIdentityRequest(BaseModel):
@@ -57,6 +65,15 @@ def _get_session_meta_or_404(session_id: str):
     meta = session_store.get_session(session_id)
     if meta is None:
         raise HTTPException(status_code=404, detail="Session not found")
+    return meta
+
+
+def _get_bound_patient_session_meta(session_id: str):
+    meta = _get_session_meta_or_404(session_id)
+    if meta.scene != "patient":
+        raise HTTPException(status_code=409, detail="NOT_PATIENT_SESSION")
+    if meta.patient_id is None:
+        raise HTTPException(status_code=409, detail="PATIENT_IDENTITY_NOT_FOUND")
     return meta
 
 
@@ -126,6 +143,36 @@ async def get_session_messages(
         next_before_cursor=history.next_before_cursor,
         messages=history.messages,
     )
+
+
+@router.get("/{session_id}/patient-records", response_model=PatientRegistryRecordsResponse)
+async def get_session_patient_records(session_id: str) -> PatientRegistryRecordsResponse:
+    meta = _get_bound_patient_session_meta(session_id)
+    if patient_registry_service is None:
+        raise HTTPException(status_code=503, detail="Patient registry is not initialized")
+    try:
+        patient_registry_service.get_patient_detail(meta.patient_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=409, detail="PATIENT_IDENTITY_NOT_FOUND") from exc
+
+    rows = patient_registry_service.list_patient_records(meta.patient_id)
+    return PatientRegistryRecordsResponse(
+        items=[PatientRegistryRecord.from_row(row) for row in rows],
+    )
+
+
+@router.get("/{session_id}/care-cards", response_model=PatientCareCardsResponse)
+async def get_session_care_cards(session_id: str) -> PatientCareCardsResponse:
+    meta = _get_bound_patient_session_meta(session_id)
+    if patient_registry_service is None:
+        raise HTTPException(status_code=503, detail="Patient registry is not initialized")
+    try:
+        patient_registry_service.get_patient_detail(meta.patient_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=409, detail="PATIENT_IDENTITY_NOT_FOUND") from exc
+
+    rows = patient_registry_service.list_patient_records(meta.patient_id)
+    return PatientCareCardsResponse(**build_patient_care_cards(rows))
 
 
 @router.post("/{session_id}/reset")

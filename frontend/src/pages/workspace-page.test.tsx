@@ -539,7 +539,11 @@ describe("WorkspacePage patient triage submission wiring", () => {
     renderWorkspaceWithSceneSessions(apiClient);
 
     fireEvent.click(screen.getByRole("button", { name: "上传报告" }));
-    fireEvent.click(await screen.findByRole("button", { name: /trigger upload/i }));
+    const uploadTrigger = await screen.findByRole("button", { name: /trigger upload/i });
+    await act(async () => {
+      fireEvent.click(uploadTrigger);
+      await Promise.resolve();
+    });
 
     await waitFor(() => expect(apiClient.uploadFile).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(apiClient.getSession).toHaveBeenCalledWith("patient-session"));
@@ -558,6 +562,8 @@ describe("WorkspacePage patient triage submission wiring", () => {
       },
     });
     fireEvent.click(screen.getByRole("button", { name: "我的资料" }));
+    await waitFor(() => expect(apiClient.getSessionPatientRecords).toHaveBeenCalledWith("patient-session"));
+    expect(apiClient.getSessionCareCards).toHaveBeenCalledWith("patient-session");
     expect(lastPatientBackgroundProps?.cards).toEqual({
       patient_card: {
         type: "patient_card",
@@ -919,8 +925,9 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(mockSceneSessions.setActiveScene).toHaveBeenCalledWith("doctor");
   });
 
-  it("keeps patient workspace shell copy in UTF-8 Chinese", () => {
-    renderWorkspaceWithSceneSessions(buildApiClientStub());
+  it("keeps patient workspace shell copy in UTF-8 Chinese", async () => {
+    const apiClient = buildApiClientStub();
+    renderWorkspaceWithSceneSessions(apiClient);
 
     const navigation = screen.getByRole("navigation", { name: "患者工作台" });
     const navButtons = within(navigation).getAllByRole("button");
@@ -940,6 +947,8 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(screen.getByText("安全会话")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "我的资料" }));
+    await waitFor(() => expect(apiClient.getSessionPatientRecords).toHaveBeenCalledWith("patient-session"));
+    expect(apiClient.getSessionCareCards).toHaveBeenCalledWith("patient-session");
     expect(lastPatientBackgroundProps).toMatchObject({
       title: "患者背景信息",
       emptyMessage: "当前暂无患者背景信息",
@@ -963,6 +972,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
     renderWorkspaceWithSceneSessions(apiClient);
 
     fireEvent.click(screen.getByRole("button", { name: "专项问诊" }));
+    expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-crc_triage");
     expect(screen.getByTestId("crc-triage-panel")).toBeInTheDocument();
 
     await act(async () => {
@@ -1064,7 +1074,18 @@ describe("WorkspacePage patient triage submission wiring", () => {
       reused: false,
     }));
     const getSession = vi.fn(async () => refreshedResponse);
-    const apiClient = buildApiClientStub({ saveCrcTriageAssessment, getSession });
+    const getSessionPatientRecords = vi.fn(async () => ({ items: [] }));
+    const getSessionCareCards = vi.fn(async () => ({
+      focusMetrics: [],
+      periodicChecks: [],
+      dailyActions: [],
+    }));
+    const apiClient = buildApiClientStub({
+      saveCrcTriageAssessment,
+      getSession,
+      getSessionPatientRecords,
+      getSessionCareCards,
+    });
 
     renderWorkspaceWithSceneSessions(apiClient);
 
@@ -1084,6 +1105,8 @@ describe("WorkspacePage patient triage submission wiring", () => {
       },
     );
     await waitFor(() => expect(getSession).toHaveBeenCalledWith("patient-session"));
+    await waitFor(() => expect(getSessionPatientRecords).toHaveBeenCalledWith("patient-session"));
+    expect(getSessionCareCards).toHaveBeenCalledWith("patient-session");
     expect(mockSceneSessions.applyResponseToScene).toHaveBeenCalledWith("patient", refreshedResponse);
   });
 
@@ -1112,7 +1135,34 @@ describe("WorkspacePage patient triage submission wiring", () => {
         },
       }),
     );
-    const apiClient = buildApiClientStub({ uploadFile, getSession });
+    const getSessionPatientRecords = vi.fn(async () => ({
+      items: [
+        {
+          record_id: 8,
+          patient_id: 101,
+          asset_id: 1,
+          record_type: "crc_triage_assessment",
+          document_type: "crc_triage_assessment",
+          ingest_decision: "record_only",
+          snapshot_contributed: false,
+          conflict_detected: false,
+          summary_text: "建议尽快消化专科评估。",
+          source: "patient_generated",
+          created_at: "2026-06-25T08:00:00Z",
+        },
+      ],
+    }));
+    const getSessionCareCards = vi.fn(async () => ({
+      focusMetrics: ["留意便血或黑便是否加重"],
+      periodicChecks: ["尽快预约消化专科门诊"],
+      dailyActions: ["记录便血颜色、次数和伴随症状"],
+    }));
+    const apiClient = buildApiClientStub({
+      uploadFile,
+      getSession,
+      getSessionPatientRecords,
+      getSessionCareCards,
+    });
 
     renderWorkspaceWithSceneSessions(apiClient);
 
@@ -1131,6 +1181,11 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-profile");
     expect(screen.getByTestId("patient-identity-panel")).toBeInTheDocument();
     expect(screen.getByTestId("patient-background-panel")).toBeInTheDocument();
+    await waitFor(() => expect(getSessionPatientRecords).toHaveBeenCalledWith("patient-session"));
+    expect(getSessionCareCards).toHaveBeenCalledWith("patient-session");
+    expect(await screen.findByText("个人随访提醒")).toBeInTheDocument();
+    expect(screen.getByText("建议尽快消化专科评估。")).toBeInTheDocument();
+    expect(screen.getByText("留意便血或黑便是否加重")).toBeInTheDocument();
 
     fireEvent.click(uploadTab);
 
@@ -1156,6 +1211,28 @@ describe("WorkspacePage patient triage submission wiring", () => {
     fireEvent.click(screen.getByRole("button", { name: "upload from assistant home" }));
     expect(screen.getByRole("button", { name: "上传报告" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByTestId("workspace-layout")).toHaveClass("clinical-patient-dashboard-upload");
+  });
+
+  it("keeps optional patient record loading failures as empty profile state", async () => {
+    const getSessionPatientRecords = vi.fn(async () => {
+      throw new ApiClientError(409, "PATIENT_IDENTITY_NOT_FOUND", { detail: "PATIENT_IDENTITY_NOT_FOUND" });
+    });
+    const getSessionCareCards = vi.fn(async () => {
+      throw new ApiClientError(409, "PATIENT_IDENTITY_NOT_FOUND", { detail: "PATIENT_IDENTITY_NOT_FOUND" });
+    });
+    const apiClient = buildApiClientStub({
+      getSessionPatientRecords,
+      getSessionCareCards,
+    });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: "\u6211\u7684\u8d44\u6599" }));
+
+    await waitFor(() => expect(getSessionPatientRecords).toHaveBeenCalledWith("patient-session"));
+    expect(getSessionCareCards).toHaveBeenCalledWith("patient-session");
+    expect(screen.queryByTestId("patient-active-error")).not.toBeInTheDocument();
+    expect(screen.getByText("\u5f53\u524d\u6682\u65e0\u5386\u53f2\u95ee\u8bca\u8bb0\u5f55")).toBeInTheDocument();
   });
 
   it("keeps upload progress and success status copy in UTF-8 Chinese", async () => {

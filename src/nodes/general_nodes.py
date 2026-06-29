@@ -91,6 +91,20 @@ _GOODBYE_INPUTS = {
 }
 
 
+_FAST_GENERAL_CHAT_REPLIES.update(
+    {
+        "greeting": "你好，我在。可以继续查询患者、解释报告，或整理诊疗建议。",
+        "thanks": "不客气。需要我继续帮你查询患者、解释报告，或整理方案吗？",
+        "goodbye": "好的，需要时随时叫我。",
+    }
+)
+_GREETING_INPUTS.update({"你好", "你好啊", "您好", "嗨", "哈喽"})
+_THANKS_INPUTS.update({"谢谢", "谢谢你", "感谢", "辛苦了"})
+_GOODBYE_INPUTS.update({"再见", "拜拜"})
+
+NO_RECENT_CONVERSATION = "（无历史对话）"
+
+
 def _normalize_smalltalk(user_input: str) -> str:
     normalized = (user_input or "").strip().lower()
     normalized = re.sub(r"\s+", "", normalized)
@@ -126,6 +140,10 @@ def _clear_stale_inquiry_fields() -> Dict[str, Any]:
         "inquiry_message": None,
         "inquiry_type": None,
     }
+
+
+def _clear_stale_crc_triage_flag() -> Dict[str, Any]:
+    return {"stale_crc_triage_cleared": False}
 
 def _is_simple_fact_question(user_input: str) -> bool:
     """
@@ -285,7 +303,12 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
         stream_node_name = "general_chat"
         pinned_context = _build_pinned_context(state)
         summary_memory = _build_summary_memory(state)
-        recent_conversation = _get_recent_conversation_history(state, max_turns=5)
+        stale_crc_triage_cleared = bool((state.findings or {}).get("stale_crc_triage_cleared"))
+        recent_conversation = (
+            NO_RECENT_CONVERSATION
+            if stale_crc_triage_cleared
+            else _get_recent_conversation_history(state, max_turns=5)
+        )
         response_mode = str((state.findings or {}).get("response_mode") or "")
         information_gaps = (state.findings or {}).get("information_gaps") or []
 
@@ -310,6 +333,7 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
                 "missing_critical_data": [],
                 "findings": {
                     **_clear_stale_inquiry_fields(),
+                    **_clear_stale_crc_triage_flag(),
                     "response_mode": "general_answer",
                     "information_gaps": [],
                     "missing_info_policy": "none",
@@ -322,6 +346,7 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
             return {
                 "messages": [AIMessage(content=fast_reply)],
                 "clinical_stage": "General",
+                "findings": _clear_stale_crc_triage_flag(),
                 "error": None,
             }
         
@@ -347,6 +372,7 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
             return {
                 "messages": [msg],
                 "clinical_stage": "General",
+                "findings": _clear_stale_crc_triage_flag(),
                 "error": None,
             }
 
@@ -453,13 +479,18 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
             return {
                 "messages": [msg],
                 "clinical_stage": "General",
+                "findings": _clear_stale_crc_triage_flag(),
                 "error": None,
             }
         
         # 原有逻辑：根据意图选择不同的处理链
         if intent == "off_topic_redirect":
             # 提取最近对话历史（用于引导回正轨）
-            recent_history = _get_recent_conversation_history(state, max_turns=3)
+            recent_history = (
+                NO_RECENT_CONVERSATION
+                if stale_crc_triage_cleared
+                else _get_recent_conversation_history(state, max_turns=3)
+            )
             if show_thinking:
                 print(f"🔄 [General Chat] Off-topic redirect mode for: '{user_text[:30]}...'")
             response = _invoke_with_streaming(
@@ -492,6 +523,7 @@ def node_general_chat(model, streaming: bool = False, show_thinking: bool = True
         return {
             "messages": [msg],
             "clinical_stage": "General",
+            "findings": _clear_stale_crc_triage_flag(),
             "error": None,
         }
     

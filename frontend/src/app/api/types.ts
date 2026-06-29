@@ -327,6 +327,41 @@ export interface ChatTurnRequest {
   context?: Record<string, unknown>;
 }
 
+export interface CrcTriageQuestion {
+  id: string;
+  stage: string;
+  text: string;
+  options: string[];
+  [key: string]: unknown;
+}
+
+export interface CrcTriageQaItem {
+  stage: string;
+  question_id: string;
+  question: string | null;
+  answer: string;
+  [key: string]: unknown;
+}
+
+export interface CrcTriageNodeResult {
+  stage: string;
+  title: string;
+  risk_level: string;
+  summary: string;
+  next_step: string;
+  [key: string]: unknown;
+}
+
+export interface CrcTriageProtocolState {
+  stage?: string;
+  current_question?: CrcTriageQuestion | null;
+  qa_summary?: CrcTriageQaItem[];
+  node_results?: CrcTriageNodeResult[];
+  active_inquiry?: boolean;
+  assessment?: Partial<CrcTriageAssessmentPayload>;
+  [key: string]: unknown;
+}
+
 export interface CrcTriageAssessmentPayload {
   record_type: "crc_triage_assessment";
   chief_complaint: string;
@@ -338,6 +373,8 @@ export interface CrcTriageAssessmentPayload {
   suggested_tests: string[];
   missing_information: string[];
   qa_summary: Array<Record<string, unknown>>;
+  node_results?: CrcTriageNodeResult[];
+  protocol_state?: Record<string, unknown>;
   patient_summary: string;
   next_step: string;
   source_session_id: string;
@@ -432,6 +469,12 @@ export interface PatientRegistryRecord {
 
 export interface PatientRegistryRecordsResponse {
   items: PatientRegistryRecord[];
+}
+
+export interface PatientCareCardsResponse {
+  focusMetrics: string[];
+  periodicChecks: string[];
+  dailyActions: string[];
 }
 
 export interface PatientRegistryAlert {

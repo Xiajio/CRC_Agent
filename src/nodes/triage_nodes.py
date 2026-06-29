@@ -7,6 +7,11 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import Runnable
 
 from ..services.patient_card_projector import project_patient_self_report_card
+from ..services.crc_triage_flow import (
+    CrcTriageAnswer,
+    advance_crc_triage,
+    start_crc_triage_state,
+)
 from ..state import CRCAgentState
 from .node_utils import _latest_user_text
 
@@ -281,6 +286,7 @@ def _extract_bowel_change(text: str) -> bool | None:
     compact = _normalize_user_text(text)
     negative_patterns = (
         "没有变化",
+        "没有明显变化",
         "没变化",
         "正常",
         "没有腹泻",
@@ -523,6 +529,115 @@ def _published_triage_fields(
     return risk_level, disposition, list(tests), summary, triage_card
 
 
+def _build_crc_triage_question_card(current_question: dict[str, Any]) -> dict[str, Any] | None:
+    question_id = str(current_question.get("id") or "")
+    prompt = str(current_question.get("text") or "")
+    if not question_id or not prompt:
+        return None
+
+    raw_options = current_question.get("options") or ()
+    options = [
+        {"id": f"option_{index}", "label": str(option), "submit_text": str(option)}
+        for index, option in enumerate(raw_options)
+        if str(option)
+    ]
+    if not options:
+        return None
+
+    return {
+        "type": "triage_question_card",
+        "version": 1,
+        "question_id": question_id,
+        "field_key": question_id,
+        "prompt": prompt,
+        "selection_mode": "single",
+        "options": options,
+        "allow_other": False,
+        "source_subflow": "crc_triage",
+    }
+
+
+def _run_crc_triage_protocol_turn(
+    state: CRCAgentState,
+    previous_findings: dict[str, Any],
+    user_text: str,
+) -> dict[str, Any]:
+    findings_crc_context = previous_findings.get("crc_triage")
+    state_crc_context = getattr(state, "crc_triage", None)
+    crc_context = dict(findings_crc_context) if isinstance(findings_crc_context, dict) else {}
+    if isinstance(state_crc_context, dict):
+        for key, value in state_crc_context.items():
+            if key in {"action", "question_id"} or crc_context.get(key) in (None, ""):
+                crc_context[key] = value
+
+    existing_crc_state = previous_findings.get("crc_triage_state")
+    if crc_context.get("action") == "start" or not isinstance(existing_crc_state, dict):
+        crc_triage_state = start_crc_triage_state(getattr(state, "registry_patient_id", None))
+    else:
+        crc_triage_state = advance_crc_triage(
+            dict(existing_crc_state),
+            CrcTriageAnswer(
+                question_id=str(crc_context.get("question_id") or ""),
+                answer_text=user_text,
+            ),
+        )
+
+    current_question = crc_triage_state.get("current_question")
+    active_inquiry = bool(crc_triage_state.get("active_inquiry") and current_question)
+    question_text = str(current_question.get("text") or "") if isinstance(current_question, dict) else ""
+    question_id = str(current_question.get("id") or "") if isinstance(current_question, dict) else None
+    pending_fields = [question_id] if question_id else []
+
+    if active_inquiry:
+        inquiry_message = question_text
+        message = f"为了完成 CRC 专项预问诊，我先问 1 个问题：\n{question_text}"
+    else:
+        inquiry_message = ""
+        message = "关键信息已基本补齐，已生成 CRC 专项预问诊摘要。"
+
+    findings = {
+        **previous_findings,
+        "encounter_track": "outpatient_triage",
+        "clinical_entry_reason": "crc_triage",
+        "entry_explanation_shown": False,
+        "crc_triage": dict(crc_context),
+        "crc_triage_state": crc_triage_state,
+        "patient_subflow": "crc_triage",
+        "source_subflow": "crc_triage",
+        "active_inquiry": active_inquiry,
+        "inquiry_type": "crc_triage" if active_inquiry else None,
+        "inquiry_message": inquiry_message,
+        "triage_current_field": question_id,
+        "triage_pending_fields": pending_fields,
+        "triage_no_progress_count": 0,
+        "triage_switch_prompt_active": False,
+        "triage_explicit_switch_request": False,
+    }
+
+    additional_kwargs: dict[str, Any] = {}
+    if active_inquiry and isinstance(current_question, dict):
+        triage_question_card = _build_crc_triage_question_card(current_question)
+        if triage_question_card is not None:
+            additional_kwargs["triage_question_card"] = triage_question_card
+
+    return {
+        "encounter_track": "outpatient_triage",
+        "clinical_entry_reason": "crc_triage",
+        "entry_explanation_shown": False,
+        "findings": findings,
+        "messages": [AIMessage(content=message, additional_kwargs=additional_kwargs)],
+        "clinical_stage": "Inquiry_Pending" if active_inquiry else "Outpatient_Triage",
+        "active_inquiry": active_inquiry,
+        "inquiry_type": "crc_triage" if active_inquiry else None,
+        "inquiry_message": inquiry_message,
+        "triage_current_field": question_id,
+        "triage_pending_fields": pending_fields,
+        "error": None,
+        "patient_subflow": "crc_triage",
+        "source_subflow": "crc_triage",
+    }
+
+
 def node_outpatient_triage(
     model: Any = None,
     *,
@@ -540,6 +655,9 @@ def node_outpatient_triage(
             state.patient_subflow == "crc_triage"
             or state.source_subflow == "crc_triage"
         )
+        if is_crc_subflow:
+            return _run_crc_triage_protocol_turn(state, previous_findings, user_text)
+
         previous_snapshot = dict(state.symptom_snapshot or previous_findings.get("symptom_snapshot") or {})
         previous_field = previous_findings.get("triage_current_field")
         previous_no_progress_count = int(previous_findings.get("triage_no_progress_count") or 0)
@@ -629,6 +747,7 @@ def node_outpatient_triage(
             "triage_summary": published_summary,
             "symptom_snapshot": symptom_snapshot,
             "triage_card": published_triage_card,
+            "missing_critical_data": [],
             "active_inquiry": active_inquiry,
             "inquiry_type": "outpatient_triage",
             "inquiry_message": inquiry_message if active_inquiry else "",
@@ -724,6 +843,8 @@ def _apply_crc_subflow_scope(findings: dict[str, Any], is_crc_subflow: bool) -> 
         scoped_findings["patient_subflow"] = None
         scoped_findings["source_subflow"] = None
         scoped_findings["crc_triage"] = {}
+        scoped_findings.pop("crc_protocol_assessment", None)
+        scoped_findings["missing_critical_data"] = []
     return scoped_findings
 
 

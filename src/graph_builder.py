@@ -331,8 +331,19 @@ def route_after_path_agent(state: CRCAgentState) -> str:
 
 
 
+def _has_current_crc_subflow(state: CRCAgentState) -> bool:
+    findings = state.findings or {}
+    has_top_level_crc_subflow = state.patient_subflow == "crc_triage" or state.source_subflow == "crc_triage"
+    if "patient_subflow" in findings or "source_subflow" in findings:
+        has_findings_crc_subflow = (
+            findings.get("patient_subflow") == "crc_triage" or findings.get("source_subflow") == "crc_triage"
+        )
+        return has_top_level_crc_subflow and has_findings_crc_subflow
+    return has_top_level_crc_subflow
+
+
 def route_after_patient_intent(state: CRCAgentState) -> str:
-    if state.patient_subflow == "crc_triage" or state.source_subflow == "crc_triage":
+    if _has_current_crc_subflow(state):
         return "clinical_entry_resolver"
 
     target = route_after_intent(state)

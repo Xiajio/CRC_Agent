@@ -12,6 +12,7 @@ import type {
   PatientRegistryAlertsResponse,
   PatientRegistryClearResponse,
   PatientRegistryDeleteResponse,
+  PatientCareCardsResponse,
   PatientRegistryDetail,
   PatientRegistryListResponse,
   PatientRegistryRecordsResponse,
@@ -108,6 +109,8 @@ export interface ApiClient {
     sessionId: string,
     request: SaveCrcTriageAssessmentRequest,
   ): Promise<SaveCrcTriageAssessmentResponse>;
+  getSessionPatientRecords(sessionId: string): Promise<PatientRegistryRecordsResponse>;
+  getSessionCareCards(sessionId: string): Promise<PatientCareCardsResponse>;
   getDatabaseStats(): Promise<DatabaseStatsResponse>;
   searchDatabaseCases(request: DatabaseSearchRequest): Promise<DatabaseSearchResponse>;
   getDatabaseCaseDetail(patientId: number): Promise<DatabaseCaseDetailResponse>;
@@ -249,6 +252,20 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         body: JSON.stringify(request),
       });
       return parseJsonResponse<SaveCrcTriageAssessmentResponse>(response);
+    },
+
+    async getSessionPatientRecords(sessionId) {
+      const response = await fetchImpl(buildUrl(`/api/sessions/${sessionId}/patient-records`, baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<PatientRegistryRecordsResponse>(response);
+    },
+
+    async getSessionCareCards(sessionId) {
+      const response = await fetchImpl(buildUrl(`/api/sessions/${sessionId}/care-cards`, baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<PatientCareCardsResponse>(response);
     },
 
     async getDatabaseStats() {

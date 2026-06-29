@@ -234,3 +234,75 @@ def test_node_general_chat_clears_gap_state_before_later_general_chat(monkeypatc
     assert first_result["findings"]["missing_info_policy"] == "none"
     assert second_result["messages"][0].content == "base answer"
     assert prompt_modes == ["gaps", "base"]
+
+
+def test_node_general_chat_ignores_stale_crc_triage_history_once_cleared(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_contexts: list[dict[str, object]] = []
+
+    def fake_invoke_with_streaming(
+        chain,
+        context,
+        streaming: bool = False,
+        show_thinking: bool = True,
+        node_name: str | None = None,
+    ) -> AIMessage:
+        del chain, streaming, show_thinking
+        assert node_name == "general_chat"
+        captured_contexts.append(context)
+        return AIMessage(content="base answer")
+
+    monkeypatch.setattr(
+        "src.nodes.general_nodes._invoke_with_streaming",
+        fake_invoke_with_streaming,
+    )
+
+    runnable = node_general_chat(
+        model=RunnableLambda(lambda _input: AIMessage(content="unused")),
+        streaming=True,
+        show_thinking=False,
+    )
+
+    result = runnable(
+        CRCAgentState(
+            messages=[
+                HumanMessage(content="我想进行 CRC 专项预问诊，请按结构化问题引导我完成。"),
+                AIMessage(content="请先回答上一个 CRC 分诊问题：腹痛/腹泻/便秘持续多久？"),
+                HumanMessage(content="Tell me what you can help with today."),
+            ],
+            findings={
+                "user_intent": "general_chat",
+                "stale_crc_triage_cleared": True,
+            },
+        )
+    )
+
+    assert result["messages"][0].content == "base answer"
+    assert result["findings"]["stale_crc_triage_cleared"] is False
+    assert captured_contexts[0]["recent_conversation"] == "（无历史对话）"
+
+
+def test_node_general_chat_fast_reply_handles_chinese_greeting_after_stale_crc_clear() -> None:
+    runnable = node_general_chat(
+        model=RunnableLambda(lambda _input: AIMessage(content="unused")),
+        streaming=True,
+        show_thinking=False,
+    )
+
+    result = runnable(
+        CRCAgentState(
+            messages=[
+                AIMessage(content="请先回答上一个 CRC 分诊问题：腹痛/腹泻/便秘持续多久？"),
+                HumanMessage(content="你好"),
+            ],
+            findings={
+                "user_intent": "general_chat",
+                "stale_crc_triage_cleared": True,
+            },
+        )
+    )
+
+    assert "你好，我在" in result["messages"][0].content
+    assert "CRC 专项预问诊" not in result["messages"][0].content
+    assert result["findings"]["stale_crc_triage_cleared"] is False

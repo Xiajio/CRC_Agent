@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 from fastapi import FastAPI
@@ -44,11 +45,17 @@ def _client(tmp_path):
         patient_command_service=commands,
     )
     app.include_router(crc_triage.router)
-    return TestClient(app), patient_session.session_id, doctor_session.session_id, no_patient_session.session_id
+    return (
+        TestClient(app),
+        patient_session.session_id,
+        doctor_session.session_id,
+        no_patient_session.session_id,
+        registry,
+    )
 
 
 def test_save_crc_triage_assessment_returns_record_result(tmp_path) -> None:
-    client, session_id, _doctor_session_id, _no_patient_session_id = _client(tmp_path)
+    client, session_id, _doctor_session_id, _no_patient_session_id, _registry = _client(tmp_path)
 
     response = client.post(
         f"/api/sessions/{session_id}/crc-triage/assessments",
@@ -63,8 +70,43 @@ def test_save_crc_triage_assessment_returns_record_result(tmp_path) -> None:
     assert body["reused"] is False
 
 
+def test_save_crc_triage_assessment_persists_rich_payload_fields(tmp_path) -> None:
+    client, session_id, _doctor_session_id, _no_patient_session_id, registry = _client(tmp_path)
+    payload = _assessment()
+    payload["qa_summary"] = [
+        {
+            "stage": "vitals",
+            "question_id": "vitals_shock_or_consciousness",
+            "question": "最近有没有出现头晕、眼前发黑、意识模糊，或者突然出冷汗、面色苍白的情况？",
+            "answer": "没有",
+        }
+    ]
+    payload["node_results"] = [
+        {
+            "stage": "vitals",
+            "title": "节点1：生命体征评估",
+            "risk_level": "生命体征平稳",
+            "summary": "未识别到意识异常、休克表现、明显心率或呼吸异常。",
+            "next_step": "进入节点2：全系统危险信号筛查。",
+        }
+    ]
+    payload["protocol_state"] = {"stage": "final", "active_inquiry": False}
+
+    response = client.post(
+        f"/api/sessions/{session_id}/crc-triage/assessments",
+        json={"assessment": payload},
+    )
+
+    assert response.status_code == 200
+    record = registry.list_patient_records(response.json()["patient_id"])[0]
+    normalized_payload = json.loads(record["normalized_payload_json"])
+    assert normalized_payload["qa_summary"][0]["question_id"] == "vitals_shock_or_consciousness"
+    assert normalized_payload["node_results"][0]["stage"] == "vitals"
+    assert normalized_payload["protocol_state"]["stage"] == "final"
+
+
 def test_save_crc_triage_assessment_rejects_doctor_session(tmp_path) -> None:
-    client, _session_id, doctor_session_id, _no_patient_session_id = _client(tmp_path)
+    client, _session_id, doctor_session_id, _no_patient_session_id, _registry = _client(tmp_path)
 
     response = client.post(
         f"/api/sessions/{doctor_session_id}/crc-triage/assessments",
@@ -76,7 +118,7 @@ def test_save_crc_triage_assessment_rejects_doctor_session(tmp_path) -> None:
 
 
 def test_save_crc_triage_assessment_requires_patient_identity(tmp_path) -> None:
-    client, _session_id, _doctor_session_id, no_patient_session_id = _client(tmp_path)
+    client, _session_id, _doctor_session_id, no_patient_session_id, _registry = _client(tmp_path)
 
     response = client.post(
         f"/api/sessions/{no_patient_session_id}/crc-triage/assessments",
@@ -88,7 +130,7 @@ def test_save_crc_triage_assessment_requires_patient_identity(tmp_path) -> None:
 
 
 def test_save_crc_triage_assessment_requires_crc_subflow(tmp_path) -> None:
-    client, session_id, _doctor_session_id, _no_patient_session_id = _client(tmp_path)
+    client, session_id, _doctor_session_id, _no_patient_session_id, _registry = _client(tmp_path)
     payload = _assessment()
     payload["source_subflow"] = "other"
 

@@ -108,7 +108,124 @@ describe("crc triage context helpers", () => {
       next_step: "urgent_gi_clinic",
       source_session_id: "session-123",
       source_subflow: "crc_triage",
+      node_results: [],
+      protocol_state: {},
     });
+  });
+
+  it("builds assessment draft from protocol assessment with protocol details", () => {
+    const state = stateWithFindings({
+      source_subflow: "crc_triage",
+      active_inquiry: true,
+      crc_triage_state: {
+        stage: "vitals",
+        qa_summary: [
+          {
+            stage: "vitals",
+            question_id: "vitals_shock_or_consciousness",
+            question: "\u662f\u5426\u6709\u4f11\u514b\u6216\u610f\u8bc6\u6539\u53d8\uff1f",
+            answer: "\u6ca1\u6709",
+          },
+        ],
+        node_results: [
+          {
+            stage: "vitals",
+            title: "\u8282\u70b91\uff1a\u751f\u547d\u4f53\u5f81\u8bc4\u4f30",
+            risk_level: "low",
+            summary: "\u672a\u89c1\u4f11\u514b\u6216\u610f\u8bc6\u6539\u53d8\u7ebf\u7d22\u3002",
+            next_step: "\u7ee7\u7eed\u75c7\u72b6\u8be2\u95ee",
+          },
+        ],
+        assessment: {
+          record_type: "crc_triage_assessment",
+          chief_complaint: "\u4fbf\u8840",
+          symptom_group: "\u4fbf\u8840",
+          risk_level: "low",
+          disposition: "routine_gi_clinic",
+          red_flags: ["rectal_bleeding", 7],
+          known_crc_signals: null,
+          suggested_tests: ["\u80a0\u955c", 12],
+          missing_information: "\u5bb6\u65cf\u53f2",
+          qa_summary: [{ bad: true }],
+          node_results: [{ bad: true }],
+          patient_summary: "\u6709\u4fbf\u8840\uff0c\u6682\u65e0\u6025\u5371\u91cd\u7ebf\u7d22\u3002",
+          next_step: "routine_gi_clinic",
+          source_session_id: "older-session",
+          source_subflow: "crc_triage",
+        },
+      },
+    });
+
+    const draft = buildCrcTriageAssessmentDraft(state);
+
+    expect(draft).toEqual({
+      record_type: "crc_triage_assessment",
+      chief_complaint: "\u4fbf\u8840",
+      symptom_group: "\u4fbf\u8840",
+      risk_level: "low",
+      disposition: "routine_gi_clinic",
+      red_flags: ["rectal_bleeding"],
+      known_crc_signals: {},
+      suggested_tests: ["\u80a0\u955c"],
+      missing_information: [],
+      qa_summary: [
+        {
+          stage: "vitals",
+          question_id: "vitals_shock_or_consciousness",
+          question: "\u662f\u5426\u6709\u4f11\u514b\u6216\u610f\u8bc6\u6539\u53d8\uff1f",
+          answer: "\u6ca1\u6709",
+        },
+      ],
+      patient_summary: "\u6709\u4fbf\u8840\uff0c\u6682\u65e0\u6025\u5371\u91cd\u7ebf\u7d22\u3002",
+      next_step: "routine_gi_clinic",
+      source_session_id: "session-123",
+      source_subflow: "crc_triage",
+      node_results: [
+        {
+          stage: "vitals",
+          title: "\u8282\u70b91\uff1a\u751f\u547d\u4f53\u5f81\u8bc4\u4f30",
+          risk_level: "low",
+          summary: "\u672a\u89c1\u4f11\u514b\u6216\u610f\u8bc6\u6539\u53d8\u7ebf\u7d22\u3002",
+          next_step: "\u7ee7\u7eed\u75c7\u72b6\u8be2\u95ee",
+        },
+      ],
+      protocol_state: {
+        stage: "vitals",
+        qa_summary: [
+          {
+            stage: "vitals",
+            question_id: "vitals_shock_or_consciousness",
+            question: "\u662f\u5426\u6709\u4f11\u514b\u6216\u610f\u8bc6\u6539\u53d8\uff1f",
+            answer: "\u6ca1\u6709",
+          },
+        ],
+        node_results: [
+          {
+            stage: "vitals",
+            title: "\u8282\u70b91\uff1a\u751f\u547d\u4f53\u5f81\u8bc4\u4f30",
+            risk_level: "low",
+            summary: "\u672a\u89c1\u4f11\u514b\u6216\u610f\u8bc6\u6539\u53d8\u7ebf\u7d22\u3002",
+            next_step: "\u7ee7\u7eed\u75c7\u72b6\u8be2\u95ee",
+          },
+        ],
+      },
+    });
+    expect(draft?.protocol_state?.assessment).toBeUndefined();
+  });
+
+  it("returns null for a partial protocol assessment", () => {
+    const state = stateWithFindings({
+      source_subflow: "crc_triage",
+      active_inquiry: true,
+      crc_triage_state: {
+        stage: "vitals",
+        assessment: {
+          record_type: "crc_triage_assessment",
+        },
+      },
+    });
+
+    expect(buildCrcTriageAssessmentDraft(state)).toBeNull();
   });
 
   it("returns null before crc triage completion", () => {

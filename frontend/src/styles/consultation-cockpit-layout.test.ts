@@ -458,10 +458,16 @@ describe("consultation cockpit layout CSS", () => {
     expect(blockFor(".clinical-patient-dashboard.clinical-patient-dashboard-profile")).toContain(
       "minmax(0, min(860px, 100%))",
     );
+    expect(blockFor(".clinical-patient-dashboard.clinical-patient-dashboard-crc_triage")).toContain(
+      "minmax(0, min(860px, 100%))",
+    );
     expect(blockFor(".clinical-patient-dashboard.clinical-patient-dashboard-upload")).toContain(
       "minmax(0, min(860px, 100%))",
     );
     expect(blockFor(".clinical-patient-dashboard-assistant", media1450)).toContain(
+      "minmax(0, min(860px, 100%))",
+    );
+    expect(blockFor(".clinical-patient-dashboard-crc_triage", media1450)).toContain(
       "minmax(0, min(860px, 100%))",
     );
     expect(blockFor(".clinical-patient-left-column-collapsed")).toContain("display: none");

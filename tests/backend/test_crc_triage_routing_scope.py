@@ -22,6 +22,36 @@ def test_stale_crc_findings_do_not_force_future_patient_intent_route() -> None:
     assert route_after_patient_intent(state) == "general_chat"
 
 
+def test_stale_top_level_crc_subflow_does_not_override_cleared_findings_route() -> None:
+    state = CRCAgentState(
+        messages=[HumanMessage(content="normal patient question")],
+        patient_subflow="crc_triage",
+        source_subflow="crc_triage",
+        findings={
+            "patient_subflow": None,
+            "source_subflow": None,
+            "user_intent": "general_chat",
+        },
+    )
+
+    assert route_after_patient_intent(state) == "general_chat"
+
+
+def test_current_crc_subflow_routes_to_clinical_entry_resolver() -> None:
+    state = CRCAgentState(
+        messages=[HumanMessage(content="start crc triage")],
+        patient_subflow="crc_triage",
+        source_subflow="crc_triage",
+        findings={
+            "patient_subflow": "crc_triage",
+            "source_subflow": "crc_triage",
+            "user_intent": "general_chat",
+        },
+    )
+
+    assert route_after_patient_intent(state) == "clinical_entry_resolver"
+
+
 def test_payload_builder_clears_crc_subflow_markers_without_current_context() -> None:
     prepared = build_graph_payload(
         chat_request={"message": HumanMessage(content="normal patient question")},
@@ -42,6 +72,49 @@ def test_payload_builder_clears_crc_subflow_markers_without_current_context() ->
     assert prepared.payload["findings"]["patient_subflow"] is None
     assert prepared.payload["findings"]["source_subflow"] is None
     assert prepared.payload["findings"]["crc_triage"] == {}
+    assert prepared.payload["findings"]["stale_crc_triage_cleared"] is True
+
+
+def test_payload_builder_clears_stale_crc_active_inquiry_without_current_context() -> None:
+    prepared = build_graph_payload(
+        chat_request={"message": HumanMessage(content="normal patient question")},
+        session_meta=SessionMeta(session_id="sess-test", thread_id="thread-test", scene="patient", patient_id=7),
+        state_snapshot={
+            "findings": {
+                "encounter_track": "outpatient_triage",
+                "active_inquiry": True,
+                "inquiry_type": "outpatient_triage",
+                "inquiry_message": "old crc question",
+                "patient_subflow": "crc_triage",
+                "source_subflow": "crc_triage",
+                "crc_triage": {"action": "start"},
+                "triage_pending_fields": ["duration"],
+                "triage_current_field": "duration",
+                "triage_no_progress_count": 2,
+                "triage_switch_prompt_active": True,
+                "triage_explicit_switch_request": True,
+                "missing_critical_data": ["内镜关键发现"],
+                "crc_protocol_assessment": {"action": "archive_triage"},
+            },
+        },
+    )
+
+    findings = prepared.payload["findings"]
+    assert findings["patient_subflow"] is None
+    assert findings["source_subflow"] is None
+    assert findings["crc_triage"] == {}
+    assert findings["encounter_track"] is None
+    assert findings["active_inquiry"] is False
+    assert findings["inquiry_type"] is None
+    assert findings["inquiry_message"] is None
+    assert findings["triage_pending_fields"] == []
+    assert findings["triage_current_field"] is None
+    assert findings["triage_no_progress_count"] == 0
+    assert findings["triage_switch_prompt_active"] is False
+    assert findings["triage_explicit_switch_request"] is False
+    assert findings["missing_critical_data"] == []
+    assert findings["stale_crc_triage_cleared"] is True
+    assert "crc_protocol_assessment" not in findings
 
 
 def test_clinical_entry_resolver_clears_stale_crc_findings_for_normal_turn() -> None:

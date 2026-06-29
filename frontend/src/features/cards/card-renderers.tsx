@@ -910,6 +910,40 @@ function renderTriageCard(payload: JsonObject) {
   );
 }
 
+function renderExportableMaterialCard(payload: JsonObject) {
+  const title = asString(payload.title) ?? "患者资料";
+  const markdown = asString(payload.markdown) ?? "";
+  const filename = asString(payload.suggested_filename) ?? "patient-material";
+  const preview = markdown.replace(/^#+\s*/gm, "").trim().slice(0, 180);
+
+  function downloadMarkdown() {
+    const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${filename}.md`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  return (
+    <div className="clinical-card-stack">
+      <div className="clinical-card-section">
+        <strong className="clinical-card-heading">{title}</strong>
+        <p className="clinical-copy clinical-copy-tight">{preview || "资料已生成。"}</p>
+      </div>
+      <div className="clinical-action-row">
+        <Button type="button" variant="secondary" size="sm" onClick={downloadMarkdown}>
+          下载 Markdown
+        </Button>
+      </div>
+      {renderDisclosure("查看原始数据", payload)}
+    </div>
+  );
+}
+
 function renderGenericCard(payload: JsonObject) {
   const summary = cardSummary(payload);
   if (summary) {
@@ -967,6 +1001,8 @@ export function renderCardContent({ cardType, payload, onPromptRequest, patientC
       return renderDecisionCard(payload);
     case "triage_card":
       return renderTriageCard(payload);
+    case "exportable_material_card":
+      return renderExportableMaterialCard(payload);
     default:
       return renderGenericCard(payload);
   }

@@ -79,6 +79,31 @@ def _patient_context_cache(session_meta: SessionMeta) -> dict[str, Any] | None:
     return deepcopy(dict(cache))
 
 
+def _has_crc_subflow_scope(findings: Mapping[str, Any]) -> bool:
+    return findings.get("patient_subflow") == "crc_triage" or findings.get("source_subflow") == "crc_triage"
+
+
+def _clear_stale_crc_triage_state(findings: Mapping[str, Any]) -> dict[str, Any]:
+    cleared_findings = dict(findings)
+    cleared_findings.update(
+        {
+            "encounter_track": None,
+            "active_inquiry": False,
+            "inquiry_type": None,
+            "inquiry_message": None,
+            "triage_pending_fields": [],
+            "triage_current_field": None,
+            "triage_no_progress_count": 0,
+            "triage_switch_prompt_active": False,
+            "triage_explicit_switch_request": False,
+            "missing_critical_data": [],
+            "stale_crc_triage_cleared": True,
+        }
+    )
+    cleared_findings.pop("crc_protocol_assessment", None)
+    return cleared_findings
+
+
 def build_graph_payload(
     chat_request: Any,
     session_meta: SessionMeta,
@@ -86,6 +111,8 @@ def build_graph_payload(
     pending_context_messages: list[Any] | None = None,
 ) -> PreparedGraphPayload:
     chat_request_context = _get_value(chat_request, "context", {})
+    if chat_request_context is None:
+        chat_request_context = {}
     current_turn_message = _current_turn_message(chat_request)
     should_clear_session_pending = pending_context_messages is None
     drained_pending_context_messages = (
@@ -153,9 +180,14 @@ def build_graph_payload(
             payload["source_subflow"] = None
             payload["crc_triage"] = {}
             payload_findings = dict(payload.get("findings") or {})
+            had_stale_crc_subflow = _has_crc_subflow_scope(payload_findings)
             payload_findings["patient_subflow"] = None
             payload_findings["source_subflow"] = None
             payload_findings["crc_triage"] = {}
+            if had_stale_crc_subflow:
+                payload_findings = _clear_stale_crc_triage_state(payload_findings)
+            else:
+                payload_findings["stale_crc_triage_cleared"] = False
             payload["findings"] = payload_findings
 
     if should_clear_session_pending:
