@@ -43,6 +43,16 @@ def test_make_assertion_id_is_stable_and_content_addressed() -> None:
     assert first.startswith("assertion_triage_crc_assessment_abc123_rectal_bleeding_")
     assert len(first.rsplit("_", 1)[-1]) == 8
 
+    positional = make_assertion_id(
+        "triage",
+        33,
+        "crc_assessment_abc123",
+        fact,
+        refs,
+    )
+
+    assert positional == first
+
     changed_fact = make_assertion_id(
         source="triage",
         patient_id=33,

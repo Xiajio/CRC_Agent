@@ -78,7 +78,6 @@ class ClinicalAssertion:
 
 
 def make_assertion_id(
-    *,
     source: ClinicalAssertionSource,
     patient_id: str | int,
     source_object_id: str,
