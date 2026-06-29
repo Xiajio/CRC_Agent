@@ -427,6 +427,9 @@ def route_after_patient_chat_main(state: CRCAgentState) -> str:
     if findings.get("active_inquiry") or findings.get("active_field"):
         return "end"
 
+    if state.missing_critical_data and findings.get("user_intent") == "clinical_assessment":
+        return "assessment"
+
     if _requires_hard_clinical_flow(state):
         return "assessment"
 

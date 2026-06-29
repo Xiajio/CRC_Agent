@@ -194,7 +194,7 @@ describe("ConversationPanel latency status", () => {
           cursor: "2",
           type: "ai",
           content: [
-            "# 涓村簥娌荤枟寤鸿",
+            "# 临床治疗建议",
             "",
             "| 项目 | 建议 |",
             "| --- | --- |",
@@ -217,7 +217,7 @@ describe("ConversationPanel latency status", () => {
           cursor: "2",
           type: "ai",
           content: [
-            "# 涓村簥娌荤枟寤鸿",
+            "# 临床治疗建议",
             "",
             "<img src=x onerror=alert(1)>",
             "",
