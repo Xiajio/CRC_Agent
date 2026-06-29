@@ -59,6 +59,14 @@ def test_get_session_patient_records_returns_current_patient_records(tmp_path, m
     body = response.json()
     assert body["items"][0]["record_type"] == "crc_triage_assessment"
     assert body["items"][0]["patient_id"] > 0
+    assert body["items"][0]["clinical_assertions"][0]["normalized_fact"] == {
+        "type": "condition_signal",
+        "name": "rectal_bleeding",
+        "value": True,
+    }
+    assert body["items"][0]["clinical_assertion_refs"] == [
+        assertion["assertion_id"] for assertion in body["items"][0]["clinical_assertions"]
+    ]
 
 
 def test_get_session_care_cards_returns_current_patient_guidance(tmp_path, monkeypatch) -> None:

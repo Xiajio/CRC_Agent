@@ -5,6 +5,11 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.services.clinical_assertion_projection import (
+    assertion_refs,
+    project_clinical_assertions_from_record,
+)
+
 
 class PatientRegistrySearchRequest(BaseModel):
     patient_id: int | None = None
@@ -82,6 +87,8 @@ class PatientRegistryRecord(BaseModel):
     source: str
     snapshot_meta_json: dict[str, Any] | list[Any] | str | None = None
     created_at: str
+    clinical_assertions: list[dict[str, object]] = Field(default_factory=list)
+    clinical_assertion_refs: list[str] = Field(default_factory=list)
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> "PatientRegistryRecord":
@@ -97,6 +104,11 @@ class PatientRegistryRecord(BaseModel):
                 snapshot_meta = json.loads(snapshot_meta)
             except json.JSONDecodeError:
                 pass
+        projection_row = {
+            **row,
+            "normalized_payload_json": payload,
+        }
+        clinical_assertions = project_clinical_assertions_from_record(projection_row)
         return cls(
             record_id=int(row["record_id"]),
             patient_id=int(row["patient_id"]),
@@ -111,6 +123,10 @@ class PatientRegistryRecord(BaseModel):
             source=str(row["source"]),
             snapshot_meta_json=snapshot_meta,
             created_at=str(row["created_at"]),
+            clinical_assertions=[
+                assertion.to_dict() for assertion in clinical_assertions
+            ],
+            clinical_assertion_refs=assertion_refs(clinical_assertions),
         )
 
 

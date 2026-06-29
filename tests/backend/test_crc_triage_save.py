@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from backend.api.routes import patient_registry as patient_registry_routes
 from backend.api.services.patient_care_cards import build_patient_care_cards
 from backend.api.services.patient_commands import PatientCommandService
 from backend.api.services.patient_registry_service import PatientRegistryService
@@ -85,3 +90,37 @@ def test_crc_triage_assessment_persists_traceability_fields_and_care_cards(
         "document_type": "crc_triage_assessment",
     } in json.loads(snapshot["record_refs_json"])
     assert result.event_ids[0] in json.loads(snapshot["source_event_ids_json"])
+
+
+def test_patient_registry_records_endpoint_returns_derived_clinical_assertions(
+    tmp_path: Path,
+) -> None:
+    app = FastAPI()
+    registry = PatientRegistryService(tmp_path / "patient_registry.db")
+    commands = PatientCommandService(registry)
+    app.state.runtime = SimpleNamespace(patient_registry_service=registry)
+    app.include_router(patient_registry_routes.router)
+    patient = commands.create_patient(created_by_session_id="sess_patient_1")
+    commands.record_crc_triage_assessment(
+        patient_id=patient.patient_id,
+        assessment={
+            "record_type": "crc_triage_assessment",
+            "known_crc_signals": {"rectal_bleeding": True},
+            "source_session_id": "sess_patient_1",
+        },
+        source_session_id="sess_patient_1",
+    )
+    client = TestClient(app)
+
+    response = client.get(f"/api/patient-registry/patients/{patient.patient_id}/records")
+
+    assert response.status_code == 200
+    item = response.json()["items"][0]
+    assert item["clinical_assertions"][0]["normalized_fact"] == {
+        "type": "condition_signal",
+        "name": "rectal_bleeding",
+        "value": True,
+    }
+    assert item["clinical_assertion_refs"] == [
+        assertion["assertion_id"] for assertion in item["clinical_assertions"]
+    ]
