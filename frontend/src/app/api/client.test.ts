@@ -182,4 +182,93 @@ describe("createApiClient", () => {
       { headers: { Authorization: "Bearer dev-token" } },
     );
   });
+  it("loads doctor review through the session endpoint", async () => {
+    const payload = {
+      feature_flag: "doctor_review_cockpit_v0",
+      patient_id: 101,
+      session_id: "sess-doctor",
+      timeline: [],
+      assertions: [],
+      draft: {
+        draft_id: "draft-101",
+        sections: [],
+      },
+      available_actions: ["accept"],
+    };
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    const fetchImpl = vi.fn(async () => response);
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+    });
+
+    await expect(client.getDoctorReview("sess-doctor")).resolves.toEqual(payload);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/sessions/sess-doctor/doctor-review",
+      { headers: undefined },
+    );
+  });
+
+  it("records doctor action traces with a JSON request body", async () => {
+    const payload = {
+      patient_id: 101,
+      patient_version: 3,
+      projection_version: 4,
+      event_ids: ["event-1"],
+      trace: {
+        trace_id: "trace-1",
+        patient_id: 101,
+        session_id: "sess-doctor",
+        timestamp: "2026-06-29T04:00:00Z",
+        action_type: "accept",
+        target_object: null,
+        target_refs: {
+          assertion_id: "assertion-1",
+        },
+        before_after: null,
+        reason_code: "unsupported_claim",
+        reviewer_role: "physician_reviewer",
+        deidentified: true,
+      },
+    };
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    let latestInit: RequestInit | undefined;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      latestInit = init;
+      return response;
+    });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+    const request = {
+      action_type: "accept" as const,
+      target_refs: {
+        assertion_id: "assertion-1",
+      },
+      reason_code: "unsupported_claim" as const,
+    };
+
+    await expect(client.recordDoctorActionTrace("sess-doctor", request)).resolves.toEqual(payload);
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/sessions/sess-doctor/doctor-review/action-traces",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify(request),
+      },
+    );
+    const headers = latestInit?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer dev-token");
+    expect(headers.get("Content-Type")).toBe("application/json");
+  });
 });

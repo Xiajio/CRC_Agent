@@ -8,6 +8,9 @@ import type {
   DatabaseSearchResponse,
   DatabaseStatsResponse,
   DatabaseUpsertRequest,
+  DoctorActionTraceRequest,
+  DoctorActionTraceResponse,
+  DoctorReviewResponse,
   MessageHistoryResponse,
   PatientRegistryAlertsResponse,
   PatientRegistryClearResponse,
@@ -109,6 +112,11 @@ export interface ApiClient {
     sessionId: string,
     request: SaveCrcTriageAssessmentRequest,
   ): Promise<SaveCrcTriageAssessmentResponse>;
+  getDoctorReview(sessionId: string): Promise<DoctorReviewResponse>;
+  recordDoctorActionTrace(
+    sessionId: string,
+    request: DoctorActionTraceRequest,
+  ): Promise<DoctorActionTraceResponse>;
   getSessionPatientRecords(sessionId: string): Promise<PatientRegistryRecordsResponse>;
   getSessionCareCards(sessionId: string): Promise<PatientCareCardsResponse>;
   getDatabaseStats(): Promise<DatabaseStatsResponse>;
@@ -252,6 +260,22 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         body: JSON.stringify(request),
       });
       return parseJsonResponse<SaveCrcTriageAssessmentResponse>(response);
+    },
+
+    async getDoctorReview(sessionId) {
+      const response = await fetchImpl(buildUrl(`/api/sessions/${sessionId}/doctor-review`, baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<DoctorReviewResponse>(response);
+    },
+
+    async recordDoctorActionTrace(sessionId, request) {
+      const response = await fetchImpl(buildUrl(`/api/sessions/${sessionId}/doctor-review/action-traces`, baseUrl), {
+        method: "POST",
+        headers: buildJsonHeaders(defaultHeaders),
+        body: JSON.stringify(request),
+      });
+      return parseJsonResponse<DoctorActionTraceResponse>(response);
     },
 
     async getSessionPatientRecords(sessionId) {

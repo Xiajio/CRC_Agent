@@ -394,6 +394,132 @@ export interface SaveCrcTriageAssessmentResponse {
   reused: boolean;
 }
 
+export interface ClinicalAssertionRef {
+  kind: string;
+  id: string;
+  field?: string | null;
+}
+
+export interface ClinicalAssertionPayload {
+  assertion_id: string;
+  patient_id: string;
+  session_id?: string | null;
+  source: "triage" | "clinical_review" | "manual";
+  source_record_id?: string | null;
+  source_assessment_id?: string | null;
+  normalized_fact: JsonObject;
+  evidence_refs: ClinicalAssertionRef[];
+  confidence: string;
+  reviewed_status: "unreviewed" | "reviewed" | "accepted" | "rejected";
+  safety_policy_version?: string | null;
+  created_from_projection_version?: string | null;
+}
+
+export interface DoctorReviewTimelineItem {
+  item_id: string;
+  kind: string;
+  title: string;
+  created_at: string;
+  assertion_refs: string[];
+}
+
+export interface DoctorReviewProvenanceRef {
+  kind: string;
+  assertion_id?: string | null;
+  record_id?: string | null;
+  safety_policy_version?: string | null;
+  id?: string | null;
+  field?: string | null;
+}
+
+export interface DoctorReviewDraftSection {
+  section_id: string;
+  text: string;
+  provenance: DoctorReviewProvenanceRef[];
+  verification_status: "traceable" | "model_generated_unverified";
+}
+
+export interface DoctorReviewDraft {
+  draft_id: string;
+  sections: DoctorReviewDraftSection[];
+}
+
+export interface DoctorReviewResponse {
+  patient_id: number;
+  session_id: string;
+  feature_flag: "doctor_review_cockpit_v0";
+  timeline: DoctorReviewTimelineItem[];
+  assertions: ClinicalAssertionPayload[];
+  draft: DoctorReviewDraft;
+  available_actions: DoctorActionType[];
+}
+
+export type DoctorActionType =
+  | "accept"
+  | "edit"
+  | "reject"
+  | "escalate"
+  | "request_evidence"
+  | "mark_unsafe";
+
+export type DoctorReasonCode =
+  | "fact_wrong"
+  | "missing_red_flag"
+  | "unsupported_claim"
+  | "bad_tone"
+  | "workflow_mismatch"
+  | "citation_not_traceable"
+  | "missing_information"
+  | "unsafe_disposition"
+  | "evidence_conflict"
+  | "template_mismatch";
+
+export interface DoctorActionTargetRefs {
+  draft_id?: string | null;
+  assertion_id?: string | null;
+  assessment_id?: string | null;
+  record_id?: string | null;
+  care_card_id?: string | null;
+  citation_id?: string | null;
+}
+
+export interface DoctorActionBeforeAfter {
+  before: string;
+  after: string;
+}
+
+export interface DoctorActionTraceRequest {
+  action_type: DoctorActionType;
+  target_object?: string | null;
+  target_refs?: DoctorActionTargetRefs;
+  before_after?: DoctorActionBeforeAfter | null;
+  reason_code: DoctorReasonCode;
+  reviewer_role?: string;
+}
+
+export interface DoctorActionTrace {
+  trace_id: string;
+  patient_id: number;
+  session_id: string;
+  action_type: DoctorActionType;
+  target_object?: string | null;
+  target_refs: DoctorActionTargetRefs;
+  before_after?: DoctorActionBeforeAfter | null;
+  reason_code: DoctorReasonCode;
+  reviewer_role: string;
+  deidentified: boolean;
+  timestamp: string;
+}
+
+export interface DoctorActionTraceResponse {
+  patient_id: number;
+  trace: DoctorActionTrace;
+  event_ids: string[];
+  patient_version: number;
+  projection_version: number;
+  snapshot_changed?: boolean;
+}
+
 export interface UploadResponse {
   asset_id: string;
   asset_url: string;
@@ -465,6 +591,8 @@ export interface PatientRegistryRecord {
   source: string;
   snapshot_meta_json?: JsonValue | unknown;
   created_at: string;
+  clinical_assertions?: ClinicalAssertionPayload[];
+  clinical_assertion_refs?: string[];
 }
 
 export interface PatientRegistryRecordsResponse {

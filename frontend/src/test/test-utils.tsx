@@ -10,6 +10,8 @@ import type {
   DatabaseCaseDetailResponse,
   DatabaseSearchResponse,
   DatabaseStatsResponse,
+  DoctorActionTraceResponse,
+  DoctorReviewResponse,
   PatientIdentitySnapshot,
   PatientCareCardsResponse,
   PatientRegistryAlertsResponse,
@@ -159,6 +161,64 @@ export function makePatientCareCardsResponse(
   };
 }
 
+export function makeDoctorReviewResponse(
+  overrides: Partial<DoctorReviewResponse> = {},
+): DoctorReviewResponse {
+  return {
+    patient_id: overrides.patient_id ?? 101,
+    session_id: overrides.session_id ?? "sess-doctor",
+    feature_flag: overrides.feature_flag ?? "doctor_review_cockpit_v0",
+    timeline: overrides.timeline ?? [],
+    assertions: overrides.assertions ?? [],
+    draft: overrides.draft ?? {
+      draft_id: "draft-101",
+      sections: [
+        {
+          section_id: "risk_summary",
+          text: "Traceable risk summary.",
+          provenance: [],
+          verification_status: "traceable",
+        },
+      ],
+    },
+    available_actions: overrides.available_actions ?? [
+      "accept",
+      "edit",
+      "reject",
+      "escalate",
+      "request_evidence",
+      "mark_unsafe",
+    ],
+  };
+}
+
+export function makeDoctorActionTraceResponse(
+  overrides: Partial<DoctorActionTraceResponse> = {},
+): DoctorActionTraceResponse {
+  return {
+    patient_id: overrides.patient_id ?? 101,
+    patient_version: overrides.patient_version ?? 1,
+    projection_version: overrides.projection_version ?? 1,
+    event_ids: overrides.event_ids ?? ["event-1"],
+    snapshot_changed: overrides.snapshot_changed ?? false,
+    trace: overrides.trace ?? {
+      trace_id: "doctor_trace_1",
+      patient_id: overrides.patient_id ?? 101,
+      session_id: "sess-doctor",
+      action_type: "accept",
+      target_object: null,
+      target_refs: {
+        assertion_id: "assertion-1",
+      },
+      before_after: null,
+      reason_code: "unsupported_claim",
+      reviewer_role: "physician_reviewer",
+      deidentified: true,
+      timestamp: "2026-06-29T04:00:00Z",
+    },
+  };
+}
+
 export function makePatientRegistryAlertsResponse(
   overrides: Partial<PatientRegistryAlertsResponse> = {},
 ): PatientRegistryAlertsResponse {
@@ -224,6 +284,8 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
   }));
   const getSessionPatientRecords = vi.fn(async () => makePatientRegistryRecordsResponse());
   const getSessionCareCards = vi.fn(async () => makePatientCareCardsResponse());
+  const getDoctorReview = vi.fn(async () => makeDoctorReviewResponse());
+  const recordDoctorActionTrace = vi.fn(async () => makeDoctorActionTraceResponse());
   const getDatabaseStats = vi.fn(async () => makeDatabaseStatsResponse());
   const searchDatabaseCases = vi.fn(async () => makeDatabaseSearchResponse());
   const getDatabaseCaseDetail = vi.fn(async (patientId: number): Promise<DatabaseCaseDetailResponse> => ({
@@ -288,6 +350,8 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
     saveCrcTriageAssessment,
     getSessionPatientRecords,
     getSessionCareCards,
+    getDoctorReview,
+    recordDoctorActionTrace,
     getDatabaseStats,
     searchDatabaseCases,
     getDatabaseCaseDetail,
