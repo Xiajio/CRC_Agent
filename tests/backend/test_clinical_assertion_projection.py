@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from src.contracts.clinical_assertion import (
     ClinicalAssertion,
     EvidenceRef,
@@ -40,6 +42,34 @@ def test_make_assertion_id_is_stable_and_content_addressed() -> None:
     assert first == second
     assert first.startswith("assertion_triage_crc_assessment_abc123_rectal_bleeding_")
     assert len(first.rsplit("_", 1)[-1]) == 8
+
+    changed_fact = make_assertion_id(
+        source="triage",
+        patient_id=33,
+        source_object_id="crc_assessment_abc123",
+        normalized_fact=NormalizedFact(
+            type="condition_signal",
+            name="rectal_bleeding",
+            value=False,
+        ),
+        evidence_refs=refs,
+    )
+    changed_evidence = make_assertion_id(
+        source="triage",
+        patient_id=33,
+        source_object_id="crc_assessment_abc123",
+        normalized_fact=fact,
+        evidence_refs=[
+            EvidenceRef(
+                kind="patient_record",
+                id="record_43",
+                field="payload.known_crc_signals.rectal_bleeding",
+            )
+        ],
+    )
+
+    assert changed_fact != first
+    assert changed_evidence != first
 
 
 def test_clinical_assertion_serializes_to_json_safe_dict() -> None:
@@ -84,3 +114,44 @@ def test_clinical_assertion_serializes_to_json_safe_dict() -> None:
         }
     ]
     assert payload["reviewed_status"] == "unreviewed"
+
+    json.dumps(payload, ensure_ascii=False)
+
+
+def test_clinical_assertion_omits_optional_none_values() -> None:
+    assertion = ClinicalAssertion(
+        assertion_id="assertion_triage_record_42_rectal_bleeding_a1b2c3d4",
+        patient_id="33",
+        session_id=None,
+        source="triage",
+        normalized_fact=NormalizedFact(
+            type="condition_signal",
+            name="rectal_bleeding",
+            value=True,
+        ),
+        evidence_refs=[
+            EvidenceRef(
+                kind="patient_record",
+                id="record_42",
+            )
+        ],
+        confidence="structured_user_report",
+        reviewed_status="unreviewed",
+        safety_policy_version=None,
+        created_from_projection_version=None,
+    )
+
+    payload = assertion.to_dict()
+
+    json.dumps(payload, ensure_ascii=False)
+    assert "session_id" not in payload
+    assert "source_record_id" not in payload
+    assert "source_assessment_id" not in payload
+    assert "safety_policy_version" not in payload
+    assert "created_from_projection_version" not in payload
+    assert payload["evidence_refs"] == [
+        {
+            "kind": "patient_record",
+            "id": "record_42",
+        }
+    ]
