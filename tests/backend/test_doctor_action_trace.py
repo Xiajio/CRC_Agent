@@ -272,6 +272,24 @@ def test_record_doctor_action_trace_rejects_cross_patient_record_ref(tmp_path) -
     assert _doctor_action_event_count(registry, patient_a_id) == before_count
 
 
+def test_record_doctor_action_trace_rejects_unparseable_record_ref(tmp_path) -> None:
+    client, patient_id, doctor_session_id, registry = _client(tmp_path)
+    before_count = _doctor_action_event_count(registry, patient_id)
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json={
+            "action_type": "request_evidence",
+            "target_object": "record",
+            "target_refs": {"record_id": "not-a-record"},
+            "reason_code": "unsupported_claim",
+        },
+    )
+
+    assert response.status_code == 422
+    assert _doctor_action_event_count(registry, patient_id) == before_count
+
+
 def test_record_doctor_action_trace_rejects_invalid_assessment_ref(tmp_path) -> None:
     client, patient_id, doctor_session_id, registry = _client(tmp_path)
     before_count = _doctor_action_event_count(registry, patient_id)

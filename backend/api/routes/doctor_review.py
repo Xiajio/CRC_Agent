@@ -181,7 +181,9 @@ def _target_ref_error(
     records = patient_registry.list_patient_records(patient_id)
 
     record_id = _resolvable_record_id(refs.record_id)
-    if refs.record_id is not None and record_id is not None:
+    if refs.record_id is not None and str(refs.record_id).strip():
+        if record_id is None:
+            return "target_refs.record_id does not resolve to a bound patient record"
         if not any(int(row["record_id"]) == record_id for row in records):
             return "target_refs.record_id does not belong to the bound patient"
 
