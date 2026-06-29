@@ -158,9 +158,31 @@ def test_doctor_review_returns_timeline_assertions_draft_and_actions(tmp_path) -
 
     assert body["draft"]["draft_id"] == f"draft_crc_review_{patient_id}_latest"
     draft_sections = body["draft"]["sections"]
-    assert any(section["kind"] == "traceable_risk_summary" for section in draft_sections)
-    assert any(section["kind"] == "model_generated_unverified" for section in draft_sections)
-    assert any(section["assertion_refs"] for section in draft_sections)
+    assert all("text" in section for section in draft_sections)
+    assert all("provenance" in section for section in draft_sections)
+    assert all("verification_status" in section for section in draft_sections)
+    assert all("body" not in section for section in draft_sections)
+    assert all("provenance_refs" not in section for section in draft_sections)
+    traceable_section = next(
+        section
+        for section in draft_sections
+        if section["verification_status"] == "traceable"
+    )
+    unverified_section = next(
+        section
+        for section in draft_sections
+        if section["verification_status"] == "model_generated_unverified"
+    )
+    assert traceable_section["text"]
+    assert traceable_section["provenance"]
+    assert {
+        "kind": "clinical_assertion",
+        "assertion_id": timeline_item["assertion_refs"][0],
+        "record_id": timeline_item["item_id"],
+        "safety_policy_version": "crc_safety_policy_v0",
+    } in traceable_section["provenance"]
+    assert unverified_section["text"]
+    assert unverified_section["provenance"] == []
 
 
 def test_doctor_review_rejects_missing_session(tmp_path) -> None:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -15,17 +15,18 @@ class DoctorReviewTimelineItem(BaseModel):
 
 class DoctorReviewProvenanceRef(BaseModel):
     kind: str
-    id: str
+    assertion_id: str | None = None
+    record_id: str | None = None
+    safety_policy_version: str | None = None
+    id: str | None = None
     field: str | None = None
 
 
 class DoctorReviewDraftSection(BaseModel):
     section_id: str
-    kind: str
-    title: str
-    body: str
-    assertion_refs: list[str] = Field(default_factory=list)
-    provenance_refs: list[DoctorReviewProvenanceRef] = Field(default_factory=list)
+    text: str
+    provenance: list[DoctorReviewProvenanceRef] = Field(default_factory=list)
+    verification_status: Literal["traceable", "model_generated_unverified"]
 
 
 class DoctorReviewDraft(BaseModel):

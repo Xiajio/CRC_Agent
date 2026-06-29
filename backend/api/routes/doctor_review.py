@@ -70,18 +70,24 @@ def _risk_assertion_refs(assertions: list[ClinicalAssertion]) -> list[str]:
 
 def _provenance_refs(assertions: list[ClinicalAssertion]) -> list[DoctorReviewProvenanceRef]:
     refs: list[DoctorReviewProvenanceRef] = []
-    seen: set[tuple[str, str, str | None]] = set()
+    seen: set[tuple[str, str | None, str | None, str | None]] = set()
     for assertion in assertions:
         for evidence_ref in assertion.evidence_refs:
-            key = (evidence_ref.kind, evidence_ref.id, evidence_ref.field)
+            key = (
+                "clinical_assertion",
+                assertion.assertion_id,
+                evidence_ref.id,
+                assertion.safety_policy_version,
+            )
             if key in seen:
                 continue
             seen.add(key)
             refs.append(
                 DoctorReviewProvenanceRef(
-                    kind=evidence_ref.kind,
-                    id=evidence_ref.id,
-                    field=evidence_ref.field,
+                    kind="clinical_assertion",
+                    assertion_id=assertion.assertion_id,
+                    record_id=evidence_ref.id,
+                    safety_policy_version=assertion.safety_policy_version,
                 )
             )
     return refs
@@ -96,31 +102,37 @@ def _build_draft(patient_id: int, assertions: list[ClinicalAssertion]) -> Doctor
         sections=[
             DoctorReviewDraftSection(
                 section_id="risk_summary",
-                kind="traceable_risk_summary",
-                title="Traceable risk summary",
-                body=(
+                text=(
                     "Structured CRC triage signals indicate risk requiring doctor review. "
                     "Verify each assertion against the cited patient record evidence."
                 ),
-                assertion_refs=risk_refs or all_refs,
-                provenance_refs=provenance_refs,
+                provenance=[
+                    ref
+                    for ref in provenance_refs
+                    if ref.assertion_id in (risk_refs or all_refs)
+                ],
+                verification_status=(
+                    "traceable" if provenance_refs else "model_generated_unverified"
+                ),
             ),
             DoctorReviewDraftSection(
                 section_id="unverified_note",
-                kind="model_generated_unverified",
-                title="Unverified draft note",
-                body=(
+                text=(
                     "This draft is generated from structured patient records and has not "
                     "been clinically verified."
                 ),
-                assertion_refs=all_refs,
-                provenance_refs=provenance_refs,
+                provenance=[],
+                verification_status="model_generated_unverified",
             ),
         ],
     )
 
 
-@router.get("/{session_id}/doctor-review", response_model=DoctorReviewResponse)
+@router.get(
+    "/{session_id}/doctor-review",
+    response_model=DoctorReviewResponse,
+    response_model_exclude_none=True,
+)
 async def get_doctor_review(session_id: str, request: Request) -> DoctorReviewResponse:
     session_store, patient_registry = _runtime_dependencies(request)
     meta = session_store.get_session(session_id)
