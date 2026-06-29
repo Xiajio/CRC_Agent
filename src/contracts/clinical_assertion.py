@@ -3,21 +3,31 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 
 ClinicalAssertionSource = Literal["triage", "clinical_review", "manual"]
 ClinicalFactType = Literal["condition_signal", "clinical_fact"]
 ReviewedStatus = Literal["unreviewed", "reviewed", "accepted", "rejected"]
+JsonValue: TypeAlias = (
+    str
+    | int
+    | float
+    | bool
+    | None
+    | list["JsonValue"]
+    | dict[str, "JsonValue"]
+)
 
 
 @dataclass(frozen=True)
 class NormalizedFact:
     type: ClinicalFactType
     name: str
-    value: Any
+    value: JsonValue
 
     def to_dict(self) -> dict[str, Any]:
+        _validate_json_value(self.value)
         return _omit_none(
             {
                 "type": self.type,
@@ -47,14 +57,14 @@ class EvidenceRef:
 class ClinicalAssertion:
     assertion_id: str
     patient_id: str
-    session_id: str
+    session_id: str | None
     source: ClinicalAssertionSource
     normalized_fact: NormalizedFact
     evidence_refs: list[EvidenceRef]
     confidence: str
     reviewed_status: ReviewedStatus
-    safety_policy_version: str
-    created_from_projection_version: str
+    safety_policy_version: str | None
+    created_from_projection_version: str | None
     source_record_id: str | None = None
     source_assessment_id: str | None = None
 
@@ -89,7 +99,7 @@ def make_assertion_id(
         "patient_id": str(patient_id),
         "source_object_id": source_object_id,
         "normalized_fact": normalized_fact.to_dict(),
-        "evidence_refs": [ref.to_dict() for ref in evidence_refs],
+        "evidence_refs": _canonical_evidence_refs(evidence_refs),
     }
     stable_json = json.dumps(hash_payload, sort_keys=True, separators=(",", ":"))
     stable_hash = hashlib.sha256(stable_json.encode("utf-8")).hexdigest()[:8]
@@ -98,3 +108,27 @@ def make_assertion_id(
 
 def _omit_none(payload: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in payload.items() if value is not None}
+
+
+def _canonical_evidence_refs(evidence_refs: list[EvidenceRef]) -> list[dict[str, Any]]:
+    refs = [ref.to_dict() for ref in evidence_refs]
+    return sorted(
+        refs,
+        key=lambda ref: json.dumps(ref, sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _validate_json_value(value: JsonValue) -> None:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return
+    if isinstance(value, list):
+        for item in value:
+            _validate_json_value(item)
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError("NormalizedFact.value must be JSON-safe")
+            _validate_json_value(item)
+        return
+    raise TypeError("NormalizedFact.value must be JSON-safe")
