@@ -8,7 +8,14 @@ from typing import Any, Literal, TypeAlias
 
 
 ClinicalAssertionSource = Literal["triage", "clinical_review", "manual"]
-ClinicalFactType = Literal["condition_signal", "clinical_fact"]
+ClinicalFactType = Literal[
+    "condition_signal",
+    "clinical_fact",
+    "symptom",
+    "risk_disposition",
+    "missing_information",
+    "safety_rule_match",
+]
 ReviewedStatus = Literal["unreviewed", "reviewed", "accepted", "rejected"]
 JsonValue: TypeAlias = (
     str

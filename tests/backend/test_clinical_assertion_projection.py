@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import math
-from typing import get_type_hints
+from typing import get_args, get_type_hints
 
 import pytest
 
 from src.contracts.clinical_assertion import (
     ClinicalAssertion,
+    ClinicalFactType,
     EvidenceRef,
     NormalizedFact,
     make_assertion_id,
@@ -255,6 +256,19 @@ def test_clinical_assertion_optional_fields_are_typed_as_optional() -> None:
     assert hints["created_from_projection_version"] == str | None
 
 
+def test_clinical_fact_type_includes_projected_p1_fact_types() -> None:
+    fact_types = set(get_args(ClinicalFactType))
+
+    assert {
+        "condition_signal",
+        "clinical_fact",
+        "symptom",
+        "risk_disposition",
+        "missing_information",
+        "safety_rule_match",
+    }.issubset(fact_types)
+
+
 def _crc_record() -> dict[str, object]:
     return {
         "record_id": 42,
@@ -318,3 +332,26 @@ def test_project_old_record_without_p0_metadata_does_not_fail() -> None:
     payload = assertions[0].to_dict()
     assert payload["source_record_id"] == "9"
     assert "source_assessment_id" not in payload
+
+
+def test_project_legacy_risk_class_uses_risk_class_evidence_field() -> None:
+    assertions = project_clinical_assertions_from_records(
+        [
+            {
+                "record_id": 10,
+                "patient_id": 33,
+                "record_type": "crc_triage_assessment",
+                "normalized_payload_json": {
+                    "risk_class": "urgent_gi_clinic",
+                },
+            }
+        ]
+    )
+
+    risk_assertion = next(
+        assertion
+        for assertion in assertions
+        if assertion.normalized_fact.type == "risk_disposition"
+    )
+
+    assert risk_assertion.evidence_refs[0].field == "payload.risk_class"

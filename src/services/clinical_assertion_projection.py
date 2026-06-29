@@ -62,8 +62,10 @@ def project_clinical_assertions_from_record(
         )
 
     disposition = _optional_string(payload.get("disposition"))
+    disposition_field = "payload.disposition"
     if disposition is None:
         disposition = _optional_string(payload.get("risk_class"))
+        disposition_field = "payload.risk_class"
     if disposition is not None:
         assertions.append(
             _make_assertion(
@@ -76,7 +78,7 @@ def project_clinical_assertions_from_record(
                     name="disposition",
                     value=disposition,
                 ),
-                field="payload.disposition",
+                field=disposition_field,
                 confidence="deterministic_policy_or_protocol",
             )
         )
