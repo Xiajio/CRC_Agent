@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
-export type DoctorTab = "consultation" | "database" | "multimodal" | "reports";
+export type DoctorTab = "consultation" | "database" | "multimodal" | "reports" | "review";
 export type DoctorDatabaseSource = "historical_case_base" | "patient_registry";
 
 export type DoctorViewState = {

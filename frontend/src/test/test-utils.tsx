@@ -378,6 +378,10 @@ export function buildAppWrapper(apiClient: ApiClient) {
   };
 }
 
+export function renderWithProviders(ui: ReactElement, apiClient: ApiClient) {
+  return render(ui, { wrapper: buildAppWrapper(apiClient) });
+}
+
 export function renderWorkspaceWithSceneSessions(apiClient: ApiClient) {
   return render(
     <AppProviders apiClient={apiClient}>

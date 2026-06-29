@@ -5,9 +5,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockConversationPanel = vi.hoisted(() => vi.fn());
 const mockDoctorMultimodalView = vi.hoisted(() => vi.fn());
 const mockDoctorReportDraftView = vi.hoisted(() => vi.fn());
+const mockDoctorReviewCockpit = vi.hoisted(() => vi.fn());
 const mockDoctorViewState = vi.hoisted(() => {
   const state = {
-    activeDoctorTab: "consultation" as "consultation" | "database" | "multimodal" | "reports",
+    activeDoctorTab: "consultation" as
+      | "consultation"
+      | "database"
+      | "multimodal"
+      | "reports"
+      | "review",
     activeDatabaseSource: "patient_registry" as "historical_case_base" | "patient_registry",
   };
 
@@ -99,6 +105,13 @@ vi.mock("./doctor-report-draft-view", () => ({
   },
 }));
 
+vi.mock("./doctor-review-cockpit", () => ({
+  DoctorReviewCockpit: (props: Record<string, unknown>) => {
+    mockDoctorReviewCockpit(props);
+    return <div data-testid="doctor-review-cockpit" />;
+  },
+}));
+
 import { DoctorSceneShell } from "./doctor-scene-shell";
 
 describe("DoctorSceneShell", () => {
@@ -106,6 +119,7 @@ describe("DoctorSceneShell", () => {
     mockConversationPanel.mockClear();
     mockDoctorMultimodalView.mockClear();
     mockDoctorReportDraftView.mockClear();
+    mockDoctorReviewCockpit.mockClear();
     mockDoctorViewState.state.activeDoctorTab = "consultation";
     mockDoctorViewState.state.activeDatabaseSource = "patient_registry";
     mockDoctorViewState.setActiveDoctorTab.mockClear();
@@ -165,7 +179,7 @@ describe("DoctorSceneShell", () => {
     );
   }
 
-  it("renders production doctor top nav items including reports", () => {
+  it("renders production doctor top nav items including reports and review", () => {
     renderDoctorSceneShell();
 
     const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
@@ -174,8 +188,9 @@ describe("DoctorSceneShell", () => {
       "患者数据库",
       "多模态",
     ]);
-    expect(navButtons).toHaveLength(4);
+    expect(navButtons).toHaveLength(5);
     expect(navButtons[3]?.textContent).toBeTruthy();
+    expect(navButtons[4]?.textContent).toBeTruthy();
     for (const navButton of navButtons) {
       expect(navButton).not.toBeDisabled();
     }
@@ -196,6 +211,15 @@ describe("DoctorSceneShell", () => {
     fireEvent.click(navButtons[3]);
 
     expect(mockDoctorViewState.setActiveDoctorTab).toHaveBeenCalledWith("reports");
+  });
+
+  it("calls setActiveDoctorTab with review when the review nav item is clicked", () => {
+    renderDoctorSceneShell();
+
+    const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
+    fireEvent.click(navButtons[4]);
+
+    expect(mockDoctorViewState.setActiveDoctorTab).toHaveBeenCalledWith("review");
   });
 
   it("marks each doctor route with stable shell classes for theme effects", () => {
@@ -228,6 +252,14 @@ describe("DoctorSceneShell", () => {
       "clinical-app-shell",
       "clinical-app-shell-doctor",
       "clinical-app-shell-reports",
+    );
+
+    cleanup();
+    renderDoctorSceneShell({}, { activeDoctorTab: "review" });
+    expect(screen.getByTestId("doctor-scene")).toHaveClass(
+      "clinical-app-shell",
+      "clinical-app-shell-doctor",
+      "clinical-app-shell-review",
     );
   });
 
@@ -396,6 +428,24 @@ describe("DoctorSceneShell", () => {
         onReportPromptRequest: onCardPromptRequest,
       }),
     );
+  });
+
+  it("renders the review cockpit route with session and feature flag props", () => {
+    renderDoctorSceneShell(
+      {
+        sessionId: "sess-review",
+        doctorReviewCockpitEnabled: true,
+      },
+      {
+        activeDoctorTab: "review",
+      },
+    );
+
+    expect(screen.getByTestId("doctor-review-cockpit")).toBeInTheDocument();
+    expect(mockDoctorReviewCockpit).toHaveBeenCalledWith({
+      sessionId: "sess-review",
+      enabled: true,
+    });
   });
 
   it("renders a true initial state when no doctor session data is present", () => {

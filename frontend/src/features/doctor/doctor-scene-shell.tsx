@@ -36,6 +36,7 @@ import {
 import { DoctorDatabaseView } from "./doctor-database-view";
 import { DoctorMultimodalView } from "./doctor-multimodal-view";
 import { DoctorReportDraftView } from "./doctor-report-draft-view";
+import { DoctorReviewCockpit } from "./doctor-review-cockpit";
 import { useDoctorViewState, type DoctorTab } from "./use-doctor-view-state";
 
 type DoctorSceneShellProps = {
@@ -70,10 +71,12 @@ type DoctorSceneShellProps = {
   onSetCurrentCaseDatabasePatient: (patientId: number) => void;
   onCardPromptRequest?: CardPromptHandler;
   patientContext?: CardPatientContext | null;
+  doctorReviewCockpitEnabled?: boolean;
+  sessionId?: string | null;
 };
 
 type NavItem = {
-  key: DoctorTab | "multimodal" | "reports";
+  key: DoctorTab;
   label: string;
   disabled?: boolean;
 };
@@ -83,6 +86,7 @@ const DOCTOR_NAV_ITEMS: NavItem[] = [
   { key: "database", label: "患者数据库" },
   { key: "multimodal", label: "多模态" },
   { key: "reports", label: "报表" },
+  { key: "review", label: "Review" },
 ];
 
 const PRODUCTION_DOCTOR_NAV_ITEMS = DOCTOR_NAV_ITEMS.filter((item) => !item.disabled);
@@ -512,6 +516,8 @@ export function DoctorSceneShell({
   onSetCurrentCaseDatabasePatient,
   onCardPromptRequest,
   patientContext: providedPatientContext,
+  doctorReviewCockpitEnabled = false,
+  sessionId = null,
 }: DoctorSceneShellProps) {
   const {
     activeDoctorTab,
@@ -539,7 +545,13 @@ export function DoctorSceneShell({
   }
 
   function handleTabChange(tab: string) {
-    if (tab !== "consultation" && tab !== "database" && tab !== "multimodal" && tab !== "reports") {
+    if (
+      tab !== "consultation" &&
+      tab !== "database" &&
+      tab !== "multimodal" &&
+      tab !== "reports" &&
+      tab !== "review"
+    ) {
       return;
     }
 
@@ -659,6 +671,22 @@ export function DoctorSceneShell({
           disabled={disabled}
           onReportPromptRequest={onCardPromptRequest}
           patientContext={cardPatientContext}
+        />
+      </div>
+    );
+  }
+
+  if (activeDoctorTab === "review") {
+    return (
+      <div
+        ref={setSceneElement}
+        className="clinical-app-shell clinical-app-shell-doctor clinical-app-shell-review"
+        data-testid="doctor-scene"
+      >
+        {topNav}
+        <DoctorReviewCockpit
+          sessionId={sessionId ?? null}
+          enabled={doctorReviewCockpitEnabled === true}
         />
       </div>
     );
