@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import json
+import math
 from typing import Any, Literal, TypeAlias
 
 
@@ -119,6 +120,8 @@ def _canonical_evidence_refs(evidence_refs: list[EvidenceRef]) -> list[dict[str,
 
 
 def _validate_json_value(value: JsonValue) -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise TypeError("NormalizedFact.value must be JSON-safe")
     if value is None or isinstance(value, (str, int, float, bool)):
         return
     if isinstance(value, list):

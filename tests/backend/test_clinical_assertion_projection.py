@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import get_type_hints
 
 import pytest
@@ -128,6 +129,28 @@ def test_normalized_fact_rejects_non_json_value() -> None:
         type="condition_signal",
         name="rectal_bleeding",
         value={"not_json_safe"},
+    )
+
+    with pytest.raises(TypeError, match="JSON"):
+        fact.to_dict()
+
+
+def test_normalized_fact_rejects_nan_value() -> None:
+    fact = NormalizedFact(
+        type="symptom",
+        name="bad",
+        value=math.nan,
+    )
+
+    with pytest.raises(TypeError, match="JSON"):
+        fact.to_dict()
+
+
+def test_normalized_fact_rejects_infinite_value() -> None:
+    fact = NormalizedFact(
+        type="symptom",
+        name="bad",
+        value=math.inf,
     )
 
     with pytest.raises(TypeError, match="JSON"):
