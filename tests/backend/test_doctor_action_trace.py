@@ -60,6 +60,11 @@ def _client(tmp_path):
         scene="doctor",
         patient_id=patient.patient_id,
     )
+    commands.record_crc_triage_assessment(
+        patient_id=patient.patient_id,
+        assessment=_assessment(patient_session.session_id),
+        source_session_id=patient_session.session_id,
+    )
 
     app.state.runtime = SimpleNamespace(
         session_store=session_store,
@@ -70,13 +75,21 @@ def _client(tmp_path):
     return TestClient(app), patient.patient_id, doctor_session.session_id, registry
 
 
-def _valid_edit_payload() -> dict[str, object]:
+def _first_assertion_id(client: TestClient, doctor_session_id: str) -> str:
+    response = client.get(f"/api/sessions/{doctor_session_id}/doctor-review")
+    assert response.status_code == 200
+    assertions = response.json()["assertions"]
+    assert assertions
+    return str(assertions[0]["assertion_id"])
+
+
+def _valid_edit_payload(assertion_id: str) -> dict[str, object]:
     return {
         "action_type": "edit",
         "target_object": "risk_summary",
         "target_refs": {
             "draft_id": "draft_crc_review_1_latest",
-            "assertion_id": "assertion_rectal_bleeding",
+            "assertion_id": assertion_id,
         },
         "before_after": {
             "before": "Urgent clinic review is suggested.",
@@ -146,10 +159,11 @@ def _doctor_action_event_count(
 
 def test_record_doctor_action_trace_stores_append_only_event(tmp_path) -> None:
     client, patient_id, doctor_session_id, registry = _client(tmp_path)
+    assertion_id = _first_assertion_id(client, doctor_session_id)
 
     response = client.post(
         f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
-        json=_valid_edit_payload(),
+        json=_valid_edit_payload(assertion_id),
     )
 
     assert response.status_code == 200
@@ -174,7 +188,7 @@ def test_record_doctor_action_trace_stores_append_only_event(tmp_path) -> None:
 
     second = client.post(
         f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
-        json=_valid_edit_payload(),
+        json=_valid_edit_payload(assertion_id),
     )
     assert second.status_code == 200
     assert second.json()["event_ids"] != body["event_ids"]
@@ -196,13 +210,14 @@ def test_record_doctor_action_trace_returns_stable_null_optional_fields(tmp_path
 
 def test_record_doctor_action_trace_accepts_mark_unsafe_assertion_target(tmp_path) -> None:
     client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
+    assertion_id = _first_assertion_id(client, doctor_session_id)
 
     response = client.post(
         f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
         json={
             "action_type": "mark_unsafe",
             "target_object": "assertion",
-            "target_refs": {"assertion_id": "assertion-1"},
+            "target_refs": {"assertion_id": assertion_id},
             "reason_code": "unsafe_disposition",
         },
     )
@@ -211,7 +226,7 @@ def test_record_doctor_action_trace_accepts_mark_unsafe_assertion_target(tmp_pat
     trace = response.json()["trace"]
     assert trace["action_type"] == "mark_unsafe"
     assert trace["target_object"] == "assertion"
-    assert trace["target_refs"]["assertion_id"] == "assertion-1"
+    assert trace["target_refs"]["assertion_id"] == assertion_id
 
 
 def test_record_doctor_action_trace_accepts_mark_unsafe_draft_risk_summary(tmp_path) -> None:
@@ -229,6 +244,24 @@ def test_record_doctor_action_trace_accepts_mark_unsafe_draft_risk_summary(tmp_p
 
     assert response.status_code == 200
     assert response.json()["trace"]["target_object"] == "draft.risk_summary"
+
+
+def test_record_doctor_action_trace_rejects_unknown_assertion_ref_without_event(tmp_path) -> None:
+    client, patient_id, doctor_session_id, registry = _client(tmp_path)
+    before_count = _doctor_action_event_count(registry, patient_id)
+
+    response = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json={
+            "action_type": "mark_unsafe",
+            "target_object": "assertion",
+            "target_refs": {"assertion_id": "assertion-1"},
+            "reason_code": "unsafe_disposition",
+        },
+    )
+
+    assert response.status_code == 422
+    assert _doctor_action_event_count(registry, patient_id) == before_count
 
 
 def test_record_doctor_action_trace_rejects_mark_unsafe_nonclinical_target(tmp_path) -> None:
@@ -347,7 +380,8 @@ def test_patient_command_service_does_not_import_api_schema() -> None:
 
 def test_record_doctor_action_trace_rejects_unknown_reason_code(tmp_path) -> None:
     client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
-    payload = {**_valid_edit_payload(), "reason_code": "unknown_reason"}
+    assertion_id = _first_assertion_id(client, doctor_session_id)
+    payload = {**_valid_edit_payload(assertion_id), "reason_code": "unknown_reason"}
 
     response = client.post(
         f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
@@ -359,7 +393,8 @@ def test_record_doctor_action_trace_rejects_unknown_reason_code(tmp_path) -> Non
 
 def test_record_doctor_action_trace_rejects_edit_without_before_after(tmp_path) -> None:
     client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
-    payload = _valid_edit_payload()
+    assertion_id = _first_assertion_id(client, doctor_session_id)
+    payload = _valid_edit_payload(assertion_id)
     payload.pop("before_after")
 
     response = client.post(
@@ -372,7 +407,8 @@ def test_record_doctor_action_trace_rejects_edit_without_before_after(tmp_path) 
 
 def test_record_doctor_action_trace_rejects_missing_target(tmp_path) -> None:
     client, _patient_id, doctor_session_id, _registry = _client(tmp_path)
-    payload = _valid_edit_payload()
+    assertion_id = _first_assertion_id(client, doctor_session_id)
+    payload = _valid_edit_payload(assertion_id)
     payload["target_object"] = None
     payload["target_refs"] = {}
 
@@ -386,11 +422,12 @@ def test_record_doctor_action_trace_rejects_missing_target(tmp_path) -> None:
 
 def test_record_doctor_action_trace_does_not_update_snapshot_projection(tmp_path) -> None:
     client, patient_id, doctor_session_id, registry = _client(tmp_path)
+    assertion_id = _first_assertion_id(client, doctor_session_id)
     before = _snapshot_row(registry, patient_id)
 
     response = client.post(
         f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
-        json=_valid_edit_payload(),
+        json=_valid_edit_payload(assertion_id),
     )
 
     assert response.status_code == 200

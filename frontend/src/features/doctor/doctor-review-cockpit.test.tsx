@@ -28,14 +28,14 @@ describe("DoctorReviewCockpit", () => {
             assertion_id: "assertion-1",
             patient_id: "101",
             session_id: "sess-review",
-            source: "clinical_review",
+            source: "patient_upload",
             normalized_fact: {
               name: "tumor_location",
               value: "rectum",
             },
             evidence_refs: [],
             confidence: "high",
-            reviewed_status: "unreviewed",
+            reviewed_status: "needs_evidence",
           },
         ],
         draft: {
@@ -70,7 +70,7 @@ describe("DoctorReviewCockpit", () => {
     expect(await screen.findByText("Risk summary drafted")).toBeInTheDocument();
     expect(screen.getByText("draft_generated")).toBeInTheDocument();
     expect(screen.getByText("tumor_location")).toBeInTheDocument();
-    expect(screen.getByText("unreviewed")).toBeInTheDocument();
+    expect(screen.getByText("needs_evidence")).toBeInTheDocument();
     expect(screen.getByText("Model generated risk summary.")).toBeInTheDocument();
     expect(screen.getByText("model_generated_unverified")).toBeInTheDocument();
     expect(screen.getByText("assertion-1")).toBeInTheDocument();
@@ -128,7 +128,7 @@ describe("DoctorReviewCockpit", () => {
               {
                 assertion_id: "assertion-a",
                 patient_id: "101",
-                source: "clinical_review",
+                source: "model_draft",
                 normalized_fact: { name: "session_a_fact" },
                 evidence_refs: [],
                 confidence: "high",
@@ -191,7 +191,7 @@ describe("DoctorReviewCockpit", () => {
             {
               assertion_id: "assertion-b",
               patient_id: "101",
-              source: "clinical_review",
+              source: "doctor_note",
               normalized_fact: { name: "session_b_fact" },
               evidence_refs: [],
               confidence: "high",

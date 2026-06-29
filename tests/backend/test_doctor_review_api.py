@@ -75,6 +75,7 @@ def _client(tmp_path):
     app.state.runtime = SimpleNamespace(
         session_store=session_store,
         patient_registry_service=registry,
+        patient_command_service=commands,
     )
     app.include_router(doctor_review.router)
     return (
@@ -85,6 +86,20 @@ def _client(tmp_path):
         unbound_doctor_session.session_id,
         registry,
     )
+
+
+def _snapshot_row(registry: PatientRegistryService, patient_id: int) -> dict[str, object]:
+    with registry.transaction() as connection:
+        row = connection.execute(
+            """
+            SELECT patient_version, projection_version, updated_at, source_event_ids_json
+            FROM patient_snapshots
+            WHERE patient_id = ?
+            """,
+            (patient_id,),
+        ).fetchone()
+    assert row is not None
+    return dict(row)
 
 
 def test_doctor_review_rejects_patient_session(tmp_path) -> None:
@@ -183,6 +198,51 @@ def test_doctor_review_returns_timeline_assertions_draft_and_actions(tmp_path) -
     } in traceable_section["provenance"]
     assert unverified_section["text"]
     assert unverified_section["provenance"] == []
+
+
+def test_doctor_review_derives_latest_assertion_status_from_action_traces_without_snapshot_change(tmp_path) -> None:
+    client, patient_id, _patient_session_id, doctor_session_id, _unbound_id, registry = (
+        _client(tmp_path)
+    )
+    initial = client.get(f"/api/sessions/{doctor_session_id}/doctor-review")
+    assert initial.status_code == 200
+    assertion_id = initial.json()["assertions"][0]["assertion_id"]
+    before_snapshot = _snapshot_row(registry, patient_id)
+
+    accepted = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json={
+            "action_type": "accept",
+            "target_object": "assertion",
+            "target_refs": {"assertion_id": assertion_id},
+            "reason_code": "workflow_mismatch",
+        },
+    )
+    assert accepted.status_code == 200
+    assert accepted.json()["snapshot_changed"] is False
+
+    evidence_requested = client.post(
+        f"/api/sessions/{doctor_session_id}/doctor-review/action-traces",
+        json={
+            "action_type": "request_evidence",
+            "target_object": "assertion",
+            "target_refs": {"assertion_id": assertion_id},
+            "reason_code": "unsupported_claim",
+        },
+    )
+    assert evidence_requested.status_code == 200
+    assert evidence_requested.json()["snapshot_changed"] is False
+    assert _snapshot_row(registry, patient_id) == before_snapshot
+
+    reviewed = client.get(f"/api/sessions/{doctor_session_id}/doctor-review")
+
+    assert reviewed.status_code == 200
+    reviewed_assertion = next(
+        assertion
+        for assertion in reviewed.json()["assertions"]
+        if assertion["assertion_id"] == assertion_id
+    )
+    assert reviewed_assertion["reviewed_status"] == "needs_evidence"
 
 
 def test_doctor_review_rejects_missing_session(tmp_path) -> None:

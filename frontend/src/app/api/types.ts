@@ -400,17 +400,42 @@ export interface ClinicalAssertionRef {
   field?: string | null;
 }
 
+export type ClinicalAssertionSource =
+  | "triage"
+  | "patient_upload"
+  | "doctor_note"
+  | "database_snapshot"
+  | "care_card"
+  | "model_draft";
+
+export type ClinicalAssertionFactType =
+  | "condition_signal"
+  | "symptom"
+  | "risk_disposition"
+  | "missing_information"
+  | "test_status"
+  | "safety_rule_match"
+  | "document_fact";
+
+export type ClinicalAssertionReviewedStatus =
+  | "unreviewed"
+  | "accepted"
+  | "edited"
+  | "rejected"
+  | "needs_evidence"
+  | "unsafe";
+
 export interface ClinicalAssertionPayload {
   assertion_id: string;
   patient_id: string;
   session_id?: string | null;
-  source: "triage" | "clinical_review" | "manual";
+  source: ClinicalAssertionSource;
   source_record_id?: string | null;
   source_assessment_id?: string | null;
   normalized_fact: JsonObject;
   evidence_refs: ClinicalAssertionRef[];
   confidence: string;
-  reviewed_status: "unreviewed" | "reviewed" | "accepted" | "rejected";
+  reviewed_status: ClinicalAssertionReviewedStatus;
   safety_policy_version?: string | null;
   created_from_projection_version?: string | null;
 }

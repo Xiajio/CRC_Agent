@@ -425,6 +425,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it("keeps normal composer submissions text-only and clears the draft", async () => {
@@ -1337,7 +1338,24 @@ describe("WorkspacePage patient triage submission wiring", () => {
     });
   });
 
-  it("passes the active doctor session into the review cockpit shell props", async () => {
+  it("passes the active doctor session with the review cockpit disabled by default", async () => {
+    mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
+    mockSceneSessions.doctor.state = makeSessionState({
+      sessionId: "doctor-session-review",
+    });
+
+    renderWorkspaceWithSceneSessions(buildApiClientStub());
+
+    expect(lastDoctorSceneProps).toEqual(
+      expect.objectContaining({
+        sessionId: "doctor-session-review",
+        doctorReviewCockpitEnabled: false,
+      }),
+    );
+  });
+
+  it("enables the review cockpit shell prop from the explicit Vite env flag", async () => {
+    vi.stubEnv("VITE_DOCTOR_REVIEW_COCKPIT", "true");
     mockSceneSessions = makeSceneSessions({ activeScene: "doctor" });
     mockSceneSessions.doctor.state = makeSessionState({
       sessionId: "doctor-session-review",

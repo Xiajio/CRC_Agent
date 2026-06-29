@@ -179,7 +179,7 @@ describe("DoctorSceneShell", () => {
     );
   }
 
-  it("renders production doctor top nav items including reports and review", () => {
+  it("hides the review nav item when the review cockpit flag is disabled", () => {
     renderDoctorSceneShell();
 
     const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
@@ -188,12 +188,21 @@ describe("DoctorSceneShell", () => {
       "患者数据库",
       "多模态",
     ]);
-    expect(navButtons).toHaveLength(5);
+    expect(navButtons).toHaveLength(4);
     expect(navButtons[3]?.textContent).toBeTruthy();
-    expect(navButtons[4]?.textContent).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
     for (const navButton of navButtons) {
       expect(navButton).not.toBeDisabled();
     }
+  });
+
+  it("shows the review nav item when the review cockpit flag is enabled", () => {
+    renderDoctorSceneShell({ doctorReviewCockpitEnabled: true });
+
+    const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
+    expect(navButtons).toHaveLength(5);
+    expect(navButtons[4]).toHaveTextContent("Review");
+    expect(navButtons[4]).not.toBeDisabled();
   });
 
   it("calls setActiveDoctorTab with multimodal when the multimodal nav item is clicked", () => {
@@ -214,7 +223,7 @@ describe("DoctorSceneShell", () => {
   });
 
   it("calls setActiveDoctorTab with review when the review nav item is clicked", () => {
-    renderDoctorSceneShell();
+    renderDoctorSceneShell({ doctorReviewCockpitEnabled: true });
 
     const navButtons = within(screen.getByRole("navigation")).getAllByRole("button");
     fireEvent.click(navButtons[4]);
@@ -255,12 +264,28 @@ describe("DoctorSceneShell", () => {
     );
 
     cleanup();
-    renderDoctorSceneShell({}, { activeDoctorTab: "review" });
+    renderDoctorSceneShell(
+      { doctorReviewCockpitEnabled: true },
+      { activeDoctorTab: "review" },
+    );
     expect(screen.getByTestId("doctor-scene")).toHaveClass(
       "clinical-app-shell",
       "clinical-app-shell-doctor",
       "clinical-app-shell-review",
     );
+  });
+
+  it("falls back to the consultation shell when review is active but the flag is disabled", () => {
+    renderDoctorSceneShell({}, { activeDoctorTab: "review" });
+
+    expect(screen.queryByTestId("doctor-review-cockpit")).not.toBeInTheDocument();
+    expect(screen.getByTestId("doctor-scene")).toHaveClass(
+      "clinical-app-shell",
+      "clinical-app-shell-doctor",
+      "clinical-app-shell-consultation",
+    );
+    expect(screen.getByRole("button", { name: "会诊" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
   });
 
   it("renders the clinical assistant dashboard chrome for consultation mode", () => {

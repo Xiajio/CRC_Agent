@@ -89,7 +89,11 @@ const DOCTOR_NAV_ITEMS: NavItem[] = [
   { key: "review", label: "Review" },
 ];
 
-const PRODUCTION_DOCTOR_NAV_ITEMS = DOCTOR_NAV_ITEMS.filter((item) => !item.disabled);
+function productionDoctorNavItems(doctorReviewCockpitEnabled: boolean): NavItem[] {
+  return DOCTOR_NAV_ITEMS.filter(
+    (item) => !item.disabled && (item.key !== "review" || doctorReviewCockpitEnabled),
+  );
+}
 
 function SmallIcon({
   name,
@@ -525,12 +529,17 @@ export function DoctorSceneShell({
     activeDatabaseSource,
     setActiveDatabaseSource,
   } = useDoctorViewState();
+  const isDoctorReviewCockpitEnabled = doctorReviewCockpitEnabled === true;
+  const effectiveActiveDoctorTab =
+    activeDoctorTab === "review" && !isDoctorReviewCockpitEnabled
+      ? "consultation"
+      : activeDoctorTab;
   const sceneRef = useRef<HTMLElement | null>(null);
   const setSceneElement = useCallback((element: HTMLElement | null) => {
     sceneRef.current = element;
   }, []);
 
-  useViewTransition(sceneRef, activeDoctorTab);
+  useViewTransition(sceneRef, effectiveActiveDoctorTab);
 
   async function handleSetCurrentPatient(patientId: number) {
     const didBind = await onSetCurrentPatient(patientId);
@@ -554,6 +563,9 @@ export function DoctorSceneShell({
     ) {
       return;
     }
+    if (tab === "review" && !isDoctorReviewCockpitEnabled) {
+      return;
+    }
 
     setActiveDoctorTab(tab);
     if (tab === "database") {
@@ -566,8 +578,8 @@ export function DoctorSceneShell({
     <ClinicalTopNav
        brandLabel="临床助手"
        navLabel="临床导航"
-      items={PRODUCTION_DOCTOR_NAV_ITEMS}
-      activeKey={activeDoctorTab}
+      items={productionDoctorNavItems(isDoctorReviewCockpitEnabled)}
+      activeKey={effectiveActiveDoctorTab}
       onSelect={handleTabChange}
       actions={toolbar}
        statusLabel="SSE 连接正常"
@@ -580,7 +592,7 @@ export function DoctorSceneShell({
     />
   );
 
-  if (activeDoctorTab === "database") {
+  if (effectiveActiveDoctorTab === "database") {
     return (
       <div
         ref={setSceneElement}
@@ -603,7 +615,7 @@ export function DoctorSceneShell({
     );
   }
 
-  if (activeDoctorTab === "multimodal") {
+  if (effectiveActiveDoctorTab === "multimodal") {
     const patientContext: CardPatientContext = {};
     if (registryPatientId !== null) {
       patientContext.registry_patient_id = registryPatientId;
@@ -641,7 +653,7 @@ export function DoctorSceneShell({
     );
   }
 
-  if (activeDoctorTab === "reports") {
+  if (effectiveActiveDoctorTab === "reports") {
     const patientContext: CardPatientContext = {};
     if (registryPatientId !== null) {
       patientContext.registry_patient_id = registryPatientId;
@@ -676,7 +688,7 @@ export function DoctorSceneShell({
     );
   }
 
-  if (activeDoctorTab === "review") {
+  if (effectiveActiveDoctorTab === "review") {
     return (
       <div
         ref={setSceneElement}
@@ -686,7 +698,7 @@ export function DoctorSceneShell({
         {topNav}
         <DoctorReviewCockpit
           sessionId={sessionId ?? null}
-          enabled={doctorReviewCockpitEnabled === true}
+          enabled={isDoctorReviewCockpitEnabled}
         />
       </div>
     );

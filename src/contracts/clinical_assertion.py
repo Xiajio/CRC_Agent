@@ -7,16 +7,31 @@ import math
 from typing import Any, Literal, TypeAlias
 
 
-ClinicalAssertionSource = Literal["triage", "clinical_review", "manual"]
+ClinicalAssertionSource = Literal[
+    "triage",
+    "patient_upload",
+    "doctor_note",
+    "database_snapshot",
+    "care_card",
+    "model_draft",
+]
 ClinicalFactType = Literal[
     "condition_signal",
-    "clinical_fact",
     "symptom",
     "risk_disposition",
     "missing_information",
+    "test_status",
     "safety_rule_match",
+    "document_fact",
 ]
-ReviewedStatus = Literal["unreviewed", "reviewed", "accepted", "rejected"]
+ReviewedStatus = Literal[
+    "unreviewed",
+    "accepted",
+    "edited",
+    "rejected",
+    "needs_evidence",
+    "unsafe",
+]
 JsonValue: TypeAlias = (
     str
     | int

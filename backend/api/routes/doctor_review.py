@@ -37,6 +37,14 @@ AVAILABLE_ACTIONS = [
     "mark_unsafe",
 ]
 
+ACTION_REVIEWED_STATUS = {
+    "accept": "accepted",
+    "edit": "edited",
+    "reject": "rejected",
+    "request_evidence": "needs_evidence",
+    "mark_unsafe": "unsafe",
+}
+
 
 def _runtime_dependencies(request: Request) -> tuple[Any, Any]:
     runtime = getattr(request.app.state, "runtime", None)
@@ -158,6 +166,61 @@ def _load_json_mapping(value: Any) -> dict[str, Any]:
     return dict(parsed) if isinstance(parsed, Mapping) else {}
 
 
+def _trace_reviewed_status_by_assertion(
+    patient_registry: Any,
+    *,
+    patient_id: int,
+    assertion_ids: set[str],
+) -> dict[str, str]:
+    if not assertion_ids:
+        return {}
+
+    with patient_registry.transaction() as connection:
+        rows = connection.execute(
+            """
+            SELECT patient_version, event_payload_json
+            FROM patient_events
+            WHERE patient_id = ?
+              AND event_type = 'doctor.action_trace_recorded'
+            ORDER BY patient_version ASC
+            """,
+            (patient_id,),
+        ).fetchall()
+
+    statuses: dict[str, str] = {}
+    for row in rows:
+        payload = _load_json_mapping(row["event_payload_json"])
+        trace = _load_json_mapping(payload.get("trace"))
+        target_refs = _load_json_mapping(trace.get("target_refs"))
+        assertion_id = target_refs.get("assertion_id")
+        if not isinstance(assertion_id, str) or not assertion_id.strip():
+            continue
+        assertion_id = assertion_id.strip()
+        if assertion_id not in assertion_ids:
+            continue
+        action_type = trace.get("action_type")
+        if not isinstance(action_type, str):
+            continue
+        reviewed_status = ACTION_REVIEWED_STATUS.get(action_type)
+        if reviewed_status is not None:
+            statuses[assertion_id] = reviewed_status
+    return statuses
+
+
+def _assertion_payloads_with_reviewed_statuses(
+    assertions: list[ClinicalAssertion],
+    reviewed_status_by_assertion: Mapping[str, str],
+) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for assertion in assertions:
+        payload = assertion.to_dict()
+        reviewed_status = reviewed_status_by_assertion.get(assertion.assertion_id)
+        if reviewed_status is not None:
+            payload["reviewed_status"] = reviewed_status
+        payloads.append(payload)
+    return payloads
+
+
 def _resolvable_record_id(value: str | None) -> int | None:
     if value is None:
         return None
@@ -196,11 +259,12 @@ def _target_ref_error(
         ):
             return "target_refs.assessment_id does not belong to the bound patient"
 
-    if isinstance(refs.assertion_id, str) and refs.assertion_id.startswith("assertion_triage_"):
+    if isinstance(refs.assertion_id, str) and refs.assertion_id.strip():
+        assertion_id = refs.assertion_id.strip()
         projected_assertion_ids = set(
             assertion_refs(project_clinical_assertions_from_records(records))
         )
-        if refs.assertion_id not in projected_assertion_ids:
+        if assertion_id not in projected_assertion_ids:
             return "target_refs.assertion_id does not belong to the bound patient"
 
     return None
@@ -228,11 +292,19 @@ async def get_doctor_review(session_id: str, request: Request) -> DoctorReviewRe
 
     rows = patient_registry.list_patient_records(meta.patient_id)
     assertions = project_clinical_assertions_from_records(rows)
+    reviewed_status_by_assertion = _trace_reviewed_status_by_assertion(
+        patient_registry,
+        patient_id=int(meta.patient_id),
+        assertion_ids=set(assertion_refs(assertions)),
+    )
     return DoctorReviewResponse(
         patient_id=int(meta.patient_id),
         session_id=meta.session_id,
         timeline=[_timeline_item(row) for row in rows],
-        assertions=[assertion.to_dict() for assertion in assertions],
+        assertions=_assertion_payloads_with_reviewed_statuses(
+            assertions,
+            reviewed_status_by_assertion,
+        ),
         draft=_build_draft(int(meta.patient_id), assertions),
         available_actions=list(AVAILABLE_ACTIONS),
     )

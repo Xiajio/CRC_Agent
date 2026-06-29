@@ -105,6 +105,13 @@ function isChatLatencyDebugEnabled(): boolean {
   return importMetaEnv.env?.VITE_CHAT_LATENCY_DEBUG === "true";
 }
 
+function isDoctorReviewCockpitEnabled(): boolean {
+  const importMetaEnv = import.meta as ImportMeta & {
+    env?: Record<string, string | boolean | undefined>;
+  };
+  return importMetaEnv.env?.VITE_DOCTOR_REVIEW_COCKPIT === "true";
+}
+
 function sessionPatientContext(state: SessionState): CardPatientContext | undefined {
   const registryPatientId = readFiniteNumber(state.registryPatientId);
   const caseDatabasePatientId = readText(state.caseDatabasePatientId);
@@ -264,6 +271,7 @@ export function WorkspacePage() {
   const activeTurn = activeScene === "patient" ? patientTurn : doctorTurn;
   const registryPatientId = readFiniteNumber(doctor.state.registryPatientId);
   const doctorPatientContext = sessionPatientContext(doctor.state);
+  const doctorReviewCockpitEnabled = isDoctorReviewCockpitEnabled();
   const patientPatientContext = sessionPatientContext(patient.state);
   const patientNav = usePatientWorkspaceNav();
   const patientActiveTab = patientNav.activeTab;
@@ -800,7 +808,7 @@ export function WorkspacePage() {
           void doctorTurn.submitPrompt(prompt, buildReplayDemoContext("doctor", prompt, context))
         }
         sessionId={doctor.state.sessionId}
-        doctorReviewCockpitEnabled={true}
+        doctorReviewCockpitEnabled={doctorReviewCockpitEnabled}
       />
       </>
     );

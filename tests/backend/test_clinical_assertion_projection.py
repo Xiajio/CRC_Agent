@@ -8,9 +8,11 @@ import pytest
 
 from src.contracts.clinical_assertion import (
     ClinicalAssertion,
+    ClinicalAssertionSource,
     ClinicalFactType,
     EvidenceRef,
     NormalizedFact,
+    ReviewedStatus,
     make_assertion_id,
 )
 from src.services.clinical_assertion_projection import (
@@ -256,17 +258,36 @@ def test_clinical_assertion_optional_fields_are_typed_as_optional() -> None:
     assert hints["created_from_projection_version"] == str | None
 
 
-def test_clinical_fact_type_includes_projected_p1_fact_types() -> None:
+def test_clinical_assertion_literals_match_plan_contract() -> None:
+    sources = set(get_args(ClinicalAssertionSource))
     fact_types = set(get_args(ClinicalFactType))
+    reviewed_statuses = set(get_args(ReviewedStatus))
 
-    assert {
+    assert sources == {
+        "triage",
+        "patient_upload",
+        "doctor_note",
+        "database_snapshot",
+        "care_card",
+        "model_draft",
+    }
+    assert fact_types == {
         "condition_signal",
-        "clinical_fact",
         "symptom",
         "risk_disposition",
         "missing_information",
+        "test_status",
         "safety_rule_match",
-    }.issubset(fact_types)
+        "document_fact",
+    }
+    assert reviewed_statuses == {
+        "unreviewed",
+        "accepted",
+        "edited",
+        "rejected",
+        "needs_evidence",
+        "unsafe",
+    }
 
 
 def _crc_record() -> dict[str, object]:
