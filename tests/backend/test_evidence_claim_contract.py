@@ -74,6 +74,23 @@ def _candidate(**overrides: object) -> PaperCandidate:
     return PaperCandidate(**payload)  # type: ignore[arg-type]
 
 
+def _run(**overrides: object) -> LiteratureHarnessRun:
+    payload = {
+        "run_id": "lit_run_20260630_001",
+        "run_level": "L0_literature_contract",
+        "claim_pack_version": "literature_claim_pack_v0",
+        "evidence_index_version": "rag_crc_guideline_20260620",
+        "summary": {"claim_count": 0},
+        "claims": [],
+        "deltas": [],
+        "isolation_checks": [],
+        "release_decision": "shadow_only",
+        "validation_errors": [],
+    }
+    payload.update(overrides)
+    return LiteratureHarnessRun(**payload)  # type: ignore[arg-type]
+
+
 def test_make_claim_id_is_stable_and_content_addressed() -> None:
     first = make_claim_id(
         source_id="paper_crc_2026_001",
@@ -450,3 +467,81 @@ def test_step10_contract_enums_accept_plan_values() -> None:
     ]
     assert deltas[0].to_dict()["related_claim_id"] is None
     assert deltas[-1].to_dict()["severity"] == "block_promotion"
+
+
+@pytest.mark.parametrize("bad_value", [{}, "not-a-list", None])
+def test_paper_candidate_rejects_non_list_extracted_claims(
+    bad_value: object,
+) -> None:
+    with pytest.raises(TypeError, match="extracted_claims"):
+        _candidate(extracted_claims=bad_value)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "bad_value"),
+    [
+        ("claims", {}),
+        ("claims", "not-a-list"),
+        ("claims", None),
+        ("deltas", {}),
+        ("deltas", "not-a-list"),
+        ("deltas", None),
+        ("isolation_checks", {}),
+        ("isolation_checks", "not-a-list"),
+        ("isolation_checks", None),
+        ("validation_errors", {}),
+        ("validation_errors", "not-a-list"),
+        ("validation_errors", None),
+    ],
+)
+def test_literature_harness_run_rejects_non_list_containers(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    with pytest.raises(TypeError, match=field_name):
+        _run(**{field_name: bad_value})
+
+
+def test_contract_rejects_invalid_text_field_types() -> None:
+    with pytest.raises(TypeError, match="section"):
+        SourceSpan(section=123)  # type: ignore[arg-type]
+
+    with pytest.raises(TypeError, match="candidate_summary"):
+        _candidate(candidate_summary=123)
+
+    with pytest.raises(TypeError, match="intervention"):
+        _claim(intervention=123)
+
+    with pytest.raises(TypeError, match="related_claim_id"):
+        EvidenceDelta(
+            delta_id="delta_bad_related_claim_id",
+            claim_id="claim_1",
+            related_claim_id=123,  # type: ignore[arg-type]
+            delta_type="conflict",
+            summary="Invalid related claim id type.",
+            severity="review_required",
+            recommended_action="human_evidence_review",
+        )
+
+
+@pytest.mark.parametrize("bad_details", [[], "not-a-dict", None])
+def test_isolation_check_rejects_non_dict_details(bad_details: object) -> None:
+    with pytest.raises(TypeError, match="details"):
+        IsolationCheck(
+            check_id="iso_bad_details",
+            passed=False,
+            details=bad_details,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("bad_summary", [[], "not-a-dict", None])
+def test_literature_harness_run_rejects_non_dict_summary(
+    bad_summary: object,
+) -> None:
+    with pytest.raises(TypeError, match="summary"):
+        _run(summary=bad_summary)
+
+
+def test_literature_harness_run_rejects_non_string_validation_errors() -> None:
+    with pytest.raises(TypeError, match="validation_errors"):
+        _run(validation_errors=[{"message": "must be a string"}])

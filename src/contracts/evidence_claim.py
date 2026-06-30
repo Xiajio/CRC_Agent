@@ -161,6 +161,8 @@ class SourceSpan:
     def __post_init__(self) -> None:
         if self.page is not None and (type(self.page) is not int or self.page < 1):
             raise ValueError("source_span.page must be a positive integer")
+        _require_optional_string("section", self.section)
+        _require_optional_string("quote", self.quote)
 
     def to_dict(self) -> dict[str, Any]:
         return _omit_none(
@@ -189,12 +191,17 @@ class PaperCandidate:
         _require_non_empty("source_id", self.source_id)
         _require_non_empty("title", self.title)
         _require_non_empty("url", self.url)
+        _require_non_empty("candidate_summary", self.candidate_summary)
+        _require_non_empty("retrieval_query", self.retrieval_query)
+        _require_non_empty("retrieval_timestamp", self.retrieval_timestamp)
+        _require_optional_string("venue", self.venue)
         if self.publication_year is not None and (
             type(self.publication_year) is not int or self.publication_year < 1
         ):
             raise ValueError("publication_year must be a positive integer")
         if not isinstance(self.source_quality, SourceQuality):
             raise TypeError("source_quality must be SourceQuality")
+        _require_list("extracted_claims", self.extracted_claims)
         for index, claim in enumerate(self.extracted_claims):
             if not isinstance(claim, dict):
                 raise TypeError("extracted_claims must contain dictionaries")
@@ -251,6 +258,10 @@ class EvidenceClaim:
         _require_non_empty("outcome", self.outcome)
         _require_non_empty("study_design", self.study_design)
         _require_non_empty("created_from", self.created_from)
+        _require_optional_string("intervention", self.intervention)
+        _require_optional_string("comparator", self.comparator)
+        _require_optional_string("effect_size", self.effect_size)
+        _require_optional_string("uncertainty", self.uncertainty)
         _validate_choice("effect_direction", self.effect_direction, EFFECT_DIRECTIONS)
         _validate_choice("evidence_grade", self.evidence_grade, EVIDENCE_GRADES)
         _validate_choice("risk_of_bias", self.risk_of_bias, RISK_OF_BIAS_LEVELS)
@@ -316,6 +327,8 @@ class EvidenceDelta:
         _require_non_empty("claim_id", self.claim_id)
         if self.related_claim_id is not None:
             _require_non_empty("related_claim_id", self.related_claim_id)
+        else:
+            _require_optional_string("related_claim_id", self.related_claim_id)
         _require_non_empty("summary", self.summary)
         _require_non_empty("recommended_action", self.recommended_action)
         _validate_choice("delta_type", self.delta_type, DELTA_TYPES)
@@ -343,7 +356,7 @@ class IsolationCheck:
         _require_non_empty("check_id", self.check_id)
         if type(self.passed) is not bool:
             raise TypeError("passed must be bool")
-        if not isinstance(self.details, dict):
+        if type(self.details) is not dict:
             raise TypeError("details must be a dictionary")
         validate_json_safe(self.details, path="details")
 
@@ -366,7 +379,7 @@ class LiteratureHarnessRun:
     deltas: list[EvidenceDelta]
     isolation_checks: list[IsolationCheck]
     release_decision: ReleaseDecision
-    validation_errors: list[dict[str, JsonValue]]
+    validation_errors: list[str]
 
     def __post_init__(self) -> None:
         _require_non_empty("run_id", self.run_id)
@@ -374,9 +387,13 @@ class LiteratureHarnessRun:
         _require_non_empty("claim_pack_version", self.claim_pack_version)
         _require_non_empty("evidence_index_version", self.evidence_index_version)
         _validate_choice("release_decision", self.release_decision, RELEASE_DECISIONS)
-        if not isinstance(self.summary, dict):
+        if type(self.summary) is not dict:
             raise TypeError("summary must be a dictionary")
         validate_json_safe(self.summary, path="summary")
+        _require_list("claims", self.claims)
+        _require_list("deltas", self.deltas)
+        _require_list("isolation_checks", self.isolation_checks)
+        _require_list("validation_errors", self.validation_errors)
         for claim in self.claims:
             if not isinstance(claim, EvidenceClaim):
                 raise TypeError("claims must contain EvidenceClaim")
@@ -387,9 +404,8 @@ class LiteratureHarnessRun:
             if not isinstance(check, IsolationCheck):
                 raise TypeError("isolation_checks must contain IsolationCheck")
         for index, error in enumerate(self.validation_errors):
-            if not isinstance(error, dict):
-                raise TypeError("validation_errors must contain dictionaries")
-            validate_json_safe(error, path=f"validation_errors[{index}]")
+            if type(error) is not str:
+                raise TypeError("validation_errors must contain strings")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -402,10 +418,7 @@ class LiteratureHarnessRun:
             "deltas": [delta.to_dict() for delta in self.deltas],
             "isolation_checks": [check.to_dict() for check in self.isolation_checks],
             "release_decision": self.release_decision,
-            "validation_errors": [
-                _copy_json_safe(error, path=f"validation_errors[{index}]")
-                for index, error in enumerate(self.validation_errors)
-            ],
+            "validation_errors": list(self.validation_errors),
         }
 
 
@@ -499,8 +512,20 @@ def _slug(value: str) -> str:
 
 
 def _require_non_empty(field_name: str, value: str) -> None:
-    if not isinstance(value, str) or not value.strip():
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} must be a string")
+    if not value.strip():
         raise ValueError(f"{field_name} must be a non-empty string")
+
+
+def _require_optional_string(field_name: str, value: str | None) -> None:
+    if value is not None and not isinstance(value, str):
+        raise TypeError(f"{field_name} must be a string or None")
+
+
+def _require_list(field_name: str, value: object) -> None:
+    if type(value) is not list:
+        raise TypeError(f"{field_name} must be a list")
 
 
 def _validate_choice(
