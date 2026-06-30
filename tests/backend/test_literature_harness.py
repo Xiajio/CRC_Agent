@@ -215,6 +215,30 @@ def test_literature_harness_outputs_shadow_only_claim_cards_and_deltas() -> None
     assert all(check["passed"] for check in harness["isolation_checks"])
 
 
+def test_literature_harness_never_promotes_candidates_to_clinical_paths() -> None:
+    harness = build_literature_harness_run(
+        run_id="literature_harness_boundary",
+        claim_pack=_load_fixture(),
+    )
+
+    forbidden_statuses = {
+        "approved_for_project_pool",
+        "approved_for_clinical_rag",
+    }
+    assert forbidden_statuses.isdisjoint(
+        {claim["review_status"] for claim in harness["claims"]}
+    )
+    assert {
+        check["check_id"]: check["passed"]
+        for check in harness["isolation_checks"]
+    } == {
+        "no_candidate_in_clinical_rag": True,
+        "no_candidate_in_patient_default_path": True,
+        "no_candidate_in_doctor_default_path": True,
+        "negative_evidence_preserved": True,
+    }
+
+
 def test_literature_harness_is_deterministic_for_same_pack() -> None:
     first = build_literature_harness_run(
         run_id="literature_harness_test",
