@@ -145,15 +145,21 @@ def test_literature_claim_pack_has_required_shadow_cases() -> None:
     )
 
 
-def test_literature_claim_pack_marks_safety_signal_as_preprint() -> None:
+def test_literature_claim_pack_binds_safety_signal_to_harm_claim() -> None:
     pack = _load_fixture()
     safety_candidate = next(
         candidate
         for candidate in pack["paper_candidates"]
         if candidate["source_id"] == "paper_crc_2026_safety_signal"
     )
+    safety_claim = safety_candidate["extracted_claims"][0]
 
     assert safety_candidate["source_quality"]["is_preprint"] is True
+    assert safety_claim["effect_direction"] == "harm"
+    assert safety_claim["outcome"] == "serious_adverse_events"
+    assert safety_claim["risk_of_bias"] == "high"
+    assert safety_claim["evidence_grade"] == "observational"
+    assert safety_claim["applicability_to_crc_context"] == "indirect"
 
 
 def test_literature_claim_pack_claims_are_contract_compatible() -> None:
