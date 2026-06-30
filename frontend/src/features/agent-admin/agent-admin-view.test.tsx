@@ -630,6 +630,49 @@ describe("AgentAdminView", () => {
     expect(page).not.toHaveTextContent("agent_policy_20260629_0");
   });
 
+  it("shows release loading before top nav release fetch can reuse stale dashboard data", async () => {
+    let requestCount = 0;
+    let pageTextWhenTopNavFetch = "";
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(() => {
+        requestCount += 1;
+        if (requestCount === 2) {
+          pageTextWhenTopNavFetch = screen.getByTestId("agent-admin-task-page").textContent ?? "";
+          return new Promise<AdminReleaseDashboardResponse>(() => {});
+        }
+        return Promise.resolve(makeAdminReleaseDashboard());
+      }),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-release-top-nav" })}
+        doctor={makeState({ sessionId: "doctor-release-top-nav" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("agent_policy_20260629_0"));
+
+    fireEvent.click(screen.getByRole("button", { name: "巡检总览" }));
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveAttribute("data-task-id", "overview");
+
+    fireEvent.click(screen.getByRole("button", { name: "Release" }));
+
+    await waitFor(() => expect(apiClient.getAdminReleaseDashboard).toHaveBeenCalledTimes(2));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(pageTextWhenTopNavFetch).toContain("reading release dashboard");
+    expect(pageTextWhenTopNavFetch).not.toContain("agent_policy_20260629_0");
+    expect(page).toHaveTextContent("reading release dashboard");
+    expect(page).not.toHaveTextContent("agent_policy_20260629_0");
+  });
+
   it("shows release dashboard error state without breaking the admin shell", async () => {
     const apiClient = {
       getAdminTools: vi.fn(async () => makeAdminToolsManifest()),

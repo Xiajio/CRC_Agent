@@ -21,7 +21,7 @@ type AgentAdminViewProps = {
   patient: SessionState;
   doctor: SessionState;
   surfaceSwitcher: ReactNode;
-  apiClient?: Pick<ApiClient, "getAdminTools" | "getAdminReleaseDashboard">;
+  apiClient?: Partial<Pick<ApiClient, "getAdminTools" | "getAdminReleaseDashboard">>;
 };
 
 export type AgentAdminToolsResource =
@@ -161,7 +161,7 @@ export function AgentAdminView({
         activeKey={activeTaskId}
         onSelect={(key) => {
           if (AGENT_ADMIN_TASKS.some((task) => task.id === key)) {
-            setActiveTaskId(key as AgentAdminTaskId);
+            navigateTask(key as AgentAdminTaskId);
           }
         }}
         statusLabel="只读观测"

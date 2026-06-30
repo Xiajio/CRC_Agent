@@ -16,7 +16,14 @@ import {
   Wrench,
 } from "lucide-react";
 
-import type { AdminReleaseDashboardResponse, Scene, SessionState } from "../../app/api/types";
+import type {
+  AdminReleaseDashboardResponse,
+  AdminReleaseGateState,
+  AdminReleaseHumanSignoffStatus,
+  AdminReleaseRunStatus,
+  Scene,
+  SessionState,
+} from "../../app/api/types";
 import {
   AgentAdminMetricStrip,
   AgentAdminPanel,
@@ -782,7 +789,9 @@ function formatReleaseValue(value: string | number | boolean | null): string {
   return value === null ? "not set" : String(value);
 }
 
-function releaseRowState(state: string): "success" | "warning" | "ready" | "active" | "disabled" | "idle" {
+function releaseRowState(
+  state: AdminReleaseRunStatus | AdminReleaseGateState | AdminReleaseHumanSignoffStatus,
+): "success" | "warning" | "ready" | "active" | "disabled" | "idle" {
   if (state === "pass" || state === "recorded_elsewhere" || state === "not_required") {
     return "success";
   }
