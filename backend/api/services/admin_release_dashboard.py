@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -40,20 +40,86 @@ def _repo_relative(path: Path) -> str:
         return path.as_posix()
 
 
-def _read_report(path: Path) -> tuple[str, dict[str, Any]]:
-    if not path.exists():
-        return "missing", {}
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _has_required_strings(payload: dict[str, Any], keys: tuple[str, ...]) -> bool:
+    return all(isinstance(payload.get(key), str) for key in keys)
+
+
+def _valid_harness_report(payload: dict[str, Any]) -> bool:
+    summary = payload.get("summary")
+    return (
+        isinstance(payload.get("run_id"), str)
+        and isinstance(summary, dict)
+        and _is_int(summary.get("total_cases"))
+        and _is_int(summary.get("passed"))
+        and _is_int(summary.get("hard_fail_count"))
+    )
+
+
+def _valid_release_safety_report(payload: dict[str, Any]) -> bool:
+    version_chain = payload.get("version_chain")
+    hard_fail_summary = payload.get("hard_fail_summary")
+    rollback_target = payload.get("rollback_target")
+    return (
+        isinstance(payload.get("report_id"), str)
+        and isinstance(version_chain, dict)
+        and _has_required_strings(
+            version_chain,
+            (
+                "agent_policy_version",
+                "clinical_safety_policy_version",
+                "evidence_index_version",
+                "judge_rubric_version",
+            ),
+        )
+        and isinstance(payload.get("release_decision"), str)
+        and (
+            "rollback_target" not in payload
+            or rollback_target is None
+            or isinstance(rollback_target, str)
+        )
+        and isinstance(hard_fail_summary, dict)
+        and _is_int(hard_fail_summary.get("count"))
+    )
+
+
+def _valid_literature_report(payload: dict[str, Any]) -> bool:
+    summary = payload.get("summary")
+    validation_errors = payload.get("validation_errors")
+    return (
+        isinstance(payload.get("run_id"), str)
+        and isinstance(payload.get("release_decision"), str)
+        and isinstance(summary, dict)
+        and _is_int(summary.get("claims"))
+        and _is_int(summary.get("isolation_violations"))
+        and (
+            "validation_errors" not in payload
+            or isinstance(validation_errors, list)
+        )
+    )
+
+
+def _read_report(
+    path: Path, validator: Callable[[dict[str, Any]], bool]
+) -> tuple[str, dict[str, Any]]:
     try:
+        if not path.exists():
+            return "missing", {}
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except JSONDecodeError:
+    except (JSONDecodeError, OSError, UnicodeDecodeError):
         return "invalid", {}
     if not isinstance(payload, dict):
+        return "invalid", {}
+    if not validator(payload):
         return "invalid", {}
     return "ok", payload
 
 
 def _int_value(value: object, default: int = 0) -> int:
-    return value if isinstance(value, int) else default
+    return value if _is_int(value) else default
 
 
 def _version_chain(release_payload: dict[str, Any]) -> dict[str, str | None]:
@@ -89,11 +155,23 @@ def _hard_fail_count(
     return 0
 
 
+def _run_status_for_hard_fails(report_state: str, hard_fail_count: int) -> str:
+    if report_state != "ok":
+        return report_state
+    return "pass" if hard_fail_count == 0 else "fail"
+
+
 def build_release_dashboard(paths: ReleaseDashboardPaths | None = None) -> dict[str, Any]:
     resolved_paths = paths or default_release_dashboard_paths()
-    harness_state, harness_payload = _read_report(resolved_paths.harness_report)
-    release_state, release_payload = _read_report(resolved_paths.release_safety_report)
-    literature_state, literature_payload = _read_report(resolved_paths.literature_report)
+    harness_state, harness_payload = _read_report(
+        resolved_paths.harness_report, _valid_harness_report
+    )
+    release_state, release_payload = _read_report(
+        resolved_paths.release_safety_report, _valid_release_safety_report
+    )
+    literature_state, literature_payload = _read_report(
+        resolved_paths.literature_report, _valid_literature_report
+    )
 
     harness_summary = (
         harness_payload.get("summary")
@@ -111,10 +189,39 @@ def build_release_dashboard(paths: ReleaseDashboardPaths | None = None) -> dict[
         if literature_state == "ok"
         else 1
     )
+    literature_validation_errors = literature_payload.get("validation_errors", [])
+    literature_release_decision = literature_payload.get("release_decision")
+    literature_can_shadow = (
+        literature_state == "ok"
+        and literature_release_decision == "shadow_only"
+        and literature_validation_errors == []
+        and literature_isolation_violations == 0
+    )
     literature_status = (
-        "shadow_only"
-        if literature_state == "ok" and literature_isolation_violations == 0
-        else literature_state
+        "shadow_only" if literature_can_shadow else "fail"
+    ) if literature_state == "ok" else literature_state
+    literature_gate_state = "locked" if literature_can_shadow else "blocked"
+    literature_gate_reason = (
+        f"Step 10 report has {literature_isolation_violations} isolation violations."
+    )
+    if literature_state != "ok":
+        literature_gate_reason = f"Literature report is {literature_state}."
+    elif literature_release_decision != "shadow_only":
+        literature_gate_reason = (
+            f"Step 10 release decision is {literature_release_decision}."
+        )
+    elif literature_validation_errors != []:
+        literature_gate_reason = (
+            f"Step 10 report has {len(literature_validation_errors)} validation errors."
+        )
+    elif literature_isolation_violations != 0:
+        literature_gate_reason = (
+            f"Step 10 report has {literature_isolation_violations} "
+            "isolation violations."
+        )
+    harness_run_status = _run_status_for_hard_fails(harness_state, hard_fail_count)
+    release_run_status = _run_status_for_hard_fails(
+        release_state, hard_fail_count
     )
     release_decision = (
         release_payload.get("release_decision")
@@ -163,9 +270,7 @@ def build_release_dashboard(paths: ReleaseDashboardPaths | None = None) -> dict[
                 if harness_state == "ok"
                 else harness_state,
                 "kind": "p0_crc_harness",
-                "status": "pass"
-                if harness_state == "ok" and hard_fail_count == 0
-                else harness_state,
+                "status": harness_run_status,
                 "source_path": _repo_relative(resolved_paths.harness_report),
                 "hard_fail_count": _int_value(harness_summary.get("hard_fail_count"))
                 if harness_state == "ok"
@@ -176,9 +281,7 @@ def build_release_dashboard(paths: ReleaseDashboardPaths | None = None) -> dict[
                 if release_state == "ok"
                 else release_state,
                 "kind": "release_safety",
-                "status": "pass"
-                if release_state == "ok" and hard_fail_count == 0
-                else release_state,
+                "status": release_run_status,
                 "source_path": _repo_relative(resolved_paths.release_safety_report),
                 "hard_fail_count": hard_fail_count,
             },
@@ -196,20 +299,13 @@ def build_release_dashboard(paths: ReleaseDashboardPaths | None = None) -> dict[
             {
                 "id": "no_literature_patient_default",
                 "label": "Unreviewed literature stays out of patient default path",
-                "state": "locked"
-                if literature_isolation_violations == 0
-                else "blocked",
-                "reason": (
-                    f"Step 10 report has {literature_isolation_violations} "
-                    "isolation violations."
-                ),
+                "state": literature_gate_state,
+                "reason": literature_gate_reason,
             },
             {
                 "id": "no_literature_clinical_rag",
                 "label": "Unreviewed literature stays out of clinical RAG",
-                "state": "locked"
-                if literature_isolation_violations == 0
-                else "blocked",
+                "state": literature_gate_state,
                 "reason": "Clinical RAG ingest is disabled in Step 11.",
             },
         ],
