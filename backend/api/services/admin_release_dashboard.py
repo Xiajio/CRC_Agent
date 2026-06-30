@@ -155,6 +155,13 @@ def _hard_fail_count(
     return 0
 
 
+def _release_hard_fail_count(release_payload: dict[str, Any]) -> int:
+    release_summary = release_payload.get("hard_fail_summary")
+    if isinstance(release_summary, dict):
+        return _int_value(release_summary.get("count"))
+    return 0
+
+
 def _run_status_for_hard_fails(report_state: str, hard_fail_count: int) -> str:
     if report_state != "ok":
         return report_state
@@ -184,6 +191,14 @@ def build_release_dashboard(paths: ReleaseDashboardPaths | None = None) -> dict[
         else {}
     )
     hard_fail_count = _hard_fail_count(release_payload, harness_payload)
+    harness_hard_fail_count = (
+        _int_value(harness_summary.get("hard_fail_count"))
+        if harness_state == "ok"
+        else 0
+    )
+    release_hard_fail_count = (
+        _release_hard_fail_count(release_payload) if release_state == "ok" else 0
+    )
     literature_isolation_violations = (
         _int_value(literature_summary.get("isolation_violations"), 1)
         if literature_state == "ok"
@@ -219,9 +234,11 @@ def build_release_dashboard(paths: ReleaseDashboardPaths | None = None) -> dict[
             f"Step 10 report has {literature_isolation_violations} "
             "isolation violations."
         )
-    harness_run_status = _run_status_for_hard_fails(harness_state, hard_fail_count)
+    harness_run_status = _run_status_for_hard_fails(
+        harness_state, harness_hard_fail_count
+    )
     release_run_status = _run_status_for_hard_fails(
-        release_state, hard_fail_count
+        release_state, release_hard_fail_count
     )
     release_decision = (
         release_payload.get("release_decision")
@@ -272,9 +289,7 @@ def build_release_dashboard(paths: ReleaseDashboardPaths | None = None) -> dict[
                 "kind": "p0_crc_harness",
                 "status": harness_run_status,
                 "source_path": _repo_relative(resolved_paths.harness_report),
-                "hard_fail_count": _int_value(harness_summary.get("hard_fail_count"))
-                if harness_state == "ok"
-                else 0,
+                "hard_fail_count": harness_hard_fail_count,
             },
             {
                 "run_id": release_payload.get("report_id", release_state)
@@ -283,7 +298,7 @@ def build_release_dashboard(paths: ReleaseDashboardPaths | None = None) -> dict[
                 "kind": "release_safety",
                 "status": release_run_status,
                 "source_path": _repo_relative(resolved_paths.release_safety_report),
-                "hard_fail_count": hard_fail_count,
+                "hard_fail_count": release_hard_fail_count,
             },
             {
                 "run_id": literature_payload.get("run_id", literature_state)

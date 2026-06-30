@@ -193,7 +193,7 @@ def test_literature_validation_errors_or_isolation_violations_fail(
     )
 
 
-def test_release_hard_fail_count_fails_harness_and_release_without_writes(
+def test_release_hard_fail_count_fails_only_release_run_without_writes(
     tmp_path: Path,
 ) -> None:
     paths = _tmp_paths(tmp_path)
@@ -212,7 +212,7 @@ def test_release_hard_fail_count_fails_harness_and_release_without_writes(
     dashboard = build_release_dashboard(paths=paths)
 
     assert dashboard["summary"]["hard_fail_count"] == 2
-    assert dashboard["runs"][0]["status"] == "fail"
+    assert dashboard["runs"][0]["status"] == "pass"
     assert dashboard["runs"][1]["status"] == "fail"
     assert {
         path: path.read_text(encoding="utf-8")
@@ -222,6 +222,19 @@ def test_release_hard_fail_count_fails_harness_and_release_without_writes(
             paths.literature_report,
         )
     } == before
+
+
+def test_harness_hard_fail_count_fails_only_harness_run(tmp_path: Path) -> None:
+    paths = _tmp_paths(tmp_path)
+    _write_json(paths.harness_report, _harness_payload(hard_fail_count=2))
+    _write_json(paths.release_safety_report, _release_payload(hard_fail_count=0))
+    _write_json(paths.literature_report, _literature_payload())
+
+    dashboard = build_release_dashboard(paths=paths)
+
+    assert dashboard["runs"][0]["status"] == "fail"
+    assert dashboard["runs"][0]["hard_fail_count"] == 2
+    assert dashboard["runs"][1]["status"] == "pass"
 
 
 def test_empty_json_object_reports_are_invalid_for_each_run(tmp_path: Path) -> None:
