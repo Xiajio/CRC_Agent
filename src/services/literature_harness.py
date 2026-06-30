@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Any
 
 from src.contracts.evidence_claim import (
@@ -22,6 +23,11 @@ NEGATIVE_OR_CONFLICTING_DIRECTIONS = frozenset(
 )
 PAIR_CONFLICT_DIRECTIONS = frozenset({"harm", "neutral", "conflicting"})
 LOCAL_GUIDELINE_CONFLICTS_REQUIRING_REVIEW = frozenset({"possible", "conflict"})
+ISOLATION_INPUT_KEYS = (
+    "clinical_rag_claim_ids",
+    "patient_default_claim_ids",
+    "doctor_default_claim_ids",
+)
 
 
 def build_literature_harness_run(
@@ -30,13 +36,31 @@ def build_literature_harness_run(
     claim_pack: dict[str, Any],
 ) -> dict[str, Any]:
     validation_errors: list[str] = []
+    if not isinstance(claim_pack, dict):
+        validation_errors.append("claim_pack must be a dictionary")
+        claim_pack = {}
+
     claim_pack_version = _string_or_default(
         claim_pack.get("claim_pack_id"),
         "unknown_claim_pack",
     )
+    _validate_required_string(
+        claim_pack=claim_pack,
+        field_name="claim_pack_id",
+        validation_errors=validation_errors,
+    )
     evidence_index_version = _string_or_default(
         claim_pack.get("evidence_index_version"),
         DEFAULT_EVIDENCE_INDEX_VERSION,
+    )
+    _validate_required_string(
+        claim_pack=claim_pack,
+        field_name="evidence_index_version",
+        validation_errors=validation_errors,
+    )
+    expected_min_negative_or_conflicting = _expected_min_negative_or_conflicting(
+        claim_pack,
+        validation_errors,
     )
     paper_candidates = _paper_candidates_from_pack(claim_pack, validation_errors)
     claims = _claims_from_candidates(
@@ -44,8 +68,19 @@ def build_literature_harness_run(
         paper_candidates=paper_candidates,
         validation_errors=validation_errors,
     )
+    negative_or_conflicting_claims = sum(
+        1
+        for claim in claims
+        if claim.effect_direction in NEGATIVE_OR_CONFLICTING_DIRECTIONS
+    )
     deltas = _build_deltas(claims)
-    isolation_checks = _build_isolation_checks(claims, claim_pack)
+    isolation_checks = _build_isolation_checks(
+        claims=claims,
+        claim_pack=claim_pack,
+        expected_min_negative_or_conflicting=expected_min_negative_or_conflicting,
+        actual_negative_or_conflicting=negative_or_conflicting_claims,
+        validation_errors=validation_errors,
+    )
     failed_isolation_checks = [
         check for check in isolation_checks if check.passed is False
     ]
@@ -58,11 +93,7 @@ def build_literature_harness_run(
         "paper_candidates": len(paper_candidates),
         "claims": len(claims),
         "deltas": len(deltas),
-        "negative_or_conflicting_claims": sum(
-            1
-            for claim in claims
-            if claim.effect_direction in NEGATIVE_OR_CONFLICTING_DIRECTIONS
-        ),
+        "negative_or_conflicting_claims": negative_or_conflicting_claims,
         "isolation_violations": len(failed_isolation_checks),
     }
 
@@ -85,7 +116,10 @@ def _paper_candidates_from_pack(
     claim_pack: dict[str, Any],
     validation_errors: list[str],
 ) -> list[PaperCandidate]:
-    raw_candidates = claim_pack.get("paper_candidates", [])
+    if "paper_candidates" not in claim_pack:
+        validation_errors.append("paper_candidates is required")
+        return []
+    raw_candidates = claim_pack["paper_candidates"]
     if not isinstance(raw_candidates, list):
         validation_errors.append("paper_candidates must be a list")
         return []
@@ -147,7 +181,9 @@ def _evidence_claim_from_payload(
     candidate: PaperCandidate,
     payload: dict[str, Any],
 ) -> EvidenceClaim:
-    source_span = _source_span_from_payload(payload.get("source_span", {}))
+    if "source_span" not in payload:
+        raise KeyError("source_span")
+    source_span = _source_span_from_payload(payload["source_span"])
     claim_id = make_claim_id(
         source_id=candidate.source_id,
         claim_text=payload["claim_text"],
@@ -232,7 +268,7 @@ def _build_deltas(claims: list[EvidenceClaim]) -> list[EvidenceDelta]:
             deltas.append(_quality_warning_delta(claim))
 
     deltas.extend(_pair_conflict_deltas(claims))
-    return deltas
+    return _deduplicate_deltas(deltas)
 
 
 def _negative_evidence_delta(claim: EvidenceClaim) -> EvidenceDelta:
@@ -292,7 +328,7 @@ def _quality_warning_delta(claim: EvidenceClaim) -> EvidenceDelta:
 
 
 def _pair_conflict_deltas(claims: list[EvidenceClaim]) -> list[EvidenceDelta]:
-    benefits_by_context: dict[tuple[str, str], list[EvidenceClaim]] = {}
+    benefits_by_context: dict[tuple[str, str, str, str], list[EvidenceClaim]] = {}
     for claim in claims:
         if claim.effect_direction != "benefit":
             continue
@@ -354,33 +390,51 @@ def _delta(
     )
 
 
-def _claim_context(claim: EvidenceClaim) -> tuple[str, str]:
-    return (_normalize(claim.population), _normalize(claim.outcome))
+def _claim_context(claim: EvidenceClaim) -> tuple[str, str, str, str]:
+    return (
+        _normalize(claim.population),
+        _normalize(claim.outcome),
+        _normalize_optional(claim.intervention),
+        _normalize_optional(claim.comparator),
+    )
 
 
 def _build_isolation_checks(
+    *,
     claims: list[EvidenceClaim],
     claim_pack: dict[str, Any],
+    expected_min_negative_or_conflicting: int,
+    actual_negative_or_conflicting: int,
+    validation_errors: list[str],
 ) -> list[IsolationCheck]:
-    isolation_inputs = claim_pack.get("isolation_inputs", {})
-    if not isinstance(isolation_inputs, dict):
-        isolation_inputs = {}
+    isolation_inputs = _isolation_inputs_from_pack(claim_pack, validation_errors)
 
     return [
         _isolation_check(
             check_id="no_candidate_in_clinical_rag",
             claim_ids=claims,
-            forbidden_claim_ids=isolation_inputs.get("clinical_rag_claim_ids", []),
+            forbidden_claim_ids=isolation_inputs["clinical_rag_claim_ids"],
         ),
         _isolation_check(
             check_id="no_candidate_in_patient_default_path",
             claim_ids=claims,
-            forbidden_claim_ids=isolation_inputs.get("patient_default_claim_ids", []),
+            forbidden_claim_ids=isolation_inputs["patient_default_claim_ids"],
         ),
         _isolation_check(
             check_id="no_candidate_in_doctor_default_path",
             claim_ids=claims,
-            forbidden_claim_ids=isolation_inputs.get("doctor_default_claim_ids", []),
+            forbidden_claim_ids=isolation_inputs["doctor_default_claim_ids"],
+        ),
+        IsolationCheck(
+            check_id="negative_evidence_preserved",
+            passed=actual_negative_or_conflicting
+            >= expected_min_negative_or_conflicting,
+            details={
+                "expected_min_negative_or_conflicting": (
+                    expected_min_negative_or_conflicting
+                ),
+                "actual_negative_or_conflicting": actual_negative_or_conflicting,
+            },
         ),
     ]
 
@@ -389,12 +443,12 @@ def _isolation_check(
     *,
     check_id: str,
     claim_ids: list[EvidenceClaim],
-    forbidden_claim_ids: Any,
+    forbidden_claim_ids: list[str],
 ) -> IsolationCheck:
     harness_claim_ids = {claim.claim_id for claim in claim_ids}
     leaked_claim_ids = [
         claim_id
-        for claim_id in _string_list(forbidden_claim_ids)
+        for claim_id in forbidden_claim_ids
         if claim_id in harness_claim_ids
     ]
     return IsolationCheck(
@@ -425,14 +479,83 @@ def _string_or_default(value: Any, default: str) -> str:
     return default
 
 
-def _string_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, str)]
+def _validate_required_string(
+    *,
+    claim_pack: dict[str, Any],
+    field_name: str,
+    validation_errors: list[str],
+) -> None:
+    if field_name not in claim_pack:
+        validation_errors.append(f"{field_name} is required")
+        return
+    value = claim_pack[field_name]
+    if not isinstance(value, str) or not value.strip():
+        validation_errors.append(f"{field_name} must be a non-empty string")
+
+
+def _expected_min_negative_or_conflicting(
+    claim_pack: dict[str, Any],
+    validation_errors: list[str],
+) -> int:
+    field_name = "expected_min_negative_or_conflicting"
+    if field_name not in claim_pack:
+        validation_errors.append(f"{field_name} is required")
+        return 0
+    value = claim_pack[field_name]
+    if type(value) is not int or value < 0:
+        validation_errors.append(f"{field_name} must be a non-negative integer")
+        return 0
+    return value
+
+
+def _isolation_inputs_from_pack(
+    claim_pack: dict[str, Any],
+    validation_errors: list[str],
+) -> dict[str, list[str]]:
+    isolation_inputs: dict[str, list[str]] = {
+        key: []
+        for key in ISOLATION_INPUT_KEYS
+    }
+    if "isolation_inputs" not in claim_pack:
+        validation_errors.append("isolation_inputs is required")
+        return isolation_inputs
+
+    raw_inputs = claim_pack["isolation_inputs"]
+    if not isinstance(raw_inputs, dict):
+        validation_errors.append("isolation_inputs must be a dictionary")
+        return isolation_inputs
+
+    for key in ISOLATION_INPUT_KEYS:
+        if key not in raw_inputs:
+            validation_errors.append(f"isolation_inputs.{key} is required")
+            continue
+        value = raw_inputs[key]
+        if not isinstance(value, list):
+            validation_errors.append(f"isolation_inputs.{key} must be a list")
+            continue
+        if not all(isinstance(item, str) for item in value):
+            validation_errors.append(
+                f"isolation_inputs.{key} must contain only strings"
+            )
+        isolation_inputs[key] = [item for item in value if isinstance(item, str)]
+    return isolation_inputs
+
+
+def _deduplicate_deltas(deltas: list[EvidenceDelta]) -> list[EvidenceDelta]:
+    by_delta_id: OrderedDict[str, EvidenceDelta] = OrderedDict()
+    for delta in deltas:
+        by_delta_id.setdefault(delta.delta_id, delta)
+    return list(by_delta_id.values())
 
 
 def _normalize(value: str) -> str:
     return " ".join(value.casefold().split())
+
+
+def _normalize_optional(value: str | None) -> str:
+    if value is None:
+        return ""
+    return _normalize(value)
 
 
 __all__ = ["build_literature_harness_run"]

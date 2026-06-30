@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import json
 from pathlib import Path
 from typing import Any
@@ -274,3 +275,148 @@ def test_literature_harness_rejects_retracted_sources_and_blocks() -> None:
         and delta["delta_type"] == "retraction_or_quality_warning"
         for delta in harness["deltas"]
     )
+
+
+def test_literature_harness_blocks_malformed_pack_and_missing_source_span() -> None:
+    empty_harness = build_literature_harness_run(run_id="bad", claim_pack={})
+
+    assert empty_harness["release_decision"] == "block"
+    assert empty_harness["validation_errors"]
+
+    non_dict_harness = build_literature_harness_run(
+        run_id="bad_non_dict",
+        claim_pack="not-a-dict",  # type: ignore[arg-type]
+    )
+
+    assert non_dict_harness["release_decision"] == "block"
+    assert non_dict_harness["validation_errors"]
+
+    pack = _load_fixture()
+    del pack["paper_candidates"][0]["extracted_claims"][0]["source_span"]
+
+    missing_span_harness = build_literature_harness_run(
+        run_id="missing_source_span",
+        claim_pack=pack,
+    )
+
+    assert missing_span_harness["release_decision"] == "block"
+    assert any(
+        "source_span" in error
+        for error in missing_span_harness["validation_errors"]
+    )
+
+
+def test_literature_harness_blocks_invalid_isolation_inputs() -> None:
+    pack = _load_fixture()
+    pack["isolation_inputs"] = "not-a-dict"
+
+    string_inputs_harness = build_literature_harness_run(
+        run_id="bad_isolation_inputs",
+        claim_pack=pack,
+    )
+
+    assert string_inputs_harness["release_decision"] == "block"
+    assert string_inputs_harness["validation_errors"]
+
+    pack = _load_fixture()
+    pack["isolation_inputs"]["clinical_rag_claim_ids"] = "not-a-list"
+
+    string_claim_ids_harness = build_literature_harness_run(
+        run_id="bad_clinical_rag_claim_ids",
+        claim_pack=pack,
+    )
+
+    assert string_claim_ids_harness["release_decision"] == "block"
+    assert string_claim_ids_harness["validation_errors"]
+
+    pack = _load_fixture()
+    pack["isolation_inputs"]["clinical_rag_claim_ids"] = ["claim_ok", 123]
+
+    non_string_claim_ids_harness = build_literature_harness_run(
+        run_id="bad_clinical_rag_claim_id_item",
+        claim_pack=pack,
+    )
+
+    assert non_string_claim_ids_harness["release_decision"] == "block"
+    assert non_string_claim_ids_harness["validation_errors"]
+
+
+def test_literature_harness_deduplicates_duplicate_delta_ids() -> None:
+    pack = _load_fixture()
+    neutral_claim = pack["paper_candidates"][1]["extracted_claims"][0]
+    pack["paper_candidates"][1]["extracted_claims"].append(deepcopy(neutral_claim))
+
+    harness = build_literature_harness_run(
+        run_id="duplicate_delta_ids",
+        claim_pack=pack,
+    )
+
+    delta_ids = [delta["delta_id"] for delta in harness["deltas"]]
+    assert len(delta_ids) == len(set(delta_ids))
+
+
+def test_literature_harness_blocks_when_negative_evidence_minimum_is_not_met() -> None:
+    pack = _load_fixture()
+    pack["expected_min_negative_or_conflicting"] = 99
+
+    harness = build_literature_harness_run(
+        run_id="negative_evidence_minimum_not_met",
+        claim_pack=pack,
+    )
+
+    assert harness["summary"]["negative_or_conflicting_claims"] == 2
+    assert harness["release_decision"] == "block"
+    assert (
+        any(
+            "expected_min_negative_or_conflicting" in error
+            for error in harness["validation_errors"]
+        )
+        or any(
+            check["check_id"] == "negative_evidence_preserved"
+            and check["passed"] is False
+            for check in harness["isolation_checks"]
+        )
+    )
+
+
+def test_literature_harness_pair_conflicts_match_intervention_and_comparator() -> None:
+    pack = _load_fixture()
+    unrelated_neutral_claim = deepcopy(pack["paper_candidates"][1]["extracted_claims"][0])
+    unrelated_neutral_claim.update(
+        {
+            "claim_text": "Intervention Y did not significantly improve overall survival in a real-world colorectal cancer cohort.",
+            "intervention": "Intervention Y",
+            "local_guideline_conflict": "none",
+            "source_span": {
+                "page": 8,
+                "section": "Subgroup analysis",
+                "quote": "No significant survival association was observed for Intervention Y.",
+            },
+        }
+    )
+    pack["paper_candidates"][1]["extracted_claims"].append(unrelated_neutral_claim)
+
+    harness = build_literature_harness_run(
+        run_id="unrelated_therapy_conflict",
+        claim_pack=pack,
+    )
+    benefit_claim_id = next(
+        claim["claim_id"]
+        for claim in harness["claims"]
+        if claim["effect_direction"] == "benefit"
+    )
+    unrelated_neutral_claim_id = next(
+        claim["claim_id"]
+        for claim in harness["claims"]
+        if claim["intervention"] == "Intervention Y"
+    )
+
+    unrelated_cross_pair_conflicts = [
+        delta
+        for delta in harness["deltas"]
+        if delta["claim_id"] == unrelated_neutral_claim_id
+        and delta["related_claim_id"] == benefit_claim_id
+        and delta["delta_type"] == "conflict"
+        and "conflicts with benefit evidence" in delta["summary"]
+    ]
+    assert unrelated_cross_pair_conflicts == []
