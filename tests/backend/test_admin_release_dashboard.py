@@ -39,6 +39,7 @@ def _literature_payload(
     release_decision: str = "shadow_only",
     isolation_violations: int = 0,
     validation_errors: list[str] | None = None,
+    include_validation_errors: bool = True,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "run_id": "literature_test",
@@ -50,8 +51,8 @@ def _literature_payload(
             "isolation_violations": isolation_violations,
         },
     }
-    if validation_errors is not None:
-        payload["validation_errors"] = validation_errors
+    if include_validation_errors:
+        payload["validation_errors"] = validation_errors or []
     return payload
 
 
@@ -191,6 +192,34 @@ def test_literature_validation_errors_or_isolation_violations_fail(
         for dashboard in (validation_error_dashboard, isolation_violation_dashboard)
         for gate in dashboard["blocking_gates"]
     )
+
+
+def test_literature_missing_validation_errors_is_invalid(tmp_path: Path) -> None:
+    paths = _tmp_paths(tmp_path)
+    _write_json(paths.harness_report, _harness_payload())
+    _write_json(paths.release_safety_report, _release_payload())
+    _write_json(
+        paths.literature_report,
+        _literature_payload(
+            release_decision="shadow_only",
+            isolation_violations=0,
+            include_validation_errors=False,
+        ),
+    )
+
+    dashboard = build_release_dashboard(paths=paths)
+
+    literature_run = dashboard["runs"][2]
+    clinical_rag_gate = next(
+        gate
+        for gate in dashboard["blocking_gates"]
+        if gate["id"] == "no_literature_clinical_rag"
+    )
+    assert literature_run["status"] == "invalid"
+    assert literature_run["run_id"] == "invalid"
+    assert dashboard["summary"]["literature_claims"] == 0
+    assert dashboard["summary"]["literature_isolation_violations"] == 1
+    assert clinical_rag_gate["state"] == "blocked"
 
 
 def test_release_hard_fail_count_fails_only_release_run_without_writes(

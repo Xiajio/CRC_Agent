@@ -95,10 +95,7 @@ def _valid_literature_report(payload: dict[str, Any]) -> bool:
         and isinstance(summary, dict)
         and _is_int(summary.get("claims"))
         and _is_int(summary.get("isolation_violations"))
-        and (
-            "validation_errors" not in payload
-            or isinstance(validation_errors, list)
-        )
+        and isinstance(validation_errors, list)
     )
 
 
