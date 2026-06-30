@@ -34,9 +34,7 @@ RiskOfBias = Literal["low", "moderate", "high", "unclear", "not_applicable"]
 ReviewStatus = Literal[
     "candidate",
     "needs_review",
-    "reviewed",
     "rejected",
-    "approved_for_project_evidence_pool",
 ]
 LocalGuidelineConflict = Literal["none", "possible", "conflict", "unknown"]
 ApplicabilityToCrcContext = Literal["direct", "partial", "indirect", "unknown"]
@@ -83,9 +81,7 @@ RISK_OF_BIAS_LEVELS: tuple[RiskOfBias, ...] = (
 REVIEW_STATUSES: tuple[ReviewStatus, ...] = (
     "candidate",
     "needs_review",
-    "reviewed",
     "rejected",
-    "approved_for_project_evidence_pool",
 )
 LOCAL_GUIDELINE_CONFLICTS: tuple[LocalGuidelineConflict, ...] = (
     "none",

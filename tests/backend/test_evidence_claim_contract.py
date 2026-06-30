@@ -133,6 +133,38 @@ def test_evidence_claim_rejects_clinical_rag_approval_in_step10_helpers() -> Non
         )
 
 
+@pytest.mark.parametrize(
+    "review_status",
+    ["reviewed", "approved_for_project_evidence_pool"],
+)
+def test_evidence_claim_rejects_post_candidate_review_statuses(
+    review_status: str,
+) -> None:
+    with pytest.raises(ValueError, match="review_status"):
+        EvidenceClaim(
+            claim_id=f"claim_bad_{review_status}",
+            source_id="paper_bad",
+            claim_text="Unsupported promotion.",
+            population="adults with colorectal cancer",
+            intervention=None,
+            comparator=None,
+            outcome="overall_survival",
+            effect_direction="benefit",
+            effect_size=None,
+            uncertainty=None,
+            evidence_grade="rct",
+            study_design="randomized_controlled_trial",
+            sample_size=100,
+            risk_of_bias="low",
+            source_quality=_quality(),
+            local_guideline_conflict="none",
+            applicability_to_crc_context="partial",
+            source_span=_span(),
+            review_status=review_status,
+            created_from="literature_claim_pack_v0",
+        )
+
+
 def test_evidence_claim_rejects_invalid_enum_and_sample_size() -> None:
     with pytest.raises(ValueError, match="effect_direction"):
         EvidenceClaim(
