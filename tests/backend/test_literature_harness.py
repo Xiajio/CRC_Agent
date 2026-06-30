@@ -420,3 +420,21 @@ def test_literature_harness_pair_conflicts_match_intervention_and_comparator() -
         and "conflicts with benefit evidence" in delta["summary"]
     ]
     assert unrelated_cross_pair_conflicts == []
+
+
+from scripts.run_literature_harness import run_literature_harness
+
+
+def test_literature_harness_replay_writes_shadow_report(tmp_path) -> None:
+    report_path = run_literature_harness(output_root=tmp_path)
+
+    assert report_path.exists()
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["run_id"] == "literature_harness_20260630_001"
+    assert report["claim_pack_version"] == "literature_claim_pack_v0"
+    assert report["release_decision"] == "shadow_only"
+    assert report["summary"]["claims"] == 3
+    assert all(
+        claim["review_status"] in {"candidate", "needs_review", "rejected"}
+        for claim in report["claims"]
+    )

@@ -1,0 +1,215 @@
+{
+  "run_id": "literature_harness_20260630_001",
+  "run_level": "L0_shadow",
+  "claim_pack_version": "literature_claim_pack_v0",
+  "evidence_index_version": "rag_crc_guideline_20260620",
+  "summary": {
+    "paper_candidates": 3,
+    "claims": 3,
+    "deltas": 8,
+    "negative_or_conflicting_claims": 2,
+    "isolation_violations": 0
+  },
+  "claims": [
+    {
+      "claim_id": "claim_paper_crc_2026_benefit_overall_survival_7c8d343b",
+      "source_id": "paper_crc_2026_benefit",
+      "claim_text": "Intervention X improved overall survival compared with standard of care in adults with metastatic colorectal cancer.",
+      "population": "adults with metastatic colorectal cancer",
+      "intervention": "Intervention X",
+      "comparator": "standard of care",
+      "outcome": "overall_survival",
+      "effect_direction": "benefit",
+      "effect_size": "HR 0.82",
+      "uncertainty": "95% CI 0.70-0.96",
+      "evidence_grade": "rct",
+      "study_design": "randomized_controlled_trial",
+      "sample_size": 820,
+      "risk_of_bias": "moderate",
+      "source_quality": {
+        "is_guideline": false,
+        "is_systematic_review": false,
+        "is_preprint": false,
+        "is_retracted": false
+      },
+      "local_guideline_conflict": "none",
+      "applicability_to_crc_context": "partial",
+      "source_span": {
+        "page": 4,
+        "section": "Results",
+        "quote": "Overall survival favored Intervention X."
+      },
+      "review_status": "candidate",
+      "created_from": "literature_claim_pack_v0"
+    },
+    {
+      "claim_id": "claim_paper_crc_2026_neutral_overall_survival_e30443fb",
+      "source_id": "paper_crc_2026_neutral",
+      "claim_text": "Intervention X did not significantly improve overall survival in a real-world colorectal cancer cohort.",
+      "population": "adults with metastatic colorectal cancer",
+      "intervention": "Intervention X",
+      "comparator": "standard of care",
+      "outcome": "overall_survival",
+      "effect_direction": "neutral",
+      "effect_size": "HR 0.98",
+      "uncertainty": "95% CI 0.84-1.14",
+      "evidence_grade": "observational",
+      "study_design": "retrospective_cohort",
+      "sample_size": 410,
+      "risk_of_bias": "high",
+      "source_quality": {
+        "is_guideline": false,
+        "is_systematic_review": false,
+        "is_preprint": false,
+        "is_retracted": false
+      },
+      "local_guideline_conflict": "possible",
+      "applicability_to_crc_context": "partial",
+      "source_span": {
+        "page": 7,
+        "section": "Adjusted analysis",
+        "quote": "No significant survival association was observed."
+      },
+      "review_status": "needs_review",
+      "created_from": "literature_claim_pack_v0"
+    },
+    {
+      "claim_id": "claim_paper_crc_2026_safety_signal_serious_adverse_events_095e0f55",
+      "source_id": "paper_crc_2026_safety_signal",
+      "claim_text": "Intervention X combinations were associated with increased grade 3 or higher adverse events in a small colorectal cancer cohort.",
+      "population": "adults with metastatic colorectal cancer",
+      "intervention": "Intervention X combination therapy",
+      "comparator": "standard of care",
+      "outcome": "serious_adverse_events",
+      "effect_direction": "harm",
+      "effect_size": "RR 1.45",
+      "uncertainty": "95% CI 1.05-2.10",
+      "evidence_grade": "observational",
+      "study_design": "small_cohort_preprint",
+      "sample_size": 96,
+      "risk_of_bias": "high",
+      "source_quality": {
+        "is_guideline": false,
+        "is_systematic_review": false,
+        "is_preprint": true,
+        "is_retracted": false
+      },
+      "local_guideline_conflict": "possible",
+      "applicability_to_crc_context": "indirect",
+      "source_span": {
+        "page": 5,
+        "section": "Safety",
+        "quote": "Grade 3 or higher events were more frequent."
+      },
+      "review_status": "needs_review",
+      "created_from": "literature_claim_pack_v0"
+    }
+  ],
+  "deltas": [
+    {
+      "delta_id": "delta_claim_paper_crc_2026_neutral_overall_survival_e30443fb_none_negative_evidence_c10a923a",
+      "claim_id": "claim_paper_crc_2026_neutral_overall_survival_e30443fb",
+      "related_claim_id": null,
+      "delta_type": "negative_evidence",
+      "summary": "neutral evidence was extracted for overall_survival and must remain visible in shadow review.",
+      "severity": "review_required",
+      "recommended_action": "human_evidence_review"
+    },
+    {
+      "delta_id": "delta_claim_paper_crc_2026_neutral_overall_survival_e30443fb_none_conflict_68f479bb",
+      "claim_id": "claim_paper_crc_2026_neutral_overall_survival_e30443fb",
+      "related_claim_id": null,
+      "delta_type": "conflict",
+      "summary": "Local guideline conflict status is possible for overall_survival.",
+      "severity": "review_required",
+      "recommended_action": "compare_with_local_guideline"
+    },
+    {
+      "delta_id": "delta_claim_paper_crc_2026_neutral_overall_survival_e30443fb_none_retraction_or_quality_warning_b56905b3",
+      "claim_id": "claim_paper_crc_2026_neutral_overall_survival_e30443fb",
+      "related_claim_id": null,
+      "delta_type": "retraction_or_quality_warning",
+      "summary": "Source quality warning: high_risk_of_bias.",
+      "severity": "review_required",
+      "recommended_action": "human_evidence_review"
+    },
+    {
+      "delta_id": "delta_claim_paper_crc_2026_safety_signal_serious_adverse_events_095e0f55_none_negative_evidence_6a96aad7",
+      "claim_id": "claim_paper_crc_2026_safety_signal_serious_adverse_events_095e0f55",
+      "related_claim_id": null,
+      "delta_type": "negative_evidence",
+      "summary": "harm evidence was extracted for serious_adverse_events and must remain visible in shadow review.",
+      "severity": "review_required",
+      "recommended_action": "human_evidence_review"
+    },
+    {
+      "delta_id": "delta_claim_paper_crc_2026_safety_signal_serious_adverse_events_095e0f55_none_safety_signal_4e44ae74",
+      "claim_id": "claim_paper_crc_2026_safety_signal_serious_adverse_events_095e0f55",
+      "related_claim_id": null,
+      "delta_type": "safety_signal",
+      "summary": "Harm signal detected for serious_adverse_events.",
+      "severity": "review_required",
+      "recommended_action": "safety_review_before_promotion"
+    },
+    {
+      "delta_id": "delta_claim_paper_crc_2026_safety_signal_serious_adverse_events_095e0f55_none_conflict_77cb0cad",
+      "claim_id": "claim_paper_crc_2026_safety_signal_serious_adverse_events_095e0f55",
+      "related_claim_id": null,
+      "delta_type": "conflict",
+      "summary": "Local guideline conflict status is possible for serious_adverse_events.",
+      "severity": "review_required",
+      "recommended_action": "compare_with_local_guideline"
+    },
+    {
+      "delta_id": "delta_claim_paper_crc_2026_safety_signal_serious_adverse_events_095e0f55_none_retraction_or_quality_warning_c8e2781e",
+      "claim_id": "claim_paper_crc_2026_safety_signal_serious_adverse_events_095e0f55",
+      "related_claim_id": null,
+      "delta_type": "retraction_or_quality_warning",
+      "summary": "Source quality warning: preprint_source, high_risk_of_bias.",
+      "severity": "review_required",
+      "recommended_action": "human_evidence_review"
+    },
+    {
+      "delta_id": "delta_claim_paper_crc_2026_neutral_overall_survival_e30443fb_claim_paper_crc_2026_benefit_overall_survival_7c8d343b_conflict_42b16dde",
+      "claim_id": "claim_paper_crc_2026_neutral_overall_survival_e30443fb",
+      "related_claim_id": "claim_paper_crc_2026_benefit_overall_survival_7c8d343b",
+      "delta_type": "conflict",
+      "summary": "neutral evidence conflicts with benefit evidence for overall_survival.",
+      "severity": "review_required",
+      "recommended_action": "compare_claims_before_promotion"
+    }
+  ],
+  "isolation_checks": [
+    {
+      "check_id": "no_candidate_in_clinical_rag",
+      "passed": true,
+      "details": {
+        "leaked_claim_ids": []
+      }
+    },
+    {
+      "check_id": "no_candidate_in_patient_default_path",
+      "passed": true,
+      "details": {
+        "leaked_claim_ids": []
+      }
+    },
+    {
+      "check_id": "no_candidate_in_doctor_default_path",
+      "passed": true,
+      "details": {
+        "leaked_claim_ids": []
+      }
+    },
+    {
+      "check_id": "negative_evidence_preserved",
+      "passed": true,
+      "details": {
+        "expected_min_negative_or_conflicting": 2,
+        "actual_negative_or_conflicting": 2
+      }
+    }
+  ],
+  "release_decision": "shadow_only",
+  "validation_errors": []
+}
