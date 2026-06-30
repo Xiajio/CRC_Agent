@@ -901,7 +901,10 @@ function ReleaseSuccessPage({ dashboard }: { dashboard: AdminReleaseDashboardRes
                 {dashboard.runs.map((run) => {
                   const rowState = releaseRowState(run.status);
                   return (
-                    <article key={run.run_id} className={`agent-admin-timeline-row agent-admin-timeline-row-${rowState}`}>
+                    <article
+                      key={`${run.kind}-${run.source_path}-${run.run_id}`}
+                      className={`agent-admin-timeline-row agent-admin-timeline-row-${rowState}`}
+                    >
                       <span className="agent-admin-timeline-node">
                         <AgentAdminStateIcon state={rowState} />
                         {run.run_id}
