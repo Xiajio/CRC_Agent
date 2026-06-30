@@ -181,6 +181,8 @@ def _evidence_claim_from_payload(
     candidate: PaperCandidate,
     payload: dict[str, Any],
 ) -> EvidenceClaim:
+    if "review_status" in payload:
+        raise ValueError("review_status is harness-owned and must not be provided")
     if "source_span" not in payload:
         raise KeyError("source_span")
     source_span = _source_span_from_payload(payload["source_span"])

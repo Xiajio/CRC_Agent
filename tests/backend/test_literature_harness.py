@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from src.contracts.evidence_claim import (
     APPLICABILITY_TO_CRC_CONTEXTS,
     EFFECT_DIRECTIONS,
@@ -43,6 +45,18 @@ REQUIRED_EXTRACTED_CLAIM_FIELDS = {
     "applicability_to_crc_context",
     "source_span",
 }
+FORBIDDEN_REVIEW_STATUSES = {
+    "approved_for_project_pool",
+    "approved_for_clinical_rag",
+    "clinical_rag_approved",
+    "clinical_rag_index",
+}
+EXPECTED_ISOLATION_CHECK_IDS = [
+    "no_candidate_in_clinical_rag",
+    "no_candidate_in_patient_default_path",
+    "no_candidate_in_doctor_default_path",
+    "negative_evidence_preserved",
+]
 
 
 def _load_fixture() -> dict[str, Any]:
@@ -221,22 +235,37 @@ def test_literature_harness_never_promotes_candidates_to_clinical_paths() -> Non
         claim_pack=_load_fixture(),
     )
 
-    forbidden_statuses = {
-        "approved_for_project_pool",
-        "approved_for_clinical_rag",
-    }
-    assert forbidden_statuses.isdisjoint(
+    assert harness["validation_errors"] == []
+    assert harness["summary"]["claims"] == 3
+    assert FORBIDDEN_REVIEW_STATUSES.isdisjoint(
         {claim["review_status"] for claim in harness["claims"]}
     )
-    assert {
-        check["check_id"]: check["passed"]
-        for check in harness["isolation_checks"]
-    } == {
-        "no_candidate_in_clinical_rag": True,
-        "no_candidate_in_patient_default_path": True,
-        "no_candidate_in_doctor_default_path": True,
-        "negative_evidence_preserved": True,
-    }
+    assert [
+        check["check_id"] for check in harness["isolation_checks"]
+    ] == EXPECTED_ISOLATION_CHECK_IDS
+    assert all(check["passed"] is True for check in harness["isolation_checks"])
+
+
+@pytest.mark.parametrize("forbidden_status", sorted(FORBIDDEN_REVIEW_STATUSES))
+def test_literature_harness_rejects_claim_pack_review_status_promotion(
+    forbidden_status: str,
+) -> None:
+    pack = _load_fixture()
+    pack["paper_candidates"][0]["extracted_claims"][0][
+        "review_status"
+    ] = forbidden_status
+
+    harness = build_literature_harness_run(
+        run_id="literature_harness_review_status_promotion",
+        claim_pack=pack,
+    )
+
+    output_statuses = {claim["review_status"] for claim in harness["claims"]}
+    assert harness["release_decision"] == "block"
+    assert harness["validation_errors"]
+    assert any("review_status" in error for error in harness["validation_errors"])
+    assert forbidden_status not in output_statuses
+    assert FORBIDDEN_REVIEW_STATUSES.isdisjoint(output_statuses)
 
 
 def test_literature_harness_is_deterministic_for_same_pack() -> None:
