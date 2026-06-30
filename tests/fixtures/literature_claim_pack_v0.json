@@ -111,7 +111,7 @@
           "sample_size": 96,
           "risk_of_bias": "high",
           "local_guideline_conflict": "possible",
-          "applicability_to_crc_context": "limited",
+          "applicability_to_crc_context": "indirect",
           "source_span": {
             "page": 5,
             "section": "Safety",
