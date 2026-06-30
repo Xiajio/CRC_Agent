@@ -74,6 +74,69 @@ export interface AdminToolManifestResponse {
   };
 }
 
+export type AdminReleaseRunStatus = "pass" | "fail" | "shadow_only" | "missing" | "invalid";
+export type AdminReleaseGateState = "pass" | "locked" | "warning" | "blocked" | "missing";
+export type AdminReleaseHumanSignoffStatus = "missing" | "recorded_elsewhere" | "not_required";
+
+export interface AdminReleaseDashboardVersionChain {
+  agent_policy_version: string | null;
+  clinical_safety_policy_version: string | null;
+  evidence_index_version: string | null;
+  judge_rubric_version: string | null;
+}
+
+export interface AdminReleaseDashboardHumanSignoff {
+  required: boolean;
+  status: AdminReleaseHumanSignoffStatus;
+  reason: string;
+}
+
+export interface AdminReleaseDashboardSummary {
+  hard_fail_count: number;
+  p0_cases_total: number;
+  p0_cases_passed: number;
+  literature_claims: number;
+  literature_isolation_violations: number;
+  clinical_rag_ingest_enabled: boolean;
+}
+
+export interface AdminReleaseDashboardRun {
+  run_id: string;
+  kind: "p0_crc_harness" | "release_safety" | "literature_shadow_harness";
+  status: AdminReleaseRunStatus;
+  source_path: string;
+  hard_fail_count: number;
+}
+
+export interface AdminReleaseDashboardGate {
+  id: string;
+  label: string;
+  state: AdminReleaseGateState;
+  reason: string;
+}
+
+export interface AdminReleaseDashboardDisabledAction {
+  id: "record_human_signoff" | "publish_feature_flag" | "rollback_release";
+  label: string;
+  reason: string;
+}
+
+export interface AdminReleaseDashboardResponse {
+  version_chain: AdminReleaseDashboardVersionChain;
+  release_decision: string;
+  rollback_target: string | null;
+  human_signoff: AdminReleaseDashboardHumanSignoff;
+  summary: AdminReleaseDashboardSummary;
+  runs: AdminReleaseDashboardRun[];
+  blocking_gates: AdminReleaseDashboardGate[];
+  disabled_actions: AdminReleaseDashboardDisabledAction[];
+  runtime: {
+    auth: "admin";
+    source: "reports/static_release_artifacts";
+    mode: "read_only";
+  };
+}
+
 export type Scene = "patient" | "doctor";
 
 export interface AssetRef {

@@ -6,6 +6,7 @@ import { AppProviders } from "../app/providers";
 import type { ApiClient } from "../app/api/client";
 import { ApiClientError } from "../app/api/client";
 import type {
+  AdminReleaseDashboardResponse,
   AdminToolManifestResponse,
   DatabaseCaseDetailResponse,
   DatabaseSearchResponse,
@@ -321,6 +322,37 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
       source: "src.tools.manifest",
     },
   }));
+  const getAdminReleaseDashboard = vi.fn(async (): Promise<AdminReleaseDashboardResponse> => ({
+    version_chain: {
+      agent_policy_version: "agent_policy_20260629_0",
+      clinical_safety_policy_version: "crc_safety_policy_v0",
+      evidence_index_version: "rag_crc_guideline_20260620",
+      judge_rubric_version: "crc_rubric_v0",
+    },
+    release_decision: "feature_flag_or_pass",
+    rollback_target: "agent_policy_20260624_0",
+    human_signoff: {
+      required: true,
+      status: "missing",
+      reason: "Step 11 is read-only; sign-off must be recorded by a later audited write path.",
+    },
+    summary: {
+      hard_fail_count: 0,
+      p0_cases_total: 5,
+      p0_cases_passed: 5,
+      literature_claims: 3,
+      literature_isolation_violations: 0,
+      clinical_rag_ingest_enabled: false,
+    },
+    runs: [],
+    blocking_gates: [],
+    disabled_actions: [],
+    runtime: {
+      auth: "admin",
+      source: "reports/static_release_artifacts",
+      mode: "read_only",
+    },
+  }));
   const deletePatientRegistryPatient = vi.fn(async () => ({
     patient_id: 33,
     deleted_records: 1,
@@ -338,6 +370,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
 
   return {
     getAdminTools,
+    getAdminReleaseDashboard,
     createSession,
     getSession,
     getMessages,

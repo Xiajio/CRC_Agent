@@ -1,5 +1,6 @@
 import { streamJsonEvents, type FetchLike, type StreamTraceTap } from "./stream";
 import type {
+  AdminReleaseDashboardResponse,
   AdminToolManifestResponse,
   ChatTurnRequest,
   DatabaseCaseDetailResponse,
@@ -89,6 +90,7 @@ function buildJsonHeaders(defaultHeaders?: HeadersInit): Headers {
 
 export interface ApiClient {
   getAdminTools(): Promise<AdminToolManifestResponse>;
+  getAdminReleaseDashboard(): Promise<AdminReleaseDashboardResponse>;
   createSession(scene: Scene): Promise<SessionResponse>;
   getSession(sessionId: string, messageLimit?: number): Promise<SessionResponse>;
   getMessages(sessionId: string, before?: string | number | null, limit?: number): Promise<MessageHistoryResponse>;
@@ -144,6 +146,13 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         headers: defaultHeaders,
       });
       return parseJsonResponse<AdminToolManifestResponse>(response);
+    },
+
+    async getAdminReleaseDashboard() {
+      const response = await fetchImpl(buildUrl("/api/admin/release-dashboard", baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<AdminReleaseDashboardResponse>(response);
     },
 
     async createSession(scene) {

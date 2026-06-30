@@ -43,6 +43,64 @@ describe("createApiClient", () => {
     );
   });
 
+  it("loads admin release dashboard with configured Authorization headers", async () => {
+    const payload = {
+      version_chain: {
+        agent_policy_version: "agent_policy_20260629_0",
+        clinical_safety_policy_version: "crc_safety_policy_v0",
+        evidence_index_version: "rag_crc_guideline_20260620",
+        judge_rubric_version: "crc_rubric_v0",
+      },
+      release_decision: "feature_flag_or_pass",
+      rollback_target: "agent_policy_20260624_0",
+      human_signoff: {
+        required: true,
+        status: "missing",
+        reason: "Step 11 is read-only",
+      },
+      summary: {
+        hard_fail_count: 0,
+        p0_cases_total: 5,
+        p0_cases_passed: 5,
+        literature_claims: 3,
+        literature_isolation_violations: 0,
+        clinical_rag_ingest_enabled: false,
+      },
+      runs: [
+        {
+          run_id: "harness_20260629_001",
+          kind: "p0_crc_harness",
+          status: "pass",
+          source_path: "reports/harness/harness_20260629_001.json",
+          hard_fail_count: 0,
+        },
+      ],
+      blocking_gates: [],
+      disabled_actions: [],
+      runtime: {
+        auth: "admin",
+        source: "reports/static_release_artifacts",
+        mode: "read_only",
+      },
+    };
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    const fetchImpl = vi.fn(async () => response);
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+
+    await expect(client.getAdminReleaseDashboard()).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/release-dashboard",
+      { headers: { Authorization: "Bearer dev-token" } },
+    );
+  });
+
   it("downloads session assets through fetch with configured Authorization headers", async () => {
     const body = new Blob(["asset-content"], { type: "text/plain" });
     const response = {
