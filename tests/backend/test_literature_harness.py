@@ -15,6 +15,7 @@ from src.contracts.evidence_claim import (
     SourceSpan,
     make_claim_id,
 )
+from src.services.literature_harness import build_literature_harness_run
 
 
 FIXTURE_PATH = Path("tests/fixtures/literature_claim_pack_v0.json")
@@ -179,3 +180,97 @@ def test_literature_claim_pack_claims_are_contract_compatible() -> None:
 
             evidence_claim = _evidence_claim_from_fixture(pack, candidate, claim)
             assert evidence_claim.source_id == candidate["source_id"]
+
+
+def test_literature_harness_outputs_shadow_only_claim_cards_and_deltas() -> None:
+    harness = build_literature_harness_run(
+        run_id="literature_harness_test",
+        claim_pack=_load_fixture(),
+    )
+
+    assert harness["run_id"] == "literature_harness_test"
+    assert harness["run_level"] == "L0_shadow"
+    assert harness["claim_pack_version"] == "literature_claim_pack_v0"
+    assert harness["evidence_index_version"] == "rag_crc_guideline_20260620"
+    assert harness["summary"]["paper_candidates"] == 3
+    assert harness["summary"]["claims"] == 3
+    assert harness["summary"]["negative_or_conflicting_claims"] == 2
+    assert harness["summary"]["isolation_violations"] == 0
+    assert harness["release_decision"] == "shadow_only"
+    assert {claim["review_status"] for claim in harness["claims"]} <= {
+        "candidate",
+        "needs_review",
+        "rejected",
+    }
+    assert "approved_for_clinical_rag" not in {
+        claim["review_status"] for claim in harness["claims"]
+    }
+    assert any(delta["delta_type"] == "negative_evidence" for delta in harness["deltas"])
+    assert any(delta["delta_type"] == "conflict" for delta in harness["deltas"])
+    assert any(
+        delta["delta_type"] == "retraction_or_quality_warning"
+        for delta in harness["deltas"]
+    )
+    assert all(check["passed"] for check in harness["isolation_checks"])
+
+
+def test_literature_harness_is_deterministic_for_same_pack() -> None:
+    first = build_literature_harness_run(
+        run_id="literature_harness_test",
+        claim_pack=_load_fixture(),
+    )
+    second = build_literature_harness_run(
+        run_id="literature_harness_test",
+        claim_pack=_load_fixture(),
+    )
+    assert first == second
+
+
+def test_literature_harness_blocks_when_candidate_reaches_clinical_rag() -> None:
+    pack = _load_fixture()
+    probe = build_literature_harness_run(run_id="probe_ids", claim_pack=pack)
+    leaked_claim_id = probe["claims"][0]["claim_id"]
+    pack["isolation_inputs"]["clinical_rag_claim_ids"] = [leaked_claim_id]
+
+    harness = build_literature_harness_run(
+        run_id="literature_harness_isolation_failure",
+        claim_pack=pack,
+    )
+
+    assert harness["release_decision"] == "block"
+    failed_checks = [
+        check for check in harness["isolation_checks"] if check["passed"] is False
+    ]
+    assert failed_checks == [
+        {
+            "check_id": "no_candidate_in_clinical_rag",
+            "passed": False,
+            "details": {"leaked_claim_ids": [leaked_claim_id]},
+        }
+    ]
+
+
+def test_literature_harness_rejects_retracted_sources_and_blocks() -> None:
+    pack = _load_fixture()
+    candidate = pack["paper_candidates"][0]
+    candidate["source_id"] = "paper_crc_2026_retracted"
+    candidate["source_quality"]["is_retracted"] = True
+
+    harness = build_literature_harness_run(
+        run_id="literature_harness_retracted",
+        claim_pack=pack,
+    )
+
+    retracted_claims = [
+        claim
+        for claim in harness["claims"]
+        if claim["source_id"] == "paper_crc_2026_retracted"
+    ]
+    assert retracted_claims
+    assert {claim["review_status"] for claim in retracted_claims} == {"rejected"}
+    assert harness["release_decision"] == "block"
+    assert any(
+        delta["severity"] == "block_promotion"
+        and delta["delta_type"] == "retraction_or_quality_warning"
+        for delta in harness["deltas"]
+    )
