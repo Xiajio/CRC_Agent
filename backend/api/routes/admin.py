@@ -4,6 +4,7 @@ from typing import Any
 
 from fastapi import APIRouter, Request
 
+from backend.api.services.admin_release_dashboard import build_release_dashboard
 from src.config import load_settings
 from src.tools.manifest import build_tool_manifest_response
 
@@ -26,3 +27,8 @@ async def get_admin_tools(request: Request) -> dict[str, Any]:
     return build_tool_manifest_response(
         web_search_enabled=_web_search_enabled_from_request(request),
     )
+
+
+@router.get("/release-dashboard")
+async def get_admin_release_dashboard() -> dict[str, Any]:
+    return build_release_dashboard()

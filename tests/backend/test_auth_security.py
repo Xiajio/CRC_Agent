@@ -53,6 +53,10 @@ def _auth_client(*, user_token: str = "user-token", admin_token: str | None = "a
     async def admin_tools() -> dict[str, object]:
         return {"tools": []}
 
+    @app.get("/api/admin/release-dashboard")
+    async def admin_release_dashboard() -> dict[str, object]:
+        return {"runtime": {"auth": "admin"}}
+
     app.add_middleware(
         BearerAuthMiddleware,
         settings=RuntimeSettings(
@@ -81,6 +85,7 @@ def test_bearer_auth_required_for_api_routes() -> None:
         ("delete", "/api/patient-registry/patients"),
         ("delete", "/api/patient-registry/patients/123"),
         ("get", "/api/admin/tools"),
+        ("get", "/api/admin/release-dashboard"),
     ],
 )
 def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: str, path: str) -> None:
@@ -102,6 +107,7 @@ def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: 
         ("delete", "/api/patient-registry/patients"),
         ("delete", "/api/patient-registry/patients/123"),
         ("get", "/api/admin/tools"),
+        ("get", "/api/admin/release-dashboard"),
     ],
 )
 def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
@@ -122,6 +128,7 @@ def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
         ("delete", "/api/patient-registry/patients"),
         ("delete", "/api/patient-registry/patients/123"),
         ("get", "/api/admin/tools"),
+        ("get", "/api/admin/release-dashboard"),
     ],
 )
 def test_admin_endpoints_use_user_token_when_no_separate_admin_token(method: str, path: str) -> None:
