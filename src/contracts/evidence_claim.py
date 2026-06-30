@@ -18,16 +18,21 @@ JsonValue: TypeAlias = (
     | dict[str, "JsonValue"]
 )
 
-EffectDirection = Literal["benefit", "harm", "neutral", "mixed", "uncertain"]
+EffectDirection = Literal[
+    "benefit",
+    "harm",
+    "neutral",
+    "inconclusive",
+    "conflicting",
+]
 EvidenceGrade = Literal[
+    "guideline",
+    "systematic_review",
     "rct",
     "observational",
-    "systematic_review",
-    "meta_analysis",
-    "guideline",
-    "expert_consensus",
-    "case_report",
+    "case_series",
     "preclinical",
+    "expert_opinion",
     "unknown",
 ]
 RiskOfBias = Literal["low", "moderate", "high", "unclear", "not_applicable"]
@@ -39,36 +44,35 @@ ReviewStatus = Literal[
 LocalGuidelineConflict = Literal["none", "possible", "conflict", "unknown"]
 ApplicabilityToCrcContext = Literal["direct", "partial", "indirect", "unknown"]
 DeltaType = Literal[
-    "support",
+    "new_claim",
+    "supporting",
     "conflict",
-    "updates",
-    "supersedes",
-    "duplicates",
+    "negative_evidence",
     "safety_signal",
+    "retraction_or_quality_warning",
 ]
-DeltaSeverity = Literal["informational", "monitor", "review_required", "block"]
-IsolationZone = Literal[
-    "external_literature_search",
-    "project_evidence_pool",
-    "clinical_rag_index",
+DeltaSeverity = Literal["info", "review_required", "block_promotion"]
+ReleaseDecision = Literal[
+    "block",
+    "shadow_only",
+    "candidate_ready_for_human_review",
 ]
 
 EFFECT_DIRECTIONS: tuple[EffectDirection, ...] = (
     "benefit",
     "harm",
     "neutral",
-    "mixed",
-    "uncertain",
+    "inconclusive",
+    "conflicting",
 )
 EVIDENCE_GRADES: tuple[EvidenceGrade, ...] = (
+    "guideline",
+    "systematic_review",
     "rct",
     "observational",
-    "systematic_review",
-    "meta_analysis",
-    "guideline",
-    "expert_consensus",
-    "case_report",
+    "case_series",
     "preclinical",
+    "expert_opinion",
     "unknown",
 )
 RISK_OF_BIAS_LEVELS: tuple[RiskOfBias, ...] = (
@@ -96,23 +100,22 @@ APPLICABILITY_TO_CRC_CONTEXTS: tuple[ApplicabilityToCrcContext, ...] = (
     "unknown",
 )
 DELTA_TYPES: tuple[DeltaType, ...] = (
-    "support",
+    "new_claim",
+    "supporting",
     "conflict",
-    "updates",
-    "supersedes",
-    "duplicates",
+    "negative_evidence",
     "safety_signal",
+    "retraction_or_quality_warning",
 )
 DELTA_SEVERITIES: tuple[DeltaSeverity, ...] = (
-    "informational",
-    "monitor",
+    "info",
     "review_required",
-    "block",
+    "block_promotion",
 )
-ISOLATION_ZONES: tuple[IsolationZone, ...] = (
-    "external_literature_search",
-    "project_evidence_pool",
-    "clinical_rag_index",
+RELEASE_DECISIONS: tuple[ReleaseDecision, ...] = (
+    "block",
+    "shadow_only",
+    "candidate_ready_for_human_review",
 )
 CLINICAL_RAG_APPROVAL_STATUSES = frozenset(
     {
@@ -156,7 +159,7 @@ class SourceSpan:
     quote: str | None = None
 
     def __post_init__(self) -> None:
-        if self.page is not None and (not isinstance(self.page, int) or self.page < 1):
+        if self.page is not None and (type(self.page) is not int or self.page < 1):
             raise ValueError("source_span.page must be a positive integer")
 
     def to_dict(self) -> dict[str, Any]:
@@ -186,8 +189,10 @@ class PaperCandidate:
         _require_non_empty("source_id", self.source_id)
         _require_non_empty("title", self.title)
         _require_non_empty("url", self.url)
-        if self.publication_year is not None and self.publication_year < 1:
-            raise ValueError("publication_year must be positive")
+        if self.publication_year is not None and (
+            type(self.publication_year) is not int or self.publication_year < 1
+        ):
+            raise ValueError("publication_year must be a positive integer")
         if not isinstance(self.source_quality, SourceQuality):
             raise TypeError("source_quality must be SourceQuality")
         for index, claim in enumerate(self.extracted_claims):
@@ -261,7 +266,7 @@ class EvidenceClaim:
         )
         _validate_review_status(self.review_status)
         if self.sample_size is not None and (
-            not isinstance(self.sample_size, int) or self.sample_size < 1
+            type(self.sample_size) is not int or self.sample_size < 1
         ):
             raise ValueError("sample_size must be a positive integer when provided")
         if not isinstance(self.source_quality, SourceQuality):
@@ -300,7 +305,7 @@ class EvidenceClaim:
 class EvidenceDelta:
     delta_id: str
     claim_id: str
-    related_claim_id: str
+    related_claim_id: str | None
     delta_type: DeltaType
     summary: str
     severity: DeltaSeverity
@@ -309,13 +314,14 @@ class EvidenceDelta:
     def __post_init__(self) -> None:
         _require_non_empty("delta_id", self.delta_id)
         _require_non_empty("claim_id", self.claim_id)
-        _require_non_empty("related_claim_id", self.related_claim_id)
+        if self.related_claim_id is not None:
+            _require_non_empty("related_claim_id", self.related_claim_id)
         _require_non_empty("summary", self.summary)
         _require_non_empty("recommended_action", self.recommended_action)
         _validate_choice("delta_type", self.delta_type, DELTA_TYPES)
         _validate_choice("severity", self.severity, DELTA_SEVERITIES)
 
-    def to_dict(self) -> dict[str, str]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "delta_id": self.delta_id,
             "claim_id": self.claim_id,
@@ -330,63 +336,47 @@ class EvidenceDelta:
 @dataclass(frozen=True)
 class IsolationCheck:
     check_id: str
-    zone: IsolationZone
-    subject_id: str
     passed: bool
-    forbidden_behavior: str
-    promotion_gate: str
-    notes: str | None = None
+    details: dict[str, JsonValue]
 
     def __post_init__(self) -> None:
         _require_non_empty("check_id", self.check_id)
-        _require_non_empty("subject_id", self.subject_id)
-        _require_non_empty("forbidden_behavior", self.forbidden_behavior)
-        _require_non_empty("promotion_gate", self.promotion_gate)
-        _validate_choice("zone", self.zone, ISOLATION_ZONES)
         if type(self.passed) is not bool:
             raise TypeError("passed must be bool")
+        if not isinstance(self.details, dict):
+            raise TypeError("details must be a dictionary")
+        validate_json_safe(self.details, path="details")
 
     def to_dict(self) -> dict[str, Any]:
-        return _omit_none(
-            {
-                "check_id": self.check_id,
-                "zone": self.zone,
-                "subject_id": self.subject_id,
-                "passed": self.passed,
-                "forbidden_behavior": self.forbidden_behavior,
-                "promotion_gate": self.promotion_gate,
-                "notes": self.notes,
-            }
-        )
+        return {
+            "check_id": self.check_id,
+            "passed": self.passed,
+            "details": _copy_json_safe(self.details, path="details"),
+        }
 
 
 @dataclass(frozen=True)
 class LiteratureHarnessRun:
     run_id: str
-    retrieval_timestamp: str
-    candidates: list[PaperCandidate]
+    run_level: str
+    claim_pack_version: str
+    evidence_index_version: str
+    summary: dict[str, JsonValue]
     claims: list[EvidenceClaim]
     deltas: list[EvidenceDelta]
     isolation_checks: list[IsolationCheck]
-    created_from: str
-    clinical_rag_ingest_allowed: bool = False
-    summary: dict[str, JsonValue] | None = None
+    release_decision: ReleaseDecision
+    validation_errors: list[dict[str, JsonValue]]
 
     def __post_init__(self) -> None:
         _require_non_empty("run_id", self.run_id)
-        _require_non_empty("retrieval_timestamp", self.retrieval_timestamp)
-        _require_non_empty("created_from", self.created_from)
-        if type(self.clinical_rag_ingest_allowed) is not bool:
-            raise TypeError("clinical_rag_ingest_allowed must be bool")
-        if self.clinical_rag_ingest_allowed:
-            raise ValueError(
-                "clinical_rag_ingest_allowed must remain False in Step 10"
-            )
-        if self.summary is not None:
-            validate_json_safe(self.summary, path="summary")
-        for candidate in self.candidates:
-            if not isinstance(candidate, PaperCandidate):
-                raise TypeError("candidates must contain PaperCandidate")
+        _require_non_empty("run_level", self.run_level)
+        _require_non_empty("claim_pack_version", self.claim_pack_version)
+        _require_non_empty("evidence_index_version", self.evidence_index_version)
+        _validate_choice("release_decision", self.release_decision, RELEASE_DECISIONS)
+        if not isinstance(self.summary, dict):
+            raise TypeError("summary must be a dictionary")
+        validate_json_safe(self.summary, path="summary")
         for claim in self.claims:
             if not isinstance(claim, EvidenceClaim):
                 raise TypeError("claims must contain EvidenceClaim")
@@ -396,23 +386,27 @@ class LiteratureHarnessRun:
         for check in self.isolation_checks:
             if not isinstance(check, IsolationCheck):
                 raise TypeError("isolation_checks must contain IsolationCheck")
+        for index, error in enumerate(self.validation_errors):
+            if not isinstance(error, dict):
+                raise TypeError("validation_errors must contain dictionaries")
+            validate_json_safe(error, path=f"validation_errors[{index}]")
 
     def to_dict(self) -> dict[str, Any]:
-        return _omit_none(
-            {
-                "run_id": self.run_id,
-                "retrieval_timestamp": self.retrieval_timestamp,
-                "candidates": [candidate.to_dict() for candidate in self.candidates],
-                "claims": [claim.to_dict() for claim in self.claims],
-                "deltas": [delta.to_dict() for delta in self.deltas],
-                "isolation_checks": [
-                    check.to_dict() for check in self.isolation_checks
-                ],
-                "clinical_rag_ingest_allowed": self.clinical_rag_ingest_allowed,
-                "summary": _run_summary(self) if self.summary is None else self.summary,
-                "created_from": self.created_from,
-            }
-        )
+        return {
+            "run_id": self.run_id,
+            "run_level": self.run_level,
+            "claim_pack_version": self.claim_pack_version,
+            "evidence_index_version": self.evidence_index_version,
+            "summary": _copy_json_safe(self.summary, path="summary"),
+            "claims": [claim.to_dict() for claim in self.claims],
+            "deltas": [delta.to_dict() for delta in self.deltas],
+            "isolation_checks": [check.to_dict() for check in self.isolation_checks],
+            "release_decision": self.release_decision,
+            "validation_errors": [
+                _copy_json_safe(error, path=f"validation_errors[{index}]")
+                for index, error in enumerate(self.validation_errors)
+            ],
+        }
 
 
 def make_claim_id(
@@ -445,7 +439,7 @@ def make_claim_id(
 def make_delta_id(
     *,
     claim_id: str,
-    related_claim_id: str,
+    related_claim_id: str | None,
     delta_type: str,
 ) -> str:
     payload = {
@@ -455,7 +449,7 @@ def make_delta_id(
     }
     stable_hash = _stable_hash(payload)
     return (
-        f"delta_{_slug(claim_id)}_{_slug(related_claim_id)}_"
+        f"delta_{_slug(claim_id)}_{_slug(related_claim_id or 'none')}_"
         f"{_slug(delta_type)}_{stable_hash}"
     )
 
@@ -491,15 +485,6 @@ def _copy_json_safe(value: JsonValue, *, path: str) -> JsonValue:
             for key, item in value.items()
         }
     return value
-
-
-def _run_summary(run: LiteratureHarnessRun) -> dict[str, int]:
-    return {
-        "candidate_count": len(run.candidates),
-        "claim_count": len(run.claims),
-        "delta_count": len(run.deltas),
-        "isolation_check_count": len(run.isolation_checks),
-    }
 
 
 def _stable_hash(payload: dict[str, JsonValue]) -> str:
@@ -547,8 +532,8 @@ __all__ = [
     "DELTA_TYPES",
     "EFFECT_DIRECTIONS",
     "EVIDENCE_GRADES",
-    "ISOLATION_ZONES",
     "LOCAL_GUIDELINE_CONFLICTS",
+    "RELEASE_DECISIONS",
     "REVIEW_STATUSES",
     "RISK_OF_BIAS_LEVELS",
     "ApplicabilityToCrcContext",
@@ -559,11 +544,11 @@ __all__ = [
     "EvidenceDelta",
     "EvidenceGrade",
     "IsolationCheck",
-    "IsolationZone",
     "JsonValue",
     "LiteratureHarnessRun",
     "LocalGuidelineConflict",
     "PaperCandidate",
+    "ReleaseDecision",
     "ReviewStatus",
     "RiskOfBias",
     "SourceQuality",

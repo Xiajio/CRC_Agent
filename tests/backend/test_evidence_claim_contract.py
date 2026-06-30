@@ -5,6 +5,8 @@ import pytest
 from src.contracts.evidence_claim import (
     EvidenceClaim,
     EvidenceDelta,
+    IsolationCheck,
+    LiteratureHarnessRun,
     PaperCandidate,
     SourceQuality,
     SourceSpan,
@@ -26,6 +28,50 @@ def _quality(**overrides: bool) -> SourceQuality:
     }
     payload.update(overrides)
     return SourceQuality(**payload)
+
+
+def _claim(**overrides: object) -> EvidenceClaim:
+    payload = {
+        "claim_id": "claim_test",
+        "source_id": "paper_crc_2026_001",
+        "claim_text": "Intervention X changed overall survival.",
+        "population": "adults with colorectal cancer",
+        "intervention": "Intervention X",
+        "comparator": "standard of care",
+        "outcome": "overall_survival",
+        "effect_direction": "benefit",
+        "effect_size": "HR 0.82",
+        "uncertainty": "95% CI 0.70-0.96",
+        "evidence_grade": "rct",
+        "study_design": "randomized_controlled_trial",
+        "sample_size": 820,
+        "risk_of_bias": "moderate",
+        "source_quality": _quality(),
+        "local_guideline_conflict": "none",
+        "applicability_to_crc_context": "partial",
+        "source_span": _span(),
+        "review_status": "candidate",
+        "created_from": "literature_claim_pack_v0",
+    }
+    payload.update(overrides)
+    return EvidenceClaim(**payload)  # type: ignore[arg-type]
+
+
+def _candidate(**overrides: object) -> PaperCandidate:
+    payload = {
+        "source_id": "paper_crc_2026_001",
+        "title": "Trial of Intervention X in metastatic colorectal cancer",
+        "url": "https://example.org/paper_crc_2026_001",
+        "publication_year": 2026,
+        "venue": "Example Oncology Journal",
+        "candidate_summary": "Reports changed overall survival.",
+        "retrieval_query": "crc intervention x overall survival",
+        "retrieval_timestamp": "2026-06-30T00:00:00+08:00",
+        "source_quality": _quality(),
+        "extracted_claims": [],
+    }
+    payload.update(overrides)
+    return PaperCandidate(**payload)  # type: ignore[arg-type]
 
 
 def test_make_claim_id_is_stable_and_content_addressed() -> None:
@@ -260,3 +306,147 @@ def test_paper_candidate_and_delta_serialize() -> None:
     assert candidate.to_dict()["extracted_claims"][0]["effect_direction"] == "benefit"
     assert delta.to_dict()["delta_type"] == "conflict"
     assert delta.to_dict()["severity"] == "review_required"
+
+
+def test_literature_harness_run_and_isolation_check_serialize_release_gate() -> None:
+    claim = _claim()
+    delta = EvidenceDelta(
+        delta_id="delta_claim_1_claim_2_conflict",
+        claim_id=claim.claim_id,
+        related_claim_id=None,
+        delta_type="conflict",
+        summary="Benefit and neutral claims disagree on overall survival.",
+        severity="review_required",
+        recommended_action="human_evidence_review",
+    )
+    isolation_check = IsolationCheck(
+        check_id="iso_no_clinical_rag_promotion",
+        passed=True,
+        details={
+            "zone": "external_literature_search",
+            "forbidden_behavior": "clinical_rag_ingest",
+            "promotion_gate": "human_evidence_review",
+        },
+    )
+    run = LiteratureHarnessRun(
+        run_id="lit_run_20260630_001",
+        run_level="L0_literature_contract",
+        claim_pack_version="literature_claim_pack_v0",
+        evidence_index_version="rag_crc_guideline_20260620",
+        summary={"claim_count": 1, "delta_count": 1},
+        claims=[claim],
+        deltas=[delta],
+        isolation_checks=[isolation_check],
+        release_decision="shadow_only",
+        validation_errors=[],
+    )
+
+    payload = run.to_dict()
+
+    assert payload["run_level"] == "L0_literature_contract"
+    assert payload["claim_pack_version"] == "literature_claim_pack_v0"
+    assert payload["evidence_index_version"] == "rag_crc_guideline_20260620"
+    assert payload["release_decision"] == "shadow_only"
+    assert payload["validation_errors"] == []
+    assert payload["isolation_checks"] == [
+        {
+            "check_id": "iso_no_clinical_rag_promotion",
+            "passed": True,
+            "details": {
+                "zone": "external_literature_search",
+                "forbidden_behavior": "clinical_rag_ingest",
+                "promotion_gate": "human_evidence_review",
+            },
+        }
+    ]
+
+
+def test_literature_harness_run_rejects_invalid_release_decision() -> None:
+    with pytest.raises(ValueError, match="release_decision"):
+        LiteratureHarnessRun(
+            run_id="lit_run_bad_release_decision",
+            run_level="L0_literature_contract",
+            claim_pack_version="literature_claim_pack_v0",
+            evidence_index_version="rag_crc_guideline_20260620",
+            summary={},
+            claims=[],
+            deltas=[],
+            isolation_checks=[],
+            release_decision="pass",
+            validation_errors=[],
+        )
+
+
+def test_numeric_fields_reject_bool_values() -> None:
+    with pytest.raises(ValueError, match="source_span.page"):
+        SourceSpan(page=True)
+
+    with pytest.raises(ValueError, match="publication_year"):
+        _candidate(publication_year=True)
+
+    with pytest.raises(ValueError, match="sample_size"):
+        _claim(sample_size=True)
+
+
+def test_step10_contract_enums_accept_plan_values() -> None:
+    inconclusive_claim = _claim(
+        claim_id="claim_inconclusive_case_series",
+        effect_direction="inconclusive",
+        evidence_grade="case_series",
+    )
+    conflicting_claim = _claim(
+        claim_id="claim_conflicting_expert_opinion",
+        effect_direction="conflicting",
+        evidence_grade="expert_opinion",
+    )
+    deltas = [
+        EvidenceDelta(
+            delta_id="delta_new_claim",
+            claim_id=inconclusive_claim.claim_id,
+            related_claim_id=None,
+            delta_type="new_claim",
+            summary="A new claim was extracted.",
+            severity="info",
+            recommended_action="human_evidence_review",
+        ),
+        EvidenceDelta(
+            delta_id="delta_supporting",
+            claim_id=inconclusive_claim.claim_id,
+            related_claim_id=conflicting_claim.claim_id,
+            delta_type="supporting",
+            summary="A related claim supports this signal.",
+            severity="review_required",
+            recommended_action="compare_claims",
+        ),
+        EvidenceDelta(
+            delta_id="delta_negative_evidence",
+            claim_id=inconclusive_claim.claim_id,
+            related_claim_id=conflicting_claim.claim_id,
+            delta_type="negative_evidence",
+            summary="Negative evidence should remain visible.",
+            severity="review_required",
+            recommended_action="compare_claims",
+        ),
+        EvidenceDelta(
+            delta_id="delta_retraction_or_quality_warning",
+            claim_id=conflicting_claim.claim_id,
+            related_claim_id=None,
+            delta_type="retraction_or_quality_warning",
+            summary="A quality warning blocks promotion.",
+            severity="block_promotion",
+            recommended_action="remove_from_promotion_queue",
+        ),
+    ]
+
+    assert inconclusive_claim.to_dict()["effect_direction"] == "inconclusive"
+    assert inconclusive_claim.to_dict()["evidence_grade"] == "case_series"
+    assert conflicting_claim.to_dict()["effect_direction"] == "conflicting"
+    assert conflicting_claim.to_dict()["evidence_grade"] == "expert_opinion"
+    assert [delta.to_dict()["delta_type"] for delta in deltas] == [
+        "new_claim",
+        "supporting",
+        "negative_evidence",
+        "retraction_or_quality_warning",
+    ]
+    assert deltas[0].to_dict()["related_claim_id"] is None
+    assert deltas[-1].to_dict()["severity"] == "block_promotion"
