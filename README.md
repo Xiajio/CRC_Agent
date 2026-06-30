@@ -6,9 +6,12 @@
 
 | 场景 | 功能 |
 |------|------|
-| **患者端** | 智能分诊问答（门诊分诊）、症状采集、病历资料上传、身份登记、自报告卡片生成 |
-| **医生端** | 意图分类 → 规划 → 知识检索 / 影像分析 / 病理分析 / 病例查询 / 网络搜索 → 临床评估 → 诊断 → TNM 分期 → 治疗决策 → 批判审查 → 证据引用 → 质量评估 → 记忆管理，多模态医生视图与患者绑定上下文注入 |
+| **患者端** | 智能分诊问答（门诊分诊）、症状采集、病历资料上传、身份登记、自报告卡片生成；**CRC 结直肠癌分诊子流程**：7 阶段交互式问卷（identity → vitals → red_flags → symptom_cluster → differential → tests → final），安全规则驱动的 disposition，评估保存到患者记录 |
+| **医生端** | 意图分类 → 规划 → 知识检索 / 影像分析 / 病理分析 / 病例查询 / 网络搜索 → 临床评估 → 诊断 → TNM 分期 → 治疗决策 → 批判审查 → 证据引用 → 质量评估 → 记忆管理，多模态医生视图与患者绑定上下文注入；**Doctor Review Cockpit**：患者事实时间线 + agent draft + provenance view + 字段级操作追踪 |
 | **后台端** | 智能体运行观测控制台：全局健康 / 会话观测 / 上下文记忆审计 / 规则目录 / 工具清单与可达性 / 学习准备 / 执行链路追踪 / 证据池 / 只读边界，9 个子任务页面 |
+| **CRC 安全规则** | `ClinicalSafetyPolicyVersion v0`：deterministic 严重程度分层（emergency > urgent > backfill > routine），`hard_fail_if_missed` 红旗规则不可被 LLM 降低，变异测试包（CRC mutation pack）驱动 HarnessRun 发布门禁 |
+| **患者记录** | `ClinicalAssertion` 多源患者事实规范化（triage / patient_upload / doctor_note 等来源），patient-records-panel 时间线视图，patient-care-cards 护理卡片，全链路 assessment_id → record_id → care_card 可追溯 |
+| **发布门禁** | `HarnessRun`（L0/L1 变异测试）+ `ReleaseSafetyReport`，版本链（AgentPolicyVersion / ClinicalSafetyPolicyVersion / EvidenceIndexVersion / JudgeRubricVersion），`hard_fail_count > 0` 时 release_decision = `block` |
 | **知识检索** | 混合 RAG 引擎：Chroma 向量检索 + BM25 关键词检索（jieba 分词） + Cross-Encoder / Cohere / LLM 重排序 |
 | **影像 AI** | YOLOv8 肿瘤检测、U-Net 肿瘤分割、PyRadiomics 影像组学特征提取 |
 | **病理 AI** | CLAM 病理切片分类（WSI 全切片图像）、热力图生成 |
@@ -24,7 +27,9 @@
 │  Frontend (React 18 + TypeScript + Vite + TailwindCSS + GSAP)              │
 │  pages/workspace-page  ·  features/chat/cards/doctor/database/            │
 │  features/patient-identity/registry/roadmap/execution-plan/               │
+│  features/patient-crc-triage/  ·  features/patient-records/               │
 │  features/anatomy/  ·  features/agent-admin/  ·  components/motion/       │
+│  features/doctor/ (doctor-review-cockpit · doctor-report-draft-view)      │
 │  app/store (stream-reducer + 中文事件标签) · app/api (SSE trace)          │
 │  features/workspace/ (workspace-surface-switcher: 患者/医生/后台 三工作台) │
 │  styles/ (globals.css + tokens.css + style-architecture-contract)         │
@@ -33,7 +38,7 @@
 ┌────────────────────────▼───────────────────────────────────────────────────┐
 │  Backend BFF (FastAPI + Uvicorn)                                            │
 │  routes/ sessions · chat · database · patient-registry ·                   │
-│          uploads · assets   (21 个 REST 端点)                               │
+│          uploads · assets · crc_triage · doctor_review · admin             │
 │  services/ graph_service · graph_factory · session_store · sqlite_store   │
 │            upload_service · patient_registry_service ·                     │
 │            patient_commands · patient_context_resolver ·                   │
@@ -45,6 +50,7 @@
 │            card_payload_sanitizer · reference_normalizer ·                 │
 │            message_content                                                  │
 │  schemas/ events (18 种, 含 trace.*) · responses · database · registry    │
+│           doctor_review · doctor_action_trace                               │
 └────────────────────────┬───────────────────────────────────────────────────┘
                          │ SceneGraphRouter: patient_graph / doctor_graph
 ┌────────────────────────▼───────────────────────────────────────────────────┐
@@ -54,8 +60,13 @@
 │            StructuredSummary 分层记忆)                                      │
 │  nodes/ (27 个 Python 模块, 23 个 NodeName)  ·  policies/  ·  prompts/    │
 │  rag/ (Chroma + BM25 + 混合检索 + 重排序)  ·  tools/                      │
-│  services/ (LLM服务/网络搜索/文档转换/病例Excel/患者卡片投射)              │
+│  services/ (LLM服务/网络搜索/文档转换/病例Excel/患者卡片投射/              │
+│            临床安全策略/CRC分诊流程/ClinicalAssertion投射)                  │
+│  contracts/ (harness · clinical_assertion · release_safety_report)         │
 └──────────────────────────────────────────────────────────────────────────┘
+     ↑
+config/ (intended_use_profiles.yaml · safety_policy.yaml)
+reports/ (harness/ · release_safety/)
 ```
 
 ### 医生端 Agent 工作流（20 个节点）
@@ -91,12 +102,19 @@ INTENT → PLANNER → CLINICAL_ENTRY_RESOLVER → OUTPATIENT_TRIAGE / ASSESSMEN
 
 ```
 LangG/
+├── config/                       # 可审核策略配置
+│   ├── intended_use_profiles.yaml # 三类使用场景边界（患者CRC分诊/医生复核/研究工作台）
+│   └── safety_policy.yaml        # ClinicalSafetyPolicyVersion v0（CRC 红旗规则 + 严重程度顺序）
 ├── src/                          # Python 核心：LangGraph Agent
 │   ├── graph_builder.py          # 双图构建（doctor / patient）+ 路由函数 + 节点计时
 │   ├── state.py                  # CRCAgentState（~60 字段）+ PlanStep + StructuredSummary + 证据链 + Reducer
 │   ├── config.py                 # 分层配置（LLM / RAG / 文档转换 / 网络搜索 / 检查点 / 可观测性）
 │   ├── checkpoint.py             # 检查点工厂（Memory / SQLite / Postgres / Redis）
 │   ├── observability.py          # LangSmith 追踪集成
+│   ├── contracts/                # 跨模块共享 schema
+│   │   ├── harness.py            # HarnessRun 构建与评估（block/shadow_only/pass 发布决策）
+│   │   ├── clinical_assertion.py # ClinicalAssertion 数据结构（多源患者事实规范化 + ID 哈希）
+│   │   └── release_safety_report.py # ReleaseSafetyReport（版本链 + hard_fail_summary + rollback_target）
 │   ├── nodes/                    # Agent 节点实现（27 个 Python 文件）
 │   │   ├── intent_nodes.py       # 意图分类（10 种意图 + 多任务）
 │   │   ├── planner.py            # 任务分解 → PlanStep DAG（含自修正、上下文诊断）
@@ -111,6 +129,7 @@ LangG/
 │   │   ├── evaluation_nodes.py   # LLM-Judge 质量评估（四维评分）
 │   │   ├── general_nodes.py      # 通用对话 + 回复合成
 │   │   ├── clinical_entry_nodes.py # 临床入口路由
+│   │   ├── clinical_nodes.py     # 临床节点统一导出入口（向后兼容接口）
 │   │   ├── triage_nodes.py       # 门诊分诊问答 + 临床入口解析
 │   │   ├── chat_main_node.py     # 患者访谈对话（结构化字段采集）
 │   │   ├── memory_nodes.py       # 记忆管理（分层摘要 + 令牌预算压缩）
@@ -171,18 +190,25 @@ LangG/
 │   │   ├── virtual_database_service.py # 虚拟病例数据库
 │   │   ├── patient_card_projector.py  # 患者卡片多源投射
 │   │   ├── provider_capabilities.py   # LLM 提供者能力检测
-│   │   └── local_hf_chat.py     # 本地 HF/vLLM 对话模型
+│   │   ├── local_hf_chat.py     # 本地 HF/vLLM 对话模型
+│   │   ├── clinical_safety_policy.py  # CRC 安全策略引擎（deterministic 严重程度计算/规则评估/disposition 合并）
+│   │   ├── patient_triage_protocol.py # 患者分诊协议
+│   │   ├── crc_triage_flow.py   # CRC 分诊流程状态机（7 阶段：identity→vitals→red_flags→symptom_cluster→differential→tests→final）
+│   │   └── clinical_assertion_projection.py # 从患者 records 生成 ClinicalAssertion projection
 │   └── __init__.py
 ├── backend/                      # FastAPI BFF 层
 │   ├── app.py                    # 应用工厂 + 生命周期引导 + CORS/认证中间件
 │   └── api/
-│       ├── routes/               # REST API 路由（21 个端点）
+│       ├── routes/               # REST API 路由
 │       │   ├── sessions.py       # 会话 CRUD + 患者身份绑定（6 端点）
 │       │   ├── chat.py           # SSE 流式对话
 │       │   ├── database.py       # 病例数据库查询/搜索/更新（5 端点）
 │       │   ├── patient_registry.py # 患者登记处 CRUD（7 端点）
 │       │   ├── uploads.py        # 文件上传
-│       │   └── assets.py         # 会话资产文件服务
+│       │   ├── assets.py         # 会话资产文件服务
+│       │   ├── crc_triage.py     # CRC 分诊评估保存（含 safety_policy_version / matched_rules / hard_fail_flags）
+│       │   ├── doctor_review.py  # 医生复核（ClinicalAssertion projection + DoctorActionTrace 记录）
+│       │   └── admin.py          # 管理 API（工具清单与可达性）
 │       ├── services/             # 后端服务
 │       │   ├── graph_service.py  # 图编排（SSE 流式 + 会话锁 + 心跳）
 │       │   ├── graph_factory.py  # 图工厂（real / fixture 模式）
@@ -209,7 +235,9 @@ LangG/
 │       │   ├── events.py         # SSE 事件类型（18 种）
 │       │   ├── responses.py      # REST 响应模型
 │       │   ├── database.py       # 数据库查询/响应模型
-│       │   └── patient_registry.py # 注册处请求/响应模型
+│       │   ├── patient_registry.py # 注册处请求/响应模型
+│       │   ├── doctor_review.py  # 医生复核 schemas（DoctorReviewDraft / DoctorReviewResponse / provenance refs）
+│       │   └── doctor_action_trace.py # DoctorActionTrace（字段级操作 + 10 种 reason_code）
 │       └── adapters/             # 前端适配层（6 个生产模块 + 9 个测试）
 │           ├── state_snapshot.py # 代理状态 → 前端快照
 │           ├── event_normalizer.py # 图输出 → SSE 事件
@@ -217,7 +245,7 @@ LangG/
 │           ├── card_payload_sanitizer.py # 卡片负载清理 + 图像预览
 │           ├── reference_normalizer.py   # 引用规范化
 │           └── message_content.py # 消息内容清理
-├── frontend/                     # React SPA 前端（141 个 TypeScript 源文件）
+├── frontend/                     # React SPA 前端（TypeScript 源文件）
 │   └── src/
 │       ├── main.tsx              # 入口
 │       ├── app/
@@ -235,9 +263,14 @@ LangG/
 │       │   ├── chat/             # 对话面板（流式渲染/内联卡片/思维链/延迟显示）
 │       │   ├── cards/            # 卡片渲染系统（11 种卡片 + 分诊交互卡）
 │       │   ├── doctor/           # 医生场景布局 + 事件流 + 数据库视图 + 多模态视图
+│       │   │   ├── doctor-review-cockpit.tsx  # Doctor Review Cockpit（患者事实时间线 + draft + provenance）
+│       │   │   ├── doctor-report-draft-view.tsx # 医生报告草案视图
+│       │   │   └── doctor-review-events.ts    # 医生复核事件类型（accept/edit/reject/escalate/...）
 │       │   ├── database/         # 数据库工作台（搜索/过滤/表格/编辑/自然语言查询）
+│       │   ├── patient-crc-triage/ # 患者 CRC 分诊面板（7 阶段交互问卷 + 安全规则 + 评估保存）
 │       │   ├── patient-identity/ # 患者身份面板
 │       │   ├── patient-profile/  # 患者档案面板
+│       │   ├── patient-records/  # 患者记录（patient-records-panel + patient-care-cards）
 │       │   ├── patient-registry/ # 患者登记处（浏览器/搜索/预览/告警/记录）
 │       │   ├── roadmap/          # 临床路线图面板
 │       │   ├── execution-plan/   # 执行计划面板 + 参考文献列表
@@ -250,12 +283,15 @@ LangG/
 │       └── styles/               # 全局样式（globals.css + tokens.css + style-architecture-contract）
 ├── tests/                        # 测试
 │   ├── frontend/                 # 前端集成测试（workspace-scenes / conversation-panel 等）
-│   ├── backend/                  # 后端测试（50+ 文件，含 agent tool registry / context maintenance / RAG evidence / production readiness 等）
+│   ├── backend/                  # 后端测试（含 clinical_safety_policy / CRC triage mutation / doctor_action_trace / production readiness 等）
 │   ├── e2e/                      # Playwright E2E 测试
 │   │   ├── acceptance/           # 验收测试规格（frontend-regression-contracts）
 │   │   ├── demo/                 # 演示回放与 SQLite session 持久化回归
 │   │   └── visual/               # 视觉风格架构测试
 │   └── fixtures/                 # 测试固定数据
+├── reports/                      # 运行时生成报告（不含 API key / prompt secret）
+│   ├── harness/                  # HarnessRun 输出（harness_*.json）
+│   └── release_safety/           # ReleaseSafetyReport 输出（release_safety_*.json）
 ├── scripts/                      # 启动与管理脚本
 │   ├── start_real.ps1            # 一键启动（后端 + 前端）
 │   ├── start_real.cmd            # CMD 版本一键启动
@@ -271,6 +307,7 @@ LangG/
 │   ├── run_sqlite_session_persistence_playwright.cjs # SQLite session 持久化回归
 │   ├── prepare_acceptance_case_db.py  # 验收测试数据库准备
 │   ├── run_e2e_full_acceptance.ps1   # E2E 验收测试
+│   ├── run_crc_harness_replay.py # CRC 变异测试 HarnessRun 回放
 │   ├── capture_graph_fixtures.py # 图固定数据捕获
 │   ├── generate_project_intro_pdf.py # 项目介绍 PDF 生成
 │   └── backfill_tumor_region_codes.py # 肿瘤区域编码回填
@@ -493,6 +530,21 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start_demo.ps1
 # 后端单元/集成测试（pytest）
 pytest tests/backend/
 
+# CRC 临床安全策略单测
+pytest tests/backend/test_clinical_safety_policy.py
+
+# CRC 变异测试包
+pytest tests/backend/test_crc_triage_mutation_pack.py
+
+# CRC 分诊评估保存一致性
+pytest tests/backend/test_crc_triage_save.py
+
+# 医生操作追踪
+pytest tests/backend/test_doctor_action_trace.py
+
+# CRC HarnessRun 回放（生成 reports/harness/ 和 reports/release_safety/）
+python scripts/run_crc_harness_replay.py
+
 # 前端单元测试（vitest）
 cd frontend && npm test
 
@@ -628,6 +680,88 @@ Agent 核心由 Planner 生成的 `PlanStep` DAG 动态驱动：支持原子步�
 
 `features/anatomy/` 提供 SVG 结直肠解剖区域图，支持 10 个解剖区域（盲肠、升结肠、肝曲、横结肠、脾曲、降结肠、乙状结肠、直肠乙状结肠交界、直肠、肛门）的交互高亮与选择，用于多模态视图中的肿瘤位置标注。
 
+### ClinicalSafetyPolicyVersion（安全策略版本化）
+
+CRC 安全规则与 LLM 解耦，以独立、可版本化、可测试的 `config/safety_policy.yaml` 管理。规则评估函数 `evaluate_clinical_safety_policy()` 是 deterministic 的——相同输入必然得到相同 `disposition`。LLM 只负责信息抽取和措辞，不独占 `emergency`/`urgent` 判断。
+
+严重程度顺序：`emergency > urgent > backfill > routine`。标注 `hard_fail_if_missed: true` 的规则（如肠梗阻红旗、便血 + 年龄 ≥50）不可被任何 prompt 降低。`disposition_minimum` 字段保证多规则冲突时选最高严重程度（`choose_highest_severity` fallback）。
+
+策略输出结构：
+```json
+{
+  "disposition": "urgent",
+  "matched_rules": ["rectal_bleeding_age_escalation"],
+  "safety_policy_version": "crc_safety_policy_v0",
+  "hard_fail_flags": ["rectal_bleeding_age_escalation"],
+  "patient_message_key": "urgent_clinical_review"
+}
+```
+
+### CRC 分诊流程状态机
+
+`src/services/crc_triage_flow.py` 实现 7 阶段 CRC 分诊状态机：`identity → vitals → red_flags → symptom_cluster → differential → tests → final`。每阶段采集结构化字段（`CrcTriageAnswer`），集成安全策略引擎实时合并 disposition，生成 `CrcTriageProtocolState` 快照。
+
+前端 `features/patient-crc-triage/` 提供交互式问卷面板，完成后通过 `/api/sessions/{session_id}/crc-triage/save-assessment` 保存评估到患者登记处记录，实现 `assessment_id → record_id → care_card` 全链路追溯。
+
+### HarnessRun 与 ReleaseSafetyReport（发布门禁）
+
+`src/contracts/harness.py` 实现 `build_harness_run()`，读取 `CRC mutation pack`（变异测试用例包），对每个用例用 `ClinicalSafetyPolicy` deterministic 评估，生成 `HarnessRun` JSON。`release_decision` 逻辑：
+
+- `hard_fail_count > 0` → `block`（阻断发布）
+- `failed > 0` → `shadow_only`（仅影子模式）
+- 全部通过 → `pass`
+
+`src/contracts/release_safety_report.py` 实现 `build_release_safety_report()`，绑定完整版本链（`AgentPolicyVersion` / `ClinicalSafetyPolicyVersion` / `EvidenceIndexVersion` / `JudgeRubricVersion`）和 `rollback_target`。Harness 输出存储在 `reports/harness/`，发布报告存储在 `reports/release_safety/`。
+
+```bash
+# 运行 CRC 变异测试 harness
+python scripts/run_crc_harness_replay.py
+```
+
+任何 prompt / model / RAG / tool 变更在进入默认路径前必须绑定一次通过的 HarnessRun 和 ReleaseSafetyReport。
+
+### ClinicalAssertion 多源患者事实
+
+`src/contracts/clinical_assertion.py` 定义 `ClinicalAssertion` 数据结构，将来自不同来源（`triage` / `patient_upload` / `doctor_note` / `database_snapshot` / `care_card` / `model_draft`）的患者事实规范化为可追溯断言：
+
+- **`NormalizedFact`**：事实类型（`condition_signal` / `symptom` / `risk_disposition` / `missing_information` / `test_status` / `safety_rule_match` / `document_fact`）+ 名称 + JSON 安全值
+- **`EvidenceRef`**：来源 kind + id + field 三元组，支持追溯到具体记录字段
+- **`reviewed_status`** 闭环：`unreviewed → accepted / edited / rejected / needs_evidence / unsafe`
+
+`assertion_id` 由 source + patient_id + source_object_id + normalized_fact + evidence_refs 的 SHA-256 哈希生成，保证同一事实幂等。`src/services/clinical_assertion_projection.py` 从患者 records 批量生成 assertion projection，供 Doctor Review Cockpit 消费。
+
+### Doctor Review Cockpit 与 DoctorActionTrace
+
+`features/doctor/doctor-review-cockpit.tsx` 提供医生复核界面：
+- **左侧**：患者事实时间线（triage assessment / patient records / care cards / upload summary）
+- **中间**：agent draft（摘要 / 风险点 / report draft）
+- **右侧**：provenance view（patient fact refs / RAG refs / citation confidence）
+- **底部**：医生操作（accept / edit / reject / escalate / request_evidence / mark_unsafe）
+
+`backend/api/schemas/doctor_action_trace.py` 定义 `DoctorActionTrace`，记录字段级操作：
+
+```json
+{
+  "action_type": "edit",
+  "target_object": "draft.risk_summary",
+  "before_after": { "before": "建议观察", "after": "建议尽快线下临床评估" },
+  "reason_code": "unsafe_disposition",
+  "reviewer_role": "physician_reviewer"
+}
+```
+
+`reason_code` 枚举：`fact_wrong` / `missing_red_flag` / `unsupported_claim` / `bad_tone` / `workflow_mismatch` / `citation_not_traceable` / `missing_information` / `unsafe_disposition` / `evidence_conflict` / `template_mismatch`。医生操作不直接覆盖 `ClinicalSafetyPolicyVersion`，不自动进入模型训练集，默认脱敏不记录 hidden chain-of-thought。
+
+### IntendedUseProfile（使用边界声明）
+
+`config/intended_use_profiles.yaml` 声明三类场景的使用边界：
+
+| 场景 | user_type | 禁止任务 |
+|------|-----------|---------|
+| `patient_crc_triage` | patient | 最终诊断 / 治疗决策 / 筛查结论 / 将红旗归因为良性 |
+| `doctor_review` | clinician | 自动签名 / 覆盖临床决策 / 将编辑转为模型事实 |
+| `research_workspace` | pi_or_researcher | 患者建议 / 临床决策 / 未经审核导出患者数据 |
+
 ## 相关文档
 
 - [现状架构图谱](docs/current-architecture-map.md)
@@ -637,5 +771,8 @@ Agent 核心由 Planner 生成的 `PlanStep` DAG 动态驱动：支持原子步�
 - [RAG 模块文档](src/rag/README.md)
 - [工具模块文档](src/tools/README.md)
 - [服务层文档](src/services/README.md)
+- [HarnessRun 报告目录](reports/harness/README.md)
+- [ReleaseSafetyReport 目录](reports/release_safety/README.md)
 - [设计 QA 报告](design-qa.md)
-- 设计规格：[Agent Admin Phase One](docs/superpowers/specs/2026-06-14-agent-admin-phase-one-design.md) · [Agent Admin Subtask Pages](docs/superpowers/specs/2026-06-14-agent-admin-subtask-pages-design.md) · [Memory Automation](docs/superpowers/specs/2026-06-15-agent-admin-memory-automation-design.md) · [Production Readiness Roadmap](docs/superpowers/specs/2026-06-13-production-readiness-roadmap-design.md) · [Agent Tooling Repair](docs/superpowers/specs/2026-06-13-agent-tooling-repair-design.md) · [Frontend Motion Experience](docs/superpowers/specs/2026-06-12-frontend-motion-experience-roadmap-design.md) · [Doctor Dark Polish](docs/superpowers/specs/2026-06-11-doctor-gemini-dark-polish-design.md) · [Patient ChatGPT Polish](docs/superpowers/specs/2026-06-11-patient-chatgpt-style-polish-design.md) · [Whole Body Anatomy](docs/superpowers/specs/2026-06-08-whole-body-anatomy-overview-design.md)
+- [CRC Agent 步骤推进修改计划](langg_crc_agent_stepwise_modification_plan_2026-06-29.md)
+- 设计规格：[P0 CRC Safety Loop](docs/superpowers/specs/2026-06-29-p0-crc-safety-loop-design.md) · [P1 Clinical Review Loop](docs/superpowers/specs/2026-06-29-p1-clinical-review-loop-design.md) · [Agent Development Validation Balance](docs/superpowers/specs/2026-06-29-agent-development-validation-balance-design.md) · [Patient CRC Triage Subpage](docs/superpowers/specs/2026-06-24-patient-crc-triage-subpage-design.md) · [Agent Admin Phase One](docs/superpowers/specs/2026-06-14-agent-admin-phase-one-design.md) · [Agent Admin Subtask Pages](docs/superpowers/specs/2026-06-14-agent-admin-subtask-pages-design.md) · [Memory Automation](docs/superpowers/specs/2026-06-15-agent-admin-memory-automation-design.md) · [Production Readiness Roadmap](docs/superpowers/specs/2026-06-13-production-readiness-roadmap-design.md) · [Agent Tooling Repair](docs/superpowers/specs/2026-06-13-agent-tooling-repair-design.md) · [Frontend Motion Experience](docs/superpowers/specs/2026-06-12-frontend-motion-experience-roadmap-design.md) · [Doctor Dark Polish](docs/superpowers/specs/2026-06-11-doctor-gemini-dark-polish-design.md) · [Patient ChatGPT Polish](docs/superpowers/specs/2026-06-11-patient-chatgpt-style-polish-design.md) · [Whole Body Anatomy](docs/superpowers/specs/2026-06-08-whole-body-anatomy-overview-design.md)
