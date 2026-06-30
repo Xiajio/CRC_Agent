@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { AdminToolManifestResponse } from "../../app/api/types";
+import type { AdminReleaseDashboardResponse, AdminToolManifestResponse } from "../../app/api/types";
 import type { SessionState } from "../../app/api/types";
 import { createInitialSessionState } from "../../app/store/stream-reducer";
 import {
@@ -74,10 +74,90 @@ function makeAdminToolsManifest(): AdminToolManifestResponse {
   };
 }
 
+function makeAdminReleaseDashboard(): AdminReleaseDashboardResponse {
+  return {
+    version_chain: {
+      agent_policy_version: "agent_policy_20260629_0",
+      clinical_safety_policy_version: "crc_safety_policy_v0",
+      evidence_index_version: "rag_crc_guideline_20260620",
+      judge_rubric_version: "crc_rubric_v0",
+    },
+    release_decision: "feature_flag_or_pass",
+    rollback_target: "agent_policy_20260624_0",
+    human_signoff: {
+      required: true,
+      status: "missing",
+      reason: "Step 11 is read-only; sign-off must be recorded by a later audited write path.",
+    },
+    summary: {
+      hard_fail_count: 0,
+      p0_cases_total: 5,
+      p0_cases_passed: 5,
+      literature_claims: 3,
+      literature_isolation_violations: 0,
+      clinical_rag_ingest_enabled: false,
+    },
+    runs: [
+      {
+        run_id: "harness_20260629_001",
+        kind: "p0_crc_harness",
+        status: "pass",
+        source_path: "reports/harness/harness_20260629_001.json",
+        hard_fail_count: 0,
+      },
+      {
+        run_id: "literature_harness_20260630_001",
+        kind: "literature_shadow_harness",
+        status: "shadow_only",
+        source_path: "reports/literature/literature_harness_20260630_001.json",
+        hard_fail_count: 0,
+      },
+    ],
+    blocking_gates: [
+      {
+        id: "no_literature_clinical_rag",
+        label: "Unreviewed literature stays out of clinical RAG",
+        state: "locked",
+        reason: "Clinical RAG ingest is disabled in Step 11.",
+      },
+    ],
+    disabled_actions: [
+      {
+        id: "record_human_signoff",
+        label: "Record human sign-off",
+        reason: "Requires a later audited write-path design.",
+      },
+      {
+        id: "publish_feature_flag",
+        label: "Publish feature flag release",
+        reason: "Step 11 observes readiness only.",
+      },
+      {
+        id: "rollback_release",
+        label: "Rollback release",
+        reason: "Rollback execution is outside this read-only slice.",
+      },
+    ],
+    runtime: {
+      auth: "admin",
+      source: "reports/static_release_artifacts",
+      mode: "read_only",
+    },
+  };
+}
+
 function clickToolsTask() {
   const button = screen
     .getAllByRole("button")
     .find((candidate) => candidate.textContent?.includes("tool surfaces"));
+  expect(button).toBeDefined();
+  fireEvent.click(button!);
+}
+
+function clickReleaseTask() {
+  const button = screen
+    .getAllByRole("button")
+    .find((candidate) => candidate.textContent?.includes("version chain / harness runs"));
   expect(button).toBeDefined();
   fireEvent.click(button!);
 }
@@ -157,8 +237,8 @@ describe("AgentAdminView", () => {
     expect(screen.getAllByText("run-77").length).toBeGreaterThan(0);
 
     const rail = screen.getByRole("navigation", { name: "后台子任务" });
-    expect(within(rail).getAllByRole("button")).toHaveLength(9);
-    for (const label of ["总览", "会话", "记忆", "规则", "工具", "学习", "Trace", "证据", "设置只读"]) {
+    expect(within(rail).getAllByRole("button")).toHaveLength(10);
+    for (const label of ["总览", "会话", "记忆", "规则", "工具", "学习", "Trace", "证据", "Release", "设置只读"]) {
       expect(within(rail).getByText(label)).toBeInTheDocument();
     }
 
@@ -175,6 +255,7 @@ describe("AgentAdminView", () => {
     { label: /学习/, taskId: "learning", hidden: "可达性矩阵", visible: "学习流水线" },
     { label: /Trace/, taskId: "trace", hidden: "学习流水线", visible: "event table" },
     { label: /证据/, taskId: "evidence", hidden: "event table", visible: "RAG pipeline" },
+    { label: /Release/, taskId: "release", hidden: "RAG pipeline", visible: "Release Dashboard" },
     { label: /设置只读/, taskId: "read-only", hidden: "RAG pipeline", visible: "权限矩阵" },
   ])("shows only the selected $taskId page", ({ label, taskId, hidden, visible }) => {
     render(
@@ -471,6 +552,135 @@ describe("AgentAdminView", () => {
     expect(page).toHaveTextContent("search_latest_research");
   });
 
+  it("renders the release dashboard task from the admin rail", async () => {
+    const releaseDashboard = makeAdminReleaseDashboard();
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(async () => releaseDashboard),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-release" })}
+        doctor={makeState({ sessionId: "doctor-release" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(apiClient.getAdminReleaseDashboard).toHaveBeenCalledTimes(1));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveAttribute("data-task-id", "release");
+    expect(page).toHaveTextContent("Release Dashboard");
+    expect(page).toHaveTextContent("agent_policy_20260629_0");
+    expect(page).toHaveTextContent("crc_safety_policy_v0");
+    expect(page).toHaveTextContent("harness_20260629_001");
+    expect(page).toHaveTextContent("literature_harness_20260630_001");
+    expect(page).toHaveTextContent("feature_flag_or_pass");
+    expect(page).toHaveTextContent("agent_policy_20260624_0");
+    expect(page).toHaveTextContent("Step 11 observes readiness only");
+    expect(page).toHaveTextContent("Clinical RAG ingest is disabled in Step 11");
+  });
+
+  it("does not fetch release dashboard until the release task is selected", () => {
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-release-idle" })}
+        doctor={makeState({ sessionId: "doctor-release-idle" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    expect(apiClient.getAdminReleaseDashboard).not.toHaveBeenCalled();
+  });
+
+  it("shows release dashboard loading state without fallback data", async () => {
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(() => new Promise<AdminReleaseDashboardResponse>(() => {})),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-release-loading" })}
+        doctor={makeState({ sessionId: "doctor-release-loading" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(apiClient.getAdminReleaseDashboard).toHaveBeenCalledTimes(1));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("reading release dashboard");
+    expect(page).not.toHaveTextContent("agent_policy_20260629_0");
+  });
+
+  it("shows release dashboard error state without breaking the admin shell", async () => {
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(async () => {
+        throw new Error("Forbidden");
+      }),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-release-error" })}
+        doctor={makeState({ sessionId: "doctor-release-error" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("release dashboard unavailable"));
+    expect(screen.getByTestId("agent-admin-console")).toBeInTheDocument();
+  });
+
+  it("renders release mutation controls as disabled read-only actions", async () => {
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-release-disabled" })}
+        doctor={makeState({ sessionId: "doctor-release-disabled" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Record human sign-off"));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    for (const label of ["Record human sign-off", "Publish feature flag release", "Rollback release"]) {
+      const action = within(page).getByText(label).closest("button");
+      expect(action).toBeDisabled();
+    }
+  });
+
   it.each([
     { button: /学习/, taskId: "learning", required: ["发现论文", "人工审核", "写入知识库", "Run now", "一期不执行每日任务"] },
     { button: /Trace/, taskId: "trace", required: ["trace.start", "status.node", "latency panel", "event table"] },
@@ -510,9 +720,10 @@ describe("AgentAdminView", () => {
       "learning",
       "trace",
       "evidence",
+      "release",
       "read-only",
     ]);
-    expect(ADMIN_NAV_ITEMS.map((item) => item.key)).toEqual(["overview", "trace", "learning", "read-only"]);
+    expect(ADMIN_NAV_ITEMS.map((item) => item.key)).toEqual(["overview", "trace", "learning", "release", "read-only"]);
     expect(RULE_CATALOG.some((rule) => rule.id === "routing.intent.knowledge_query")).toBe(true);
     expect(TOOL_INVENTORY.some((tool) => tool.name === "search_latest_research")).toBe(true);
     expect(buildRuleGroupRows().some((row) => row.name === "路由规则")).toBe(true);
@@ -594,7 +805,7 @@ describe("AgentAdminView", () => {
 
 describe("AgentAdminModel", () => {
   it("exposes admin nav, grouped manifests, and permission rows", () => {
-    expect(ADMIN_NAV_ITEMS.map((item) => item.key)).toEqual(["overview", "trace", "learning", "read-only"]);
+    expect(ADMIN_NAV_ITEMS.map((item) => item.key)).toEqual(["overview", "trace", "learning", "release", "read-only"]);
     expect(buildRuleGroupRows().map((row) => row.name)).toContain("路由规则");
     expect(buildToolGroupRows()).toEqual(
       expect.arrayContaining([

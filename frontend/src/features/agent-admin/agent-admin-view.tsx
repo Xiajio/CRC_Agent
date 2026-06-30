@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 
 import { ApiClientError, type ApiClient } from "../../app/api/client";
-import type { AdminToolManifestResponse } from "../../app/api/types";
+import type { AdminReleaseDashboardResponse, AdminToolManifestResponse } from "../../app/api/types";
 import type { Scene, SessionState } from "../../app/api/types";
 import { ClinicalTopNav } from "../../components/layout/clinical-top-nav";
 import { classNames } from "../../components/ui";
@@ -21,13 +21,19 @@ type AgentAdminViewProps = {
   patient: SessionState;
   doctor: SessionState;
   surfaceSwitcher: ReactNode;
-  apiClient?: Pick<ApiClient, "getAdminTools">;
+  apiClient?: Pick<ApiClient, "getAdminTools" | "getAdminReleaseDashboard">;
 };
 
 export type AgentAdminToolsResource =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "success"; data: AdminToolManifestResponse }
+  | { status: "error"; error: { status?: number; message: string } };
+
+export type AgentAdminReleaseDashboardResource =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: AdminReleaseDashboardResponse }
   | { status: "error"; error: { status?: number; message: string } };
 
 export function AgentAdminView({
@@ -39,6 +45,7 @@ export function AgentAdminView({
 }: AgentAdminViewProps) {
   const [activeTaskId, setActiveTaskId] = useState<AgentAdminTaskId>("overview");
   const [toolsResource, setToolsResource] = useState<AgentAdminToolsResource>({ status: "idle" });
+  const [releaseDashboardResource, setReleaseDashboardResource] = useState<AgentAdminReleaseDashboardResource>({ status: "idle" });
   const watchedState = activeScene === "doctor" ? doctor : patient;
   const watchedSceneLabel = activeScene === "doctor" ? "医生会话" : "患者会话";
 
@@ -88,9 +95,58 @@ export function AgentAdminView({
     };
   }, [activeTaskId, apiClient]);
 
+  useEffect(() => {
+    if (activeTaskId !== "release") {
+      return;
+    }
+
+    if (!apiClient || typeof apiClient.getAdminReleaseDashboard !== "function") {
+      setReleaseDashboardResource({ status: "idle" });
+      return;
+    }
+
+    let cancelled = false;
+    setReleaseDashboardResource({ status: "loading" });
+
+    void apiClient.getAdminReleaseDashboard().then(
+      (data) => {
+        if (!cancelled) {
+          setReleaseDashboardResource({ status: "success", data });
+        }
+      },
+      (error) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (error instanceof ApiClientError) {
+          setReleaseDashboardResource({
+            status: "error",
+            error: { status: error.status, message: error.message },
+          });
+          return;
+        }
+
+        setReleaseDashboardResource({
+          status: "error",
+          error: {
+            message: error instanceof Error ? error.message : "Unknown admin release dashboard error",
+          },
+        });
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTaskId, apiClient]);
+
   function navigateTask(taskId: AgentAdminTaskId) {
     if (taskId === "tools" && activeTaskId !== "tools" && apiClient && typeof apiClient.getAdminTools === "function") {
       setToolsResource({ status: "loading" });
+    }
+    if (taskId === "release" && activeTaskId !== "release" && apiClient && typeof apiClient.getAdminReleaseDashboard === "function") {
+      setReleaseDashboardResource({ status: "loading" });
     }
     setActiveTaskId(taskId);
   }
@@ -181,6 +237,7 @@ export function AgentAdminView({
           doctor={doctor}
           onNavigateTask={navigateTask}
           toolsResource={toolsResource}
+          releaseDashboardResource={releaseDashboardResource}
         />
       </div>
     </main>

@@ -16,7 +16,7 @@ import {
   Wrench,
 } from "lucide-react";
 
-import type { Scene, SessionState } from "../../app/api/types";
+import type { AdminReleaseDashboardResponse, Scene, SessionState } from "../../app/api/types";
 import {
   AgentAdminMetricStrip,
   AgentAdminPanel,
@@ -46,7 +46,7 @@ import {
   sessionStatus,
   type AgentAdminTaskId,
 } from "./agent-admin-model";
-import type { AgentAdminToolsResource } from "./agent-admin-view";
+import type { AgentAdminReleaseDashboardResource, AgentAdminToolsResource } from "./agent-admin-view";
 
 type AgentAdminPagesProps = {
   activeTaskId: AgentAdminTaskId;
@@ -55,6 +55,7 @@ type AgentAdminPagesProps = {
   doctor: SessionState;
   onNavigateTask: (taskId: AgentAdminTaskId) => void;
   toolsResource: AgentAdminToolsResource;
+  releaseDashboardResource: AgentAdminReleaseDashboardResource;
 };
 
 function watchedSession(activeScene: Scene, patient: SessionState, doctor: SessionState) {
@@ -68,6 +69,7 @@ export function AgentAdminTaskPages({
   doctor,
   onNavigateTask,
   toolsResource,
+  releaseDashboardResource,
 }: AgentAdminPagesProps) {
   const activeTask = AGENT_ADMIN_TASKS.find((task) => task.id === activeTaskId) ?? AGENT_ADMIN_TASKS[0];
   const ActiveTaskIcon = activeTask.icon;
@@ -108,6 +110,8 @@ export function AgentAdminTaskPages({
         <TracePage activeScene={activeScene} patient={patient} doctor={doctor} />
       ) : activeTaskId === "evidence" ? (
         <EvidencePage activeScene={activeScene} patient={patient} doctor={doctor} />
+      ) : activeTaskId === "release" ? (
+        <ReleasePage releaseDashboardResource={releaseDashboardResource} />
       ) : activeTaskId === "read-only" ? (
         <ReadOnlyPage activeScene={activeScene} patient={patient} doctor={doctor} />
       ) : (
@@ -122,7 +126,7 @@ function AgentAdminOverviewPage({
   patient,
   doctor,
   onNavigateTask,
-}: Omit<AgentAdminPagesProps, "activeTaskId" | "toolsResource">) {
+}: Omit<AgentAdminPagesProps, "activeTaskId" | "toolsResource" | "releaseDashboardResource">) {
   const watchedState = watchedSession(activeScene, patient, doctor);
   const patientSession = buildSessionSummary("患者", patient);
   const doctorSession = buildSessionSummary("医生", doctor);
@@ -764,6 +768,192 @@ function EvidencePage({ activeScene, patient, doctor }: Pick<AgentAdminPagesProp
           <span>query rewrite / retrieve / rank / cite / answer</span>
           <span>source preview / {evidenceRows.map((row) => row.source).join(" / ")}</span>
           <span>references are read-only frontend snapshots</span>
+        </div>
+      </AgentAdminPanel>
+    </>
+  );
+}
+
+function formatReleaseLabel(value: string): string {
+  return value.replace(/_/g, " ");
+}
+
+function formatReleaseValue(value: string | number | boolean | null): string {
+  return value === null ? "not set" : String(value);
+}
+
+function releaseRowState(state: string): "success" | "warning" | "ready" | "active" | "disabled" | "idle" {
+  if (state === "pass" || state === "recorded_elsewhere" || state === "not_required") {
+    return "success";
+  }
+  if (state === "fail" || state === "blocked" || state === "locked" || state === "missing" || state === "invalid") {
+    return "warning";
+  }
+  if (state === "shadow_only" || state === "warning") {
+    return "active";
+  }
+  return "ready";
+}
+
+function ReleasePage({
+  releaseDashboardResource,
+}: {
+  releaseDashboardResource: AgentAdminReleaseDashboardResource;
+}) {
+  if (releaseDashboardResource.status === "loading") {
+    return (
+      <AgentAdminPanel eyebrow="release artifacts" title="Release Dashboard" icon={GitBranch}>
+        <div className="agent-admin-detail-list">
+          <span>reading release dashboard</span>
+          <span>runtime release artifacts are loading from the admin API</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  if (releaseDashboardResource.status === "error") {
+    const status = releaseDashboardResource.error.status ? ` (${releaseDashboardResource.error.status})` : "";
+    return (
+      <AgentAdminPanel eyebrow="release artifacts" title="Release Dashboard" icon={AlertTriangle}>
+        <div className="agent-admin-detail-list">
+          <span>release dashboard unavailable{status}: {releaseDashboardResource.error.message}</span>
+          <span>admin shell remains read-only and available</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  if (releaseDashboardResource.status === "success") {
+    return <ReleaseSuccessPage dashboard={releaseDashboardResource.data} />;
+  }
+
+  return (
+    <AgentAdminPanel eyebrow="release artifacts" title="Release Dashboard" icon={GitBranch}>
+      <div className="agent-admin-detail-list">
+        <span>select Release to read committed release artifacts</span>
+      </div>
+    </AgentAdminPanel>
+  );
+}
+
+function ReleaseSuccessPage({ dashboard }: { dashboard: AdminReleaseDashboardResponse }) {
+  const versionRows = Object.entries(dashboard.version_chain);
+  const summary = dashboard.summary;
+  const summaryMetrics = [
+    {
+      label: "Hard fails",
+      value: String(summary.hard_fail_count),
+      detail: "release gate",
+      tone: summary.hard_fail_count === 0 ? ("success" as const) : ("warning" as const),
+    },
+    {
+      label: "P0 cases",
+      value: `${summary.p0_cases_passed}/${summary.p0_cases_total}`,
+      detail: "passed",
+      tone: summary.p0_cases_passed === summary.p0_cases_total ? ("success" as const) : ("warning" as const),
+    },
+    {
+      label: "Literature claims",
+      value: String(summary.literature_claims),
+      detail: `${summary.literature_isolation_violations} isolation violations`,
+      tone: summary.literature_isolation_violations === 0 ? ("success" as const) : ("warning" as const),
+    },
+    {
+      label: "Clinical RAG ingest",
+      value: String(summary.clinical_rag_ingest_enabled),
+      detail: "read-only",
+      tone: summary.clinical_rag_ingest_enabled ? ("warning" as const) : ("neutral" as const),
+    },
+  ];
+
+  return (
+    <>
+      <AgentAdminMetricStrip metrics={summaryMetrics} />
+      <AgentAdminSplitWorkbench
+        primary={
+          <>
+            <AgentAdminPanel eyebrow="version chain" title="Release Dashboard" icon={GitBranch}>
+              <div className="agent-admin-timeline">
+                {versionRows.map(([key, value]) => (
+                  <article key={key} className="agent-admin-timeline-row agent-admin-timeline-row-success">
+                    <span className="agent-admin-timeline-node">
+                      <AgentAdminStateIcon state="success" />
+                      {formatReleaseLabel(key)}
+                    </span>
+                    <span>committed artifact</span>
+                    <strong>{formatReleaseValue(value)}</strong>
+                  </article>
+                ))}
+              </div>
+            </AgentAdminPanel>
+
+            <AgentAdminPanel eyebrow="harness runs" title="Harness run ledger" icon={ListChecks}>
+              <div className="agent-admin-timeline">
+                {dashboard.runs.map((run) => {
+                  const rowState = releaseRowState(run.status);
+                  return (
+                    <article key={run.run_id} className={`agent-admin-timeline-row agent-admin-timeline-row-${rowState}`}>
+                      <span className="agent-admin-timeline-node">
+                        <AgentAdminStateIcon state={rowState} />
+                        {run.run_id}
+                      </span>
+                      <span>{run.kind} / {run.source_path}</span>
+                      <strong>{run.status} / hard fails {run.hard_fail_count}</strong>
+                    </article>
+                  );
+                })}
+              </div>
+            </AgentAdminPanel>
+          </>
+        }
+        secondary={
+          <>
+            <AgentAdminPanel eyebrow="decision" title="Release decision" icon={ShieldCheck}>
+              <div className="agent-admin-detail-list">
+                <span>release decision / {dashboard.release_decision}</span>
+                <span>rollback target / {formatReleaseValue(dashboard.rollback_target)}</span>
+                <span>runtime / {dashboard.runtime.auth} / {dashboard.runtime.source} / {dashboard.runtime.mode}</span>
+              </div>
+            </AgentAdminPanel>
+
+            <AgentAdminPanel eyebrow="human sign-off" title="Sign-off readiness" icon={KeyRound}>
+              <div className="agent-admin-detail-list">
+                <span>required / {String(dashboard.human_signoff.required)}</span>
+                <span>status / {dashboard.human_signoff.status}</span>
+                <span>{dashboard.human_signoff.reason}</span>
+              </div>
+            </AgentAdminPanel>
+          </>
+        }
+      />
+
+      <AgentAdminPanel eyebrow="blocking gates" title="Blocking gates" icon={AlertTriangle}>
+        <div className="agent-admin-timeline">
+          {dashboard.blocking_gates.map((gate) => {
+            const rowState = releaseRowState(gate.state);
+            return (
+              <article key={gate.id} className={`agent-admin-timeline-row agent-admin-timeline-row-${rowState}`}>
+                <span className="agent-admin-timeline-node">
+                  <AgentAdminStateIcon state={rowState} />
+                  {gate.label}
+                </span>
+                <span>{gate.reason}</span>
+                <strong>{gate.state}</strong>
+              </article>
+            );
+          })}
+        </div>
+      </AgentAdminPanel>
+
+      <AgentAdminPanel eyebrow="read-only actions" title="Disabled release controls" icon={KeyRound}>
+        <div className="agent-admin-detail-list">
+          {dashboard.disabled_actions.map((action) => (
+            <button key={action.id} type="button" className="agent-admin-disabled-action" disabled>
+              <KeyRound size={15} aria-hidden="true" />
+              <span>{action.label}</span>
+              <small>{action.reason}</small>
+            </button>
+          ))}
         </div>
       </AgentAdminPanel>
     </>

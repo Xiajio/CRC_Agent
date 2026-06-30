@@ -4,6 +4,7 @@ import {
   Brain,
   FileText,
   Gauge,
+  GitBranch,
   KeyRound,
   ListChecks,
   ServerCog,
@@ -22,6 +23,7 @@ export type AgentAdminTaskId =
   | "learning"
   | "trace"
   | "evidence"
+  | "release"
   | "read-only";
 
 export type AgentAdminTask = {
@@ -164,6 +166,15 @@ export const AGENT_ADMIN_TASKS: AgentAdminTask[] = [
     icon: FileText,
   },
   {
+    id: "release",
+    label: "Release",
+    detailTitle: "Release Dashboard",
+    description: "version chain / harness runs / rollback target / sign-off readiness",
+    status: "read-only",
+    responsibility: "version chain / harness runs",
+    icon: GitBranch,
+  },
+  {
     id: "read-only",
     label: "设置只读",
     detailTitle: "只读边界",
@@ -178,6 +189,7 @@ export const ADMIN_NAV_ITEMS: Array<{ key: AgentAdminTaskId; label: string }> = 
   { key: "overview", label: "巡检总览" },
   { key: "trace", label: "运行链路" },
   { key: "learning", label: "每日论文准备" },
+  { key: "release", label: "Release" },
   { key: "read-only", label: "只读边界" },
 ];
 
