@@ -428,7 +428,12 @@ from scripts.run_literature_harness import run_literature_harness
 def test_literature_harness_replay_writes_shadow_report(tmp_path) -> None:
     report_path = run_literature_harness(output_root=tmp_path)
 
+    assert (
+        report_path
+        == tmp_path / "literature" / "literature_harness_20260630_001.json"
+    )
     assert report_path.exists()
+    assert b"\r\n" not in report_path.read_bytes()
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["run_id"] == "literature_harness_20260630_001"
     assert report["claim_pack_version"] == "literature_claim_pack_v0"
