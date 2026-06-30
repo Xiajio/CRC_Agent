@@ -1,0 +1,129 @@
+{
+  "claim_pack_id": "literature_claim_pack_v0",
+  "evidence_index_version": "rag_crc_guideline_20260620",
+  "expected_min_negative_or_conflicting": 2,
+  "paper_candidates": [
+    {
+      "source_id": "paper_crc_2026_benefit",
+      "title": "Trial of Intervention X in metastatic colorectal cancer",
+      "url": "https://example.org/paper_crc_2026_benefit",
+      "publication_year": 2026,
+      "venue": "Example Oncology Journal",
+      "candidate_summary": "The trial reports improved overall survival with Intervention X.",
+      "retrieval_query": "metastatic colorectal cancer intervention x overall survival",
+      "retrieval_timestamp": "2026-06-30T00:00:00+08:00",
+      "source_quality": {
+        "is_guideline": false,
+        "is_systematic_review": false,
+        "is_preprint": false,
+        "is_retracted": false
+      },
+      "extracted_claims": [
+        {
+          "claim_text": "Intervention X improved overall survival compared with standard of care in adults with metastatic colorectal cancer.",
+          "population": "adults with metastatic colorectal cancer",
+          "intervention": "Intervention X",
+          "comparator": "standard of care",
+          "outcome": "overall_survival",
+          "effect_direction": "benefit",
+          "effect_size": "HR 0.82",
+          "uncertainty": "95% CI 0.70-0.96",
+          "evidence_grade": "rct",
+          "study_design": "randomized_controlled_trial",
+          "sample_size": 820,
+          "risk_of_bias": "moderate",
+          "local_guideline_conflict": "none",
+          "applicability_to_crc_context": "partial",
+          "source_span": {
+            "page": 4,
+            "section": "Results",
+            "quote": "Overall survival favored Intervention X."
+          }
+        }
+      ]
+    },
+    {
+      "source_id": "paper_crc_2026_neutral",
+      "title": "Real-world comparison of Intervention X in colorectal cancer",
+      "url": "https://example.org/paper_crc_2026_neutral",
+      "publication_year": 2026,
+      "venue": "Example Registry Reports",
+      "candidate_summary": "The registry analysis reports no statistically significant survival improvement.",
+      "retrieval_query": "colorectal cancer intervention x real world survival neutral",
+      "retrieval_timestamp": "2026-06-30T00:00:00+08:00",
+      "source_quality": {
+        "is_guideline": false,
+        "is_systematic_review": false,
+        "is_preprint": false,
+        "is_retracted": false
+      },
+      "extracted_claims": [
+        {
+          "claim_text": "Intervention X did not significantly improve overall survival in a real-world colorectal cancer cohort.",
+          "population": "adults with metastatic colorectal cancer",
+          "intervention": "Intervention X",
+          "comparator": "standard of care",
+          "outcome": "overall_survival",
+          "effect_direction": "neutral",
+          "effect_size": "HR 0.98",
+          "uncertainty": "95% CI 0.84-1.14",
+          "evidence_grade": "observational",
+          "study_design": "retrospective_cohort",
+          "sample_size": 410,
+          "risk_of_bias": "high",
+          "local_guideline_conflict": "possible",
+          "applicability_to_crc_context": "partial",
+          "source_span": {
+            "page": 7,
+            "section": "Adjusted analysis",
+            "quote": "No significant survival association was observed."
+          }
+        }
+      ]
+    },
+    {
+      "source_id": "paper_crc_2026_safety_signal",
+      "title": "Early safety signal for Intervention X combinations",
+      "url": "https://example.org/paper_crc_2026_safety_signal",
+      "publication_year": 2026,
+      "venue": "Preprint Oncology Archive",
+      "candidate_summary": "A preprint reports increased serious adverse events in a small cohort.",
+      "retrieval_query": "intervention x colorectal cancer adverse events preprint",
+      "retrieval_timestamp": "2026-06-30T00:00:00+08:00",
+      "source_quality": {
+        "is_guideline": false,
+        "is_systematic_review": false,
+        "is_preprint": true,
+        "is_retracted": false
+      },
+      "extracted_claims": [
+        {
+          "claim_text": "Intervention X combinations were associated with increased grade 3 or higher adverse events in a small colorectal cancer cohort.",
+          "population": "adults with metastatic colorectal cancer",
+          "intervention": "Intervention X combination therapy",
+          "comparator": "standard of care",
+          "outcome": "serious_adverse_events",
+          "effect_direction": "harm",
+          "effect_size": "RR 1.45",
+          "uncertainty": "95% CI 1.05-2.10",
+          "evidence_grade": "observational",
+          "study_design": "small_cohort_preprint",
+          "sample_size": 96,
+          "risk_of_bias": "high",
+          "local_guideline_conflict": "possible",
+          "applicability_to_crc_context": "indirect",
+          "source_span": {
+            "page": 5,
+            "section": "Safety",
+            "quote": "Grade 3 or higher events were more frequent."
+          }
+        }
+      ]
+    }
+  ],
+  "isolation_inputs": {
+    "clinical_rag_claim_ids": [],
+    "patient_default_claim_ids": [],
+    "doctor_default_claim_ids": []
+  }
+}
