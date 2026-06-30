@@ -14,6 +14,7 @@ const frontendPort = 4176;
 const backendUrl = `http://127.0.0.1:${backendPort}`;
 const frontendUrl = `http://127.0.0.1:${frontendPort}`;
 const apiBearerToken = process.env.API_BEARER_TOKEN || "local-dev-token";
+const activeSceneStorageKey = "langg.workspace.active-scene";
 
 function ensureOutputDir() {
   fs.mkdirSync(outputDir, { recursive: true });
@@ -174,6 +175,9 @@ async function runAcceptance() {
 
     browser = await launchBrowser();
     const context = await browser.newContext({ viewport: { width: 1440, height: 1100 } });
+    await context.addInitScript((storageKey) => {
+      window.localStorage.setItem(storageKey, "doctor");
+    }, activeSceneStorageKey);
     const page = await context.newPage();
     const consoleErrors = [];
     const failedResponses = [];
@@ -192,16 +196,16 @@ async function runAcceptance() {
     });
 
     await page.goto(frontendUrl, { waitUntil: "networkidle", timeout: 30000 });
+    await page.getByTestId("doctor-scene").waitFor({ state: "visible", timeout: 20000 });
     await page.locator("textarea").first().waitFor({ state: "visible", timeout: 20000 });
     await page.locator("textarea").first().fill(
       "62-year-old male with biopsy-confirmed low rectal adenocarcinoma, pMMR, MRI cT3N1M0, no distant metastasis, ECOG 1. Please provide treatment recommendation.",
     );
     await page.locator("textarea").first().press("Enter");
 
-    await page.getByText("HUMAN_REVIEW_REQUIRED").first().waitFor({ timeout: 30000 });
+    await page.locator(".clinical-review-warning").first().waitFor({ timeout: 30000 });
     await page.getByText("Recommendation retained for review").waitFor({ timeout: 30000 });
-    await page.getByText("No direct references are attached to this recommendation.").waitFor({ timeout: 30000 });
-    await page.getByText("Roadmap updated").first().waitFor({ timeout: 30000 });
+    await page.getByText("No direct guideline citations are bound; this recommendation requires manual oncology review.").first().waitFor({ timeout: 30000 });
     await page.getByText("Discuss total neoadjuvant therapy in multidisciplinary tumor board.").first().waitFor({ timeout: 30000 });
     await page.getByText("cT3N1 low rectal cancer generally requires neoadjuvant treatment before surgery.").first().waitFor({ timeout: 30000 });
 
@@ -209,9 +213,13 @@ async function runAcceptance() {
     const roadmapSteps = await page.locator(".clinical-roadmap-step").count();
     const blockedRoadmapSteps = await page.locator(".clinical-roadmap-step-blocked").count();
     const eventChips = await page.locator(".clinical-event-chip").count();
-    const roadmapEventChips = await page.locator(".clinical-event-chip").filter({ hasText: "Roadmap updated" }).count();
-    const warningCount = await page.getByText("HUMAN_REVIEW_REQUIRED").count();
+    const roadmapEventChips = await page.locator(".clinical-event-chip").filter({ hasText: /路线图|Roadmap/i }).count();
+    const warningCount = await page.locator(".clinical-review-warning").count();
     const finalVisible = await page.getByText("cT3N1M0").count();
+    const missingReferenceDisclosures = await page
+      .locator(".clinical-reference-card")
+      .getByTestId("clinical-empty-state")
+      .count();
     const faviconFailures = failedResponses.filter((entry) => entry.includes("favicon"));
 
     if (planRows < 1) throw new Error("Execution plan did not render any rows.");
@@ -220,6 +228,7 @@ async function runAcceptance() {
     if (eventChips < 1) throw new Error("Clinical event stream did not render any events.");
     if (roadmapEventChips < 1) throw new Error("Clinical event stream did not record roadmap updates.");
     if (warningCount < 1) throw new Error("Human review warning was not visible.");
+    if (missingReferenceDisclosures < 1) throw new Error("Missing direct-reference disclosure was not visible.");
     if (finalVisible < 1) throw new Error("Final recommendation/case stage was not visible.");
     if (faviconFailures.length > 0) throw new Error(`Favicon request failed: ${faviconFailures.join("; ")}`);
 
@@ -239,6 +248,7 @@ async function runAcceptance() {
       eventChips,
       roadmapEventChips,
       warningCount,
+      missingReferenceDisclosures,
       failedResponses,
       consoleErrors,
       screenshotPath,
