@@ -133,6 +133,7 @@ chroma_db/
 bm25_index/
 data/
 data_temp.csv
+CRC-client/
 
 # Editor and OS files
 .idea/
