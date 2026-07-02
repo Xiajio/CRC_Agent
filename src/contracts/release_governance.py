@@ -81,11 +81,20 @@ FORBIDDEN_PAYLOAD_KEYS = frozenset(
         "api_key",
         "apikey",
         "authorization",
+        "bearer",
+        "bearer_token",
         "client_secret",
         "cookie",
         "credentials",
+        "deployment_credential",
+        "deployment_credentials",
+        "chain_of_thought",
+        "hidden_reasoning",
         "password",
+        "patient_name",
+        "patient_number",
         "private_key",
+        "prompt",
         "refresh_token",
         "secret",
         "session_token",
@@ -232,7 +241,6 @@ class ReleaseAuditEvent:
     event_type: ReleaseAuditEventType
     actor: str
     timestamp: str
-    payload: JsonValue
     payload_hash: str
     previous_event_hash: str
     event_hash: str
@@ -243,16 +251,11 @@ class ReleaseAuditEvent:
         _validate_choice("event_type", self.event_type, AUDIT_EVENT_TYPES)
         _require_non_empty("actor", self.actor)
         _require_non_empty("timestamp", self.timestamp)
-        validate_json_safe(self.payload, path="payload")
-        _reject_forbidden_payload_keys(self.payload)
         _require_hash("payload_hash", self.payload_hash)
         _require_hash(
             "previous_event_hash", self.previous_event_hash, allow_genesis=True
         )
         _require_hash("event_hash", self.event_hash)
-        expected_payload_hash = canonical_payload_hash(self.payload)
-        if self.payload_hash != expected_payload_hash:
-            raise ValueError("payload_hash does not match canonical payload")
         validate_audit_event_hash(self)
 
     def to_dict(self) -> dict[str, Any]:
@@ -262,7 +265,6 @@ class ReleaseAuditEvent:
             "event_type": self.event_type,
             "actor": self.actor,
             "timestamp": self.timestamp,
-            "payload": _copy_json_safe(self.payload, path="payload"),
             "payload_hash": self.payload_hash,
             "previous_event_hash": self.previous_event_hash,
             "event_hash": self.event_hash,
@@ -338,15 +340,13 @@ def build_audit_event(
     payload: JsonValue,
     previous_event_hash: str,
 ) -> ReleaseAuditEvent:
-    payload_copy = _copy_json_safe(payload, path="payload")
-    payload_hash = canonical_payload_hash(payload_copy)
+    payload_hash = canonical_payload_hash(payload)
     event_without_hash: dict[str, JsonValue] = {
         "event_id": event_id,
         "intent_id": intent_id,
         "event_type": event_type,
         "actor": actor,
         "timestamp": timestamp,
-        "payload": payload_copy,
         "payload_hash": payload_hash,
         "previous_event_hash": previous_event_hash,
     }
@@ -357,7 +357,6 @@ def build_audit_event(
         event_type=event_type,
         actor=actor,
         timestamp=timestamp,
-        payload=payload_copy,
         payload_hash=payload_hash,
         previous_event_hash=previous_event_hash,
         event_hash=event_hash,
@@ -495,10 +494,21 @@ def _reject_forbidden_payload_keys(value: JsonValue) -> None:
         return
     if isinstance(value, dict):
         for key, item in value.items():
-            normalized_key = key.strip().lower().replace("-", "_")
+            normalized_key = _normalize_payload_key(key)
             if normalized_key in FORBIDDEN_PAYLOAD_KEYS:
                 raise ValueError(f"payload contains forbidden key: {key}")
             _reject_forbidden_payload_keys(item)
+
+
+def _normalize_payload_key(key: str) -> str:
+    key_with_word_boundaries = re.sub(
+        r"(?<=[a-z0-9])(?=[A-Z])", "_", key.strip()
+    )
+    return (
+        re.sub(r"[^a-zA-Z0-9]+", "_", key_with_word_boundaries)
+        .strip("_")
+        .lower()
+    )
 
 
 __all__ = [

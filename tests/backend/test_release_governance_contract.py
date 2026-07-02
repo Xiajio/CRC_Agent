@@ -86,6 +86,7 @@ def test_release_governance_contracts_round_trip_to_dict() -> None:
         "Confirm the active release report id.",
         "Run P0 harness before any future rollback execution.",
     ]
+    assert "payload" not in event.to_dict()
     assert event.to_dict()["payload_hash"].startswith("sha256:")
     assert event.to_dict()["event_hash"].startswith("sha256:")
 
@@ -207,24 +208,66 @@ def test_payload_hash_is_canonical_and_audit_chain_uses_previous_hash() -> None:
     assert second.event_hash != first.event_hash
 
 
-def test_id_helpers_are_stable_for_same_inputs() -> None:
-    assert make_release_intent_id(
-        "release_safety_20260629_001"
-    ) == make_release_intent_id("release_safety_20260629_001")
-    assert make_release_approval_id(
-        "release_intent_1", "release_manager", "2026-07-02T00:00:00+08:00"
-    ) == make_release_approval_id(
+def test_audit_event_omits_raw_payload_and_is_stable_after_source_payload_mutation() -> None:
+    payload = {"nested": {"release_decision": "shadow"}}
+    event = build_audit_event(
+        event_id="release_audit_payload_immutability",
+        intent_id="release_intent_1",
+        event_type="intent_created",
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+        payload=payload,
+        previous_event_hash="sha256:GENESIS",
+    )
+    event_dict = event.to_dict()
+
+    payload["nested"]["release_decision"] = "tampered"
+    payload["new_key"] = "new value"
+
+    assert "payload" not in event_dict
+    assert event.to_dict() == event_dict
+    assert event.payload_hash == event_dict["payload_hash"]
+    assert event.event_hash == event_dict["event_hash"]
+
+
+def test_id_helpers_return_expected_stable_ids_and_change_with_inputs() -> None:
+    intent_id = make_release_intent_id("release_safety_20260629_001")
+    approval_id = make_release_approval_id(
         "release_intent_1", "release_manager", "2026-07-02T00:00:00+08:00"
     )
-    assert make_release_rollback_plan_id(
-        "release_intent_1", "2026-07-02T00:00:00+08:00"
-    ) == make_release_rollback_plan_id(
+    rollback_plan_id = make_release_rollback_plan_id(
         "release_intent_1", "2026-07-02T00:00:00+08:00"
     )
-    assert make_release_audit_event_id(
+    audit_event_id = make_release_audit_event_id(
         "release_intent_1", "intent_created", "2026-07-02T00:00:00+08:00"
-    ) == make_release_audit_event_id(
-        "release_intent_1", "intent_created", "2026-07-02T00:00:00+08:00"
+    )
+
+    assert intent_id == "release_intent_release_safety_20260629_001_a1661529"
+    assert intent_id.startswith("release_intent_release_safety_20260629_001_")
+    assert intent_id != make_release_intent_id("release_safety_20260629_002")
+
+    assert approval_id == (
+        "release_approval_release_intent_1_release_manager_09898625"
+    )
+    assert approval_id.startswith(
+        "release_approval_release_intent_1_release_manager_"
+    )
+    assert approval_id != make_release_approval_id(
+        "release_intent_1",
+        "clinical_safety_reviewer",
+        "2026-07-02T00:00:00+08:00",
+    )
+
+    assert rollback_plan_id == "rollback_plan_release_intent_1_b22fd55d"
+    assert rollback_plan_id.startswith("rollback_plan_release_intent_1_")
+    assert rollback_plan_id != make_release_rollback_plan_id(
+        "release_intent_1", "2026-07-02T00:01:00+08:00"
+    )
+
+    assert audit_event_id == "release_audit_intent_created_59d22c26"
+    assert audit_event_id.startswith("release_audit_intent_created_")
+    assert audit_event_id != make_release_audit_event_id(
+        "release_intent_1", "approval_recorded", "2026-07-02T00:00:00+08:00"
     )
 
 
@@ -239,3 +282,64 @@ def test_audit_event_rejects_secret_like_payload() -> None:
             payload={"api_key": "secret"},
             previous_event_hash="sha256:GENESIS",
         )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"nested": [{"headers": {"bearer-token": "secret"}}]},
+        {"nested": {"deploymentCredential": "secret"}},
+        {"nested": {"deployment credentials": "secret"}},
+        {"nested": {"prompt": "system prompt"}},
+        {"nested": {"hiddenReasoning": "private reasoning"}},
+        {"nested": {"chainOfThought": "private reasoning"}},
+        {"nested": {"patientName": "Example Patient"}},
+        {"nested": {"patient-number": "MRN-123"}},
+        {"nested": {"clientSecret": "secret"}},
+        {"nested": {"refreshToken": "secret"}},
+        {"nested": {"sessionToken": "secret"}},
+        {"nested": {"private key": "secret"}},
+    ],
+)
+def test_audit_event_rejects_nested_secret_prompt_and_phi_payload_keys(
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValueError, match="payload contains forbidden key"):
+        build_audit_event(
+            event_id="release_audit_bad_nested_payload",
+            intent_id="release_intent_1",
+            event_type="intent_created",
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+            payload=payload,
+            previous_event_hash="sha256:GENESIS",
+        )
+
+
+def test_audit_event_reconstruction_rejects_hash_tampering() -> None:
+    event_dict = build_audit_event(
+        event_id="release_audit_hash_validation",
+        intent_id="release_intent_1",
+        event_type="intent_created",
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+        payload={"status": "ready"},
+        previous_event_hash="sha256:GENESIS",
+    ).to_dict()
+
+    mismatched_event_hash = dict(event_dict)
+    mismatched_event_hash["event_hash"] = "sha256:" + ("0" * 64)
+    with pytest.raises(ValueError, match="event_hash does not match"):
+        ReleaseAuditEvent(**mismatched_event_hash)
+
+    malformed_previous_hash = dict(event_dict)
+    malformed_previous_hash["previous_event_hash"] = "sha256:not-valid"
+    with pytest.raises(
+        ValueError, match="previous_event_hash must be a sha256 hash"
+    ):
+        ReleaseAuditEvent(**malformed_previous_hash)
+
+    stale_event_hash = dict(event_dict)
+    stale_event_hash["payload_hash"] = "sha256:" + ("1" * 64)
+    with pytest.raises(ValueError, match="payload_hash|event_hash"):
+        ReleaseAuditEvent(**stale_event_hash)
