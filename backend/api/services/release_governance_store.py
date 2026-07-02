@@ -244,6 +244,7 @@ class ReleaseGovernanceStore:
 
     def _write_json_once(self, path: Path, payload: dict[str, Any]) -> None:
         self._raise_if_parent_outside_root(path)
+        self._raise_if_existing_write_target_outside_root(path)
         if path.exists():
             raise FileExistsError(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -292,6 +293,7 @@ class ReleaseGovernanceStore:
     def _append_prepared_event(self, prepared_event: _PreparedAuditEvent) -> None:
         audit_path = prepared_event.audit_path
         self._raise_if_parent_outside_root(audit_path)
+        self._raise_if_existing_write_target_outside_root(audit_path)
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         with audit_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(prepared_event.event.to_dict(), sort_keys=True))
@@ -311,6 +313,22 @@ class ReleaseGovernanceStore:
         except ValueError as exc:
             raise GovernanceIntegrityError(
                 f"{path.parent} resolves outside governance root {self.root}"
+            ) from exc
+
+    def _raise_if_existing_write_target_outside_root(self, path: Path) -> None:
+        if path.is_symlink():
+            raise GovernanceIntegrityError(
+                f"{path} is a symlink and cannot be used for governance writes"
+            )
+        if not path.exists():
+            return
+        resolved_root = self.root.resolve(strict=False)
+        resolved_path = path.resolve(strict=True)
+        try:
+            resolved_path.relative_to(resolved_root)
+        except ValueError as exc:
+            raise GovernanceIntegrityError(
+                f"{path} resolves outside governance root {self.root}"
             ) from exc
 
     def _raise_if_integrity_failed(self, intent_id: str) -> None:

@@ -209,6 +209,35 @@ def test_symlinked_audit_directory_cannot_escape_root(tmp_path: Path) -> None:
     ).exists()
 
 
+def test_symlinked_existing_audit_file_cannot_escape_root(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    audit_dir = root / "audit"
+    audit_dir.mkdir(parents=True)
+    outside_file = tmp_path / "outside_audit.jsonl"
+    outside_file.write_text("outside\n", encoding="utf-8")
+    audit_file = audit_dir / "release_audit_20260702.jsonl"
+    try:
+        audit_file.symlink_to(outside_file)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"file symlink unsupported: {exc}")
+    store = ReleaseGovernanceStore(root)
+    intent = make_intent()
+
+    with pytest.raises(GovernanceIntegrityError, match="outside governance root|symlink"):
+        store.write_intent(
+            intent,
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+
+    assert outside_file.read_text(encoding="utf-8") == "outside\n"
+    assert not (
+        root / "intents" / f"{intent.intent_id}.json"
+    ).exists()
+
+
 def test_write_approval_and_rollback_plan_append_to_audit_chain(
     tmp_path: Path,
 ) -> None:
