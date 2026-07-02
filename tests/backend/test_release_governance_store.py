@@ -10,9 +10,12 @@ from backend.api.services.release_governance_store import (
     ReleaseGovernanceStore,
 )
 from src.contracts.release_governance import (
+    GENESIS_EVENT_HASH,
     ReleaseApproval,
     ReleaseIntent,
     ReleaseRollbackPlan,
+    build_audit_event,
+    make_release_audit_event_id,
 )
 
 
@@ -68,6 +71,16 @@ def make_rollback_plan(intent_id: str) -> ReleaseRollbackPlan:
             "Run P0 harness before any future rollback execution.",
         ],
         created_at="2026-07-02T00:15:00+08:00",
+    )
+
+
+def _write_audit_event(root: Path, *, event: object) -> None:
+    audit_dir = root / "audit"
+    audit_dir.mkdir(parents=True)
+    audit_file = audit_dir / "release_audit_20260702.jsonl"
+    audit_file.write_text(
+        json.dumps(event.to_dict(), sort_keys=True) + "\n",
+        encoding="utf-8",
     )
 
 
@@ -130,6 +143,62 @@ def test_store_rejects_overwriting_existing_intent(tmp_path: Path) -> None:
             actor="admin_operator",
             timestamp="2026-07-02T00:01:00+08:00",
         )
+
+
+def test_write_approval_requires_existing_intent_and_creates_no_files(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    approval = make_approval(make_intent().intent_id)
+
+    with pytest.raises(GovernanceIntegrityError, match="unknown release intent"):
+        store.write_approval(
+            approval,
+            actor="release_admin",
+            timestamp=approval.signed_at,
+        )
+
+    assert not (root / "approvals" / f"{approval.approval_id}.json").exists()
+    assert not (root / "audit").exists()
+
+
+def test_write_rollback_plan_requires_existing_intent_and_creates_no_files(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    rollback_plan = make_rollback_plan(make_intent().intent_id)
+
+    with pytest.raises(GovernanceIntegrityError, match="unknown release intent"):
+        store.write_rollback_plan(
+            rollback_plan,
+            actor="release_manager",
+            timestamp=rollback_plan.created_at,
+        )
+
+    assert not (
+        root / "rollback_plans" / f"{rollback_plan.rollback_plan_id}.json"
+    ).exists()
+    assert not (root / "audit").exists()
+
+
+def test_append_cancel_event_requires_existing_intent_and_creates_no_audit_file(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    intent_id = make_intent().intent_id
+
+    with pytest.raises(GovernanceIntegrityError, match="unknown release intent"):
+        store.append_cancel_event(
+            intent_id=intent_id,
+            actor="admin_operator",
+            reason="No such intent.",
+            timestamp="2026-07-02T00:20:00+08:00",
+        )
+
+    assert not (root / "audit").exists()
 
 
 def test_copied_intent_artifact_filename_mismatch_fails_integrity(
@@ -301,7 +370,13 @@ def test_invalid_approval_audit_timestamp_does_not_leave_artifact(
     tmp_path: Path,
 ) -> None:
     store = ReleaseGovernanceStore(tmp_path / "release_governance")
-    approval = make_approval(make_intent().intent_id)
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    approval = make_approval(intent.intent_id)
 
     with pytest.raises(ValueError, match="timestamp must start"):
         store.write_approval(
@@ -322,7 +397,13 @@ def test_invalid_rollback_plan_audit_timestamp_does_not_leave_artifact(
     tmp_path: Path,
 ) -> None:
     store = ReleaseGovernanceStore(tmp_path / "release_governance")
-    rollback_plan = make_rollback_plan(make_intent().intent_id)
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    rollback_plan = make_rollback_plan(intent.intent_id)
 
     with pytest.raises(ValueError, match="timestamp must start"):
         store.write_rollback_plan(
@@ -504,6 +585,71 @@ def test_malformed_intent_artifact_returns_integrity_warning_and_blocks_writes(
             actor="admin_operator",
             timestamp="2026-07-02T00:00:00+08:00",
         )
+
+
+def test_orphan_approval_artifact_and_audit_row_fails_integrity(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    approvals_dir = root / "approvals"
+    approvals_dir.mkdir(parents=True)
+    missing_intent_id = "release_intent_missing_20260702_001"
+    approval = make_approval(missing_intent_id)
+    (approvals_dir / f"{approval.approval_id}.json").write_text(
+        json.dumps(approval.to_dict(), sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    event = build_audit_event(
+        event_id=make_release_audit_event_id(
+            missing_intent_id,
+            "approval_recorded",
+            approval.signed_at,
+        ),
+        intent_id=missing_intent_id,
+        event_type="approval_recorded",
+        actor="release_admin",
+        timestamp=approval.signed_at,
+        payload=approval.to_dict(),
+        previous_event_hash=GENESIS_EVENT_HASH,
+    )
+    _write_audit_event(root, event=event)
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["affected_intent_ids"] == [missing_intent_id]
+    assert any("unknown intent" in warning for warning in state.integrity["warnings"])
+
+
+def test_orphan_cancel_audit_row_fails_integrity(tmp_path: Path) -> None:
+    root = tmp_path / "release_governance"
+    missing_intent_id = "release_intent_missing_20260702_002"
+    event = build_audit_event(
+        event_id=make_release_audit_event_id(
+            missing_intent_id,
+            "intent_cancelled",
+            "2026-07-02T00:20:00+08:00",
+        ),
+        intent_id=missing_intent_id,
+        event_type="intent_cancelled",
+        actor="admin_operator",
+        timestamp="2026-07-02T00:20:00+08:00",
+        payload={
+            "intent_id": missing_intent_id,
+            "actor": "admin_operator",
+            "reason": "No such intent.",
+        },
+        previous_event_hash=GENESIS_EVENT_HASH,
+    )
+    _write_audit_event(root, event=event)
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["affected_intent_ids"] == [missing_intent_id]
+    assert any("unknown intent" in warning for warning in state.integrity["warnings"])
 
 
 def test_schema_valid_approval_artifact_tampering_fails_integrity(

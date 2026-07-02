@@ -166,7 +166,8 @@ class ReleaseGovernanceStore:
         actor: str,
         timestamp: str,
     ) -> None:
-        self._raise_if_integrity_failed(approval.intent_id)
+        state = self._raise_if_integrity_failed(approval.intent_id)
+        self._raise_if_intent_missing(approval.intent_id, state)
         prepared_event = self._prepare_event(
             intent_id=approval.intent_id,
             event_type="approval_recorded",
@@ -187,7 +188,8 @@ class ReleaseGovernanceStore:
         actor: str,
         timestamp: str,
     ) -> None:
-        self._raise_if_integrity_failed(plan.intent_id)
+        state = self._raise_if_integrity_failed(plan.intent_id)
+        self._raise_if_intent_missing(plan.intent_id, state)
         prepared_event = self._prepare_event(
             intent_id=plan.intent_id,
             event_type="rollback_plan_recorded",
@@ -209,7 +211,8 @@ class ReleaseGovernanceStore:
         reason: str,
         timestamp: str,
     ) -> None:
-        self._raise_if_integrity_failed(intent_id)
+        state = self._raise_if_integrity_failed(intent_id)
+        self._raise_if_intent_missing(intent_id, state)
         prepared_event = self._prepare_event(
             intent_id=intent_id,
             event_type="intent_cancelled",
@@ -331,12 +334,21 @@ class ReleaseGovernanceStore:
                 f"{path} resolves outside governance root {self.root}"
             ) from exc
 
-    def _raise_if_integrity_failed(self, intent_id: str) -> None:
+    def _raise_if_integrity_failed(self, intent_id: str) -> ReleaseGovernanceState:
         state = self.read_state()
         if state.integrity["status"] == "failed":
             raise GovernanceIntegrityError(
                 f"release governance integrity failed; refusing write for {intent_id}"
             )
+        return state
+
+    def _raise_if_intent_missing(
+        self,
+        intent_id: str,
+        state: ReleaseGovernanceState,
+    ) -> None:
+        if intent_id not in {intent.intent_id for intent in state.intents}:
+            raise GovernanceIntegrityError(f"unknown release intent: {intent_id}")
 
     def _read_json_dir(
         self,
@@ -571,6 +583,43 @@ class ReleaseGovernanceStore:
                 audit_hashes_by_type[event.event_type].add(
                     (event.intent_id, event.payload_hash)
                 )
+
+        known_intent_ids = {intent.intent_id for intent in intents}
+        known_intent_ids.update(
+            record.event.intent_id
+            for record in audit_result.records
+            if record.event.event_type == "intent_created"
+        )
+
+        for approval in approvals:
+            if approval.intent_id not in known_intent_ids:
+                warnings.append(
+                    f"approval artifact {approval.approval_id} references unknown intent {approval.intent_id}"
+                )
+                affected_intent_ids.add(approval.intent_id)
+
+        for plan in rollback_plans:
+            if plan.intent_id not in known_intent_ids:
+                warnings.append(
+                    f"rollback plan artifact {plan.rollback_plan_id} references unknown intent {plan.intent_id}"
+                )
+                affected_intent_ids.add(plan.intent_id)
+
+        reference_event_types = {
+            "approval_recorded",
+            "rollback_plan_recorded",
+            "intent_cancelled",
+        }
+        for record in audit_result.records:
+            event = record.event
+            if (
+                event.event_type in reference_event_types
+                and event.intent_id not in known_intent_ids
+            ):
+                warnings.append(
+                    f"{event.event_type} audit event {event.event_id} references unknown intent {event.intent_id}"
+                )
+                affected_intent_ids.add(event.intent_id)
 
         for intent_id, payload_hash in intent_hashes:
             if (
