@@ -1,7 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import type { AdminReleaseDashboardResponse, AdminToolManifestResponse } from "../../app/api/types";
+import type {
+  AdminReleaseDashboardResponse,
+  AdminReleaseGovernanceResponse,
+  AdminToolManifestResponse,
+} from "../../app/api/types";
 import type { SessionState } from "../../app/api/types";
 import { createInitialSessionState } from "../../app/store/stream-reducer";
 import {
@@ -143,6 +147,79 @@ function makeAdminReleaseDashboard(): AdminReleaseDashboardResponse {
       source: "reports/static_release_artifacts",
       mode: "read_only",
     },
+  };
+}
+
+function makeAdminReleaseGovernance(
+  overrides: Partial<AdminReleaseGovernanceResponse> = {},
+): AdminReleaseGovernanceResponse {
+  const activeIntent = {
+    intent_id: "release_intent_test",
+    source_release_report_id: "release_safety_20260629_001",
+    source_report_path: "reports/release_safety/release_safety_20260629_001.json",
+    harness_run_ids: ["harness_20260629_001"],
+    literature_run_id: "literature_harness_20260630_001",
+    version_chain: {
+      agent_policy_version: "agent_policy_20260629_0",
+      clinical_safety_policy_version: "crc_safety_policy_v0",
+    },
+    release_decision_snapshot: "feature_flag_or_pass",
+    rollback_target: "agent_policy_20260624_0",
+    requested_by: "admin_operator",
+    requested_at: "2026-07-02T00:00:00+08:00",
+    target_scope: "shadow" as const,
+    status: "pending_approval" as const,
+    derived_status: "pending_approval" as const,
+    blocking_summary: { hard_fail_count: 0 },
+  };
+  return {
+    dashboard_snapshot: {
+      release_decision: "feature_flag_or_pass",
+      rollback_target: "agent_policy_20260624_0",
+      hard_fail_count: 0,
+      literature_status: "shadow_only",
+    },
+    intents: [activeIntent],
+    active_intent: activeIntent,
+    approvals: [],
+    required_approvals: [
+      { role: "release_manager", status: "missing", latest_decision: null },
+      { role: "clinical_safety_reviewer", status: "missing", latest_decision: null },
+    ],
+    rollback_plan: null,
+    audit_events: [
+      {
+        event_id: "release_audit_test",
+        intent_id: "release_intent_test",
+        event_type: "intent_created",
+        actor: "admin_operator",
+        timestamp: "2026-07-02T00:00:00+08:00",
+        payload_hash: "sha256:payload",
+        previous_event_hash: "sha256:GENESIS",
+        event_hash: "sha256:event",
+      },
+    ],
+    integrity: { status: "verified", warnings: [] },
+    disabled_execution_actions: [
+      {
+        id: "execute_release",
+        label: "Execute release",
+        disabled: true,
+        reason: "Step 12 records governance only.",
+      },
+      {
+        id: "execute_rollback",
+        label: "Execute rollback",
+        disabled: true,
+        reason: "Rollback execution requires a later execution-path design.",
+      },
+    ],
+    runtime: {
+      auth: "admin",
+      source: "reports/release_governance",
+      mode: "audit_only",
+    },
+    ...overrides,
   };
 }
 
@@ -557,6 +634,7 @@ describe("AgentAdminView", () => {
     const apiClient = {
       getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
       getAdminReleaseDashboard: vi.fn(async () => releaseDashboard),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
     };
 
     render(
@@ -586,10 +664,96 @@ describe("AgentAdminView", () => {
     expect(page).toHaveTextContent("Clinical RAG ingest is disabled in Step 11");
   });
 
+  it("renders release governance state and disabled execution controls", async () => {
+    const releaseGovernance = makeAdminReleaseGovernance();
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => releaseGovernance),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-governance" })}
+        doctor={makeState({ sessionId: "doctor-governance" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(apiClient.getAdminReleaseGovernance).toHaveBeenCalledTimes(1));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("Release governance");
+    expect(page).toHaveTextContent("release_intent_test");
+    expect(page).toHaveTextContent("release_manager");
+    expect(page).toHaveTextContent("clinical_safety_reviewer");
+    expect(page).toHaveTextContent("release_audit_test");
+    expect(page).toHaveTextContent("verified");
+    for (const label of ["Execute release", "Execute rollback"]) {
+      const action = within(page).getByText(label).closest("button");
+      expect(action).toBeDisabled();
+    }
+    expect(page).toHaveTextContent("Record approval");
+    expect(page).toHaveTextContent("Record rollback plan");
+    expect(page).toHaveTextContent("Cancel intent");
+  });
+
+  it("creates a release governance intent and renders the updated read model", async () => {
+    const emptyGovernance = makeAdminReleaseGovernance({
+      intents: [],
+      active_intent: null,
+      audit_events: [],
+    });
+    const createdGovernance = makeAdminReleaseGovernance();
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => emptyGovernance),
+      createAdminReleaseIntent: vi.fn(async () => createdGovernance),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-create-intent" })}
+        doctor={makeState({ sessionId: "doctor-create-intent" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Create intent"));
+
+    fireEvent.change(screen.getByLabelText("Requested by"), {
+      target: { value: "release_admin" },
+    });
+    fireEvent.change(screen.getByLabelText("Intent reason"), {
+      target: { value: "Prepare audited governance." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create intent" }));
+
+    await waitFor(() => expect(apiClient.createAdminReleaseIntent).toHaveBeenCalledTimes(1));
+
+    expect(apiClient.createAdminReleaseIntent).toHaveBeenCalledWith({
+      requested_by: "release_admin",
+      target_scope: "shadow",
+      status: "pending_approval",
+      reason: "Prepare audited governance.",
+    });
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("release_intent_test");
+  });
+
   it("does not fetch release dashboard until the release task is selected", () => {
     const apiClient = {
       getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
       getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
     };
 
     render(

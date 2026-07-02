@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -17,10 +18,18 @@ import {
 } from "lucide-react";
 
 import type {
+  AdminReleaseApprovalDecision,
+  AdminReleaseApprovalStatus,
+  AdminReleaseApproverRole,
+  AdminReleaseCreateIntentStatus,
   AdminReleaseDashboardResponse,
   AdminReleaseGateState,
+  AdminReleaseGovernanceResponse,
   AdminReleaseHumanSignoffStatus,
+  AdminReleaseIntegrityStatus,
+  AdminReleaseRollbackPlanStatus,
   AdminReleaseRunStatus,
+  AdminReleaseTargetScope,
   Scene,
   SessionState,
 } from "../../app/api/types";
@@ -54,6 +63,11 @@ import {
   type AgentAdminTaskId,
 } from "./agent-admin-model";
 import type { AgentAdminReleaseDashboardResource, AgentAdminToolsResource } from "./agent-admin-view";
+import type {
+  AgentAdminReleaseGovernanceActions,
+  AgentAdminReleaseGovernanceActionState,
+  AgentAdminReleaseGovernanceResource,
+} from "./agent-admin-view";
 
 type AgentAdminPagesProps = {
   activeTaskId: AgentAdminTaskId;
@@ -63,6 +77,9 @@ type AgentAdminPagesProps = {
   onNavigateTask: (taskId: AgentAdminTaskId) => void;
   toolsResource: AgentAdminToolsResource;
   releaseDashboardResource: AgentAdminReleaseDashboardResource;
+  releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
+  releaseGovernanceActionState: AgentAdminReleaseGovernanceActionState;
+  releaseGovernanceActions: AgentAdminReleaseGovernanceActions;
 };
 
 function watchedSession(activeScene: Scene, patient: SessionState, doctor: SessionState) {
@@ -77,6 +94,9 @@ export function AgentAdminTaskPages({
   onNavigateTask,
   toolsResource,
   releaseDashboardResource,
+  releaseGovernanceResource,
+  releaseGovernanceActionState,
+  releaseGovernanceActions,
 }: AgentAdminPagesProps) {
   const activeTask = AGENT_ADMIN_TASKS.find((task) => task.id === activeTaskId) ?? AGENT_ADMIN_TASKS[0];
   const ActiveTaskIcon = activeTask.icon;
@@ -118,7 +138,12 @@ export function AgentAdminTaskPages({
       ) : activeTaskId === "evidence" ? (
         <EvidencePage activeScene={activeScene} patient={patient} doctor={doctor} />
       ) : activeTaskId === "release" ? (
-        <ReleasePage releaseDashboardResource={releaseDashboardResource} />
+        <ReleasePage
+          releaseDashboardResource={releaseDashboardResource}
+          releaseGovernanceResource={releaseGovernanceResource}
+          releaseGovernanceActionState={releaseGovernanceActionState}
+          releaseGovernanceActions={releaseGovernanceActions}
+        />
       ) : activeTaskId === "read-only" ? (
         <ReadOnlyPage activeScene={activeScene} patient={patient} doctor={doctor} />
       ) : (
@@ -133,7 +158,15 @@ function AgentAdminOverviewPage({
   patient,
   doctor,
   onNavigateTask,
-}: Omit<AgentAdminPagesProps, "activeTaskId" | "toolsResource" | "releaseDashboardResource">) {
+}: Omit<
+  AgentAdminPagesProps,
+  | "activeTaskId"
+  | "toolsResource"
+  | "releaseDashboardResource"
+  | "releaseGovernanceResource"
+  | "releaseGovernanceActionState"
+  | "releaseGovernanceActions"
+>) {
   const watchedState = watchedSession(activeScene, patient, doctor);
   const patientSession = buildSessionSummary("患者", patient);
   const doctorSession = buildSessionSummary("医生", doctor);
@@ -806,8 +839,14 @@ function releaseRowState(
 
 function ReleasePage({
   releaseDashboardResource,
+  releaseGovernanceResource,
+  releaseGovernanceActionState,
+  releaseGovernanceActions,
 }: {
   releaseDashboardResource: AgentAdminReleaseDashboardResource;
+  releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
+  releaseGovernanceActionState: AgentAdminReleaseGovernanceActionState;
+  releaseGovernanceActions: AgentAdminReleaseGovernanceActions;
 }) {
   if (releaseDashboardResource.status === "loading") {
     return (
@@ -833,7 +872,14 @@ function ReleasePage({
   }
 
   if (releaseDashboardResource.status === "success") {
-    return <ReleaseSuccessPage dashboard={releaseDashboardResource.data} />;
+    return (
+      <ReleaseSuccessPage
+        dashboard={releaseDashboardResource.data}
+        releaseGovernanceResource={releaseGovernanceResource}
+        releaseGovernanceActionState={releaseGovernanceActionState}
+        releaseGovernanceActions={releaseGovernanceActions}
+      />
+    );
   }
 
   return (
@@ -845,7 +891,17 @@ function ReleasePage({
   );
 }
 
-function ReleaseSuccessPage({ dashboard }: { dashboard: AdminReleaseDashboardResponse }) {
+function ReleaseSuccessPage({
+  dashboard,
+  releaseGovernanceResource,
+  releaseGovernanceActionState,
+  releaseGovernanceActions,
+}: {
+  dashboard: AdminReleaseDashboardResponse;
+  releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
+  releaseGovernanceActionState: AgentAdminReleaseGovernanceActionState;
+  releaseGovernanceActions: AgentAdminReleaseGovernanceActions;
+}) {
   const versionRows = Object.entries(dashboard.version_chain);
   const summary = dashboard.summary;
   const summaryMetrics = [
@@ -968,7 +1024,452 @@ function ReleaseSuccessPage({ dashboard }: { dashboard: AdminReleaseDashboardRes
           ))}
         </div>
       </AgentAdminPanel>
+
+      <ReleaseGovernanceSection
+        resource={releaseGovernanceResource}
+        actionState={releaseGovernanceActionState}
+        actions={releaseGovernanceActions}
+      />
     </>
+  );
+}
+
+function releaseApprovalState(status: AdminReleaseApprovalStatus): "success" | "warning" | "ready" {
+  if (status === "approved") {
+    return "success";
+  }
+  if (status === "rejected" || status === "changes_requested") {
+    return "warning";
+  }
+  return "ready";
+}
+
+function releaseIntegrityState(status: AdminReleaseIntegrityStatus): "success" | "warning" {
+  return status === "verified" ? "success" : "warning";
+}
+
+function splitReleaseVerificationSteps(value: string): string[] {
+  return value
+    .split(/\r?\n/)
+    .map((step) => step.trim())
+    .filter(Boolean);
+}
+
+function ReleaseGovernanceSection({
+  resource,
+  actionState,
+  actions,
+}: {
+  resource: AgentAdminReleaseGovernanceResource;
+  actionState: AgentAdminReleaseGovernanceActionState;
+  actions: AgentAdminReleaseGovernanceActions;
+}) {
+  if (resource.status === "idle") {
+    return null;
+  }
+
+  if (resource.status === "loading") {
+    return (
+      <AgentAdminPanel eyebrow="audit governance" title="Release governance" icon={ShieldCheck}>
+        <div className="agent-admin-detail-list">
+          <span>reading release governance</span>
+          <span>audit-only state is loading from the admin API</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  if (resource.status === "error") {
+    const status = resource.error.status ? ` (${resource.error.status})` : "";
+    return (
+      <AgentAdminPanel eyebrow="audit governance" title="Release governance" icon={AlertTriangle}>
+        <div className="agent-admin-detail-list">
+          <span>release governance unavailable{status}: {resource.error.message}</span>
+          <span>release execution remains disabled</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  const governance = resource.data;
+  const activeIntent = governance.active_intent;
+  const approvalsComplete = governance.required_approvals.filter((approval) => approval.status === "approved").length;
+  const rollbackStatus = governance.rollback_plan?.status ?? "missing";
+  const governanceMetrics = [
+    {
+      label: "Active intent",
+      value: activeIntent?.derived_status ?? "none",
+      detail: activeIntent?.intent_id ?? "no active intent",
+      tone: activeIntent ? ("success" as const) : ("neutral" as const),
+    },
+    {
+      label: "Approvals",
+      value: `${approvalsComplete}/${governance.required_approvals.length}`,
+      detail: "required roles",
+      tone: approvalsComplete === governance.required_approvals.length ? ("success" as const) : ("warning" as const),
+    },
+    {
+      label: "Rollback plan",
+      value: rollbackStatus,
+      detail: governance.rollback_plan?.rollback_target ?? "not recorded",
+      tone: rollbackStatus === "accepted" ? ("success" as const) : ("warning" as const),
+    },
+    {
+      label: "Audit integrity",
+      value: governance.integrity.status,
+      detail: `${governance.audit_events.length} events`,
+      tone: releaseIntegrityState(governance.integrity.status),
+    },
+  ];
+
+  return (
+    <>
+      <AgentAdminMetricStrip metrics={governanceMetrics} />
+      <AgentAdminSplitWorkbench
+        primary={
+          <>
+            <AgentAdminPanel eyebrow="audit governance" title="Release governance" icon={ShieldCheck}>
+              <div className="agent-admin-detail-list">
+                <span>active intent / {activeIntent?.intent_id ?? "none"}</span>
+                <span>requested by / {activeIntent?.requested_by ?? "not requested"}</span>
+                <span>target scope / {activeIntent?.target_scope ?? "not selected"}</span>
+                <span>source report / {activeIntent?.source_release_report_id ?? "not linked"}</span>
+                <span>derived status / {activeIntent?.derived_status ?? "none"}</span>
+              </div>
+            </AgentAdminPanel>
+
+            <AgentAdminPanel eyebrow="required approvals" title="Approval ledger" icon={ListChecks}>
+              <div className="agent-admin-timeline">
+                {governance.required_approvals.map((approval) => {
+                  const rowState = releaseApprovalState(approval.status);
+                  return (
+                    <article key={approval.role} className={`agent-admin-timeline-row agent-admin-timeline-row-${rowState}`}>
+                      <span className="agent-admin-timeline-node">
+                        <AgentAdminStateIcon state={rowState} />
+                        {approval.role}
+                      </span>
+                      <span>{approval.signed_by ?? approval.latest_decision ?? "waiting for signed approval"}</span>
+                      <strong>{approval.status}</strong>
+                    </article>
+                  );
+                })}
+              </div>
+            </AgentAdminPanel>
+          </>
+        }
+        secondary={
+          <>
+            <AgentAdminPanel eyebrow="rollback plan" title="Rollback guardrail" icon={Route}>
+              <div className="agent-admin-detail-list">
+                <span>target / {governance.rollback_plan?.rollback_target ?? activeIntent?.rollback_target ?? "not recorded"}</span>
+                <span>owner / {governance.rollback_plan?.owner ?? "not assigned"}</span>
+                <span>status / {governance.rollback_plan?.status ?? "missing"}</span>
+                {(governance.rollback_plan?.verification_steps ?? ["verification steps not recorded"]).map((step) => (
+                  <span key={step}>{step}</span>
+                ))}
+              </div>
+            </AgentAdminPanel>
+
+            <AgentAdminPanel eyebrow="integrity" title="Audit hash chain" icon={KeyRound}>
+              <div className="agent-admin-detail-list">
+                <span>status / {governance.integrity.status}</span>
+                <span>warnings / {governance.integrity.warnings.length}</span>
+                <span>runtime / {governance.runtime.auth} / {governance.runtime.source} / {governance.runtime.mode}</span>
+              </div>
+            </AgentAdminPanel>
+          </>
+        }
+      />
+
+      <ReleaseGovernanceForms governance={governance} actionState={actionState} actions={actions} />
+
+      <AgentAdminSplitWorkbench
+        primary={
+          <AgentAdminPanel eyebrow="audit trail" title="Release governance audit trail" icon={FileText}>
+            <div className="agent-admin-timeline">
+              {governance.audit_events.length > 0 ? (
+                governance.audit_events.map((event) => (
+                  <article key={event.event_id} className="agent-admin-timeline-row agent-admin-timeline-row-success">
+                    <span className="agent-admin-timeline-node">
+                      <AgentAdminStateIcon state="success" />
+                      {event.event_id}
+                    </span>
+                    <span>{event.event_type} / {event.actor}</span>
+                    <strong>{event.event_hash}</strong>
+                  </article>
+                ))
+              ) : (
+                <article className="agent-admin-timeline-row agent-admin-timeline-row-ready">
+                  <span className="agent-admin-timeline-node">
+                    <AgentAdminStateIcon state="ready" />
+                    no audit events
+                  </span>
+                  <span>create intent to start the release governance chain</span>
+                  <strong>idle</strong>
+                </article>
+              )}
+            </div>
+          </AgentAdminPanel>
+        }
+        secondary={
+          <AgentAdminPanel eyebrow="execution locked" title="Disabled execution controls" icon={KeyRound}>
+            <div className="agent-admin-detail-list">
+              {governance.disabled_execution_actions.map((action) => (
+                <button key={action.id} type="button" className="agent-admin-disabled-action" disabled>
+                  <KeyRound size={15} aria-hidden="true" />
+                  <span>{action.label}</span>
+                  <small>{action.reason}</small>
+                </button>
+              ))}
+            </div>
+          </AgentAdminPanel>
+        }
+      />
+    </>
+  );
+}
+
+function ReleaseGovernanceForms({
+  governance,
+  actionState,
+  actions,
+}: {
+  governance: AdminReleaseGovernanceResponse;
+  actionState: AgentAdminReleaseGovernanceActionState;
+  actions: AgentAdminReleaseGovernanceActions;
+}) {
+  const activeIntentId = governance.active_intent?.intent_id;
+  const [createRequestedBy, setCreateRequestedBy] = useState("release_admin");
+  const [createReason, setCreateReason] = useState("");
+  const [createTargetScope, setCreateTargetScope] = useState<AdminReleaseTargetScope>("shadow");
+  const [createStatus, setCreateStatus] = useState<AdminReleaseCreateIntentStatus>("pending_approval");
+  const [approvalRole, setApprovalRole] = useState<AdminReleaseApproverRole>("release_manager");
+  const [approvalDecision, setApprovalDecision] = useState<AdminReleaseApprovalDecision>("approve");
+  const [approvalReason, setApprovalReason] = useState("");
+  const [approvalSignedBy, setApprovalSignedBy] = useState("release_manager");
+  const [rollbackOwner, setRollbackOwner] = useState("release_manager");
+  const [rollbackStatus, setRollbackStatus] = useState<AdminReleaseRollbackPlanStatus>("proposed");
+  const [rollbackSteps, setRollbackSteps] = useState("");
+  const [cancelActor, setCancelActor] = useState("release_manager");
+  const [cancelReason, setCancelReason] = useState("");
+  const actionRunning = actionState.status === "running";
+  const activeIntentMissing = !activeIntentId;
+
+  async function handleCreateIntent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    await actions.createIntent({
+      requested_by: createRequestedBy.trim(),
+      target_scope: createTargetScope,
+      status: createStatus,
+      reason: createReason.trim(),
+    });
+  }
+
+  async function handleRecordApproval(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activeIntentId) {
+      return;
+    }
+    await actions.recordApproval(activeIntentId, {
+      approver_role: approvalRole,
+      decision: approvalDecision,
+      reason: approvalReason.trim(),
+      signed_by: approvalSignedBy.trim(),
+    });
+  }
+
+  async function handleRecordRollbackPlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activeIntentId) {
+      return;
+    }
+    await actions.recordRollbackPlan(activeIntentId, {
+      owner: rollbackOwner.trim(),
+      status: rollbackStatus,
+      verification_steps: splitReleaseVerificationSteps(rollbackSteps),
+    });
+  }
+
+  async function handleCancelIntent(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activeIntentId) {
+      return;
+    }
+    await actions.cancelIntent(activeIntentId, {
+      actor: cancelActor.trim(),
+      reason: cancelReason.trim(),
+    });
+  }
+
+  return (
+    <AgentAdminPanel eyebrow="audit writes" title="Release governance actions" icon={KeyRound}>
+      {actionState.status === "running" ? (
+        <span className="agent-admin-action-status">{actionState.label} in progress</span>
+      ) : null}
+      {actionState.status === "error" ? (
+        <span className="agent-admin-action-status agent-admin-action-status-error">{actionState.message}</span>
+      ) : null}
+
+      <div className="agent-admin-governance-form-grid">
+        <form className="agent-admin-governance-form" onSubmit={handleCreateIntent}>
+          <h3>Create intent</h3>
+          <label htmlFor="release-create-requested-by">
+            <span>Requested by</span>
+            <input
+              id="release-create-requested-by"
+              value={createRequestedBy}
+              onChange={(event) => setCreateRequestedBy(event.target.value)}
+              required
+            />
+          </label>
+          <label htmlFor="release-create-reason">
+            <span>Intent reason</span>
+            <textarea
+              id="release-create-reason"
+              value={createReason}
+              onChange={(event) => setCreateReason(event.target.value)}
+              required
+            />
+          </label>
+          <label htmlFor="release-create-target-scope">
+            <span>Target scope</span>
+            <select
+              id="release-create-target-scope"
+              value={createTargetScope}
+              onChange={(event) => setCreateTargetScope(event.target.value as AdminReleaseTargetScope)}
+            >
+              <option value="shadow">shadow</option>
+              <option value="feature_flag_candidate">feature_flag_candidate</option>
+            </select>
+          </label>
+          <label htmlFor="release-create-status">
+            <span>Intent status</span>
+            <select
+              id="release-create-status"
+              value={createStatus}
+              onChange={(event) => setCreateStatus(event.target.value as AdminReleaseCreateIntentStatus)}
+            >
+              <option value="pending_approval">pending_approval</option>
+              <option value="draft">draft</option>
+            </select>
+          </label>
+          <button type="submit" disabled={actionRunning}>Create intent</button>
+        </form>
+
+        <form className="agent-admin-governance-form" onSubmit={handleRecordApproval}>
+          <h3>Record approval</h3>
+          <label htmlFor="release-approval-role">
+            <span>Approval role</span>
+            <select
+              id="release-approval-role"
+              value={approvalRole}
+              onChange={(event) => setApprovalRole(event.target.value as AdminReleaseApproverRole)}
+              disabled={activeIntentMissing}
+            >
+              <option value="release_manager">release_manager</option>
+              <option value="clinical_safety_reviewer">clinical_safety_reviewer</option>
+              <option value="evidence_reviewer">evidence_reviewer</option>
+            </select>
+          </label>
+          <label htmlFor="release-approval-decision">
+            <span>Approval decision</span>
+            <select
+              id="release-approval-decision"
+              value={approvalDecision}
+              onChange={(event) => setApprovalDecision(event.target.value as AdminReleaseApprovalDecision)}
+              disabled={activeIntentMissing}
+            >
+              <option value="approve">approve</option>
+              <option value="reject">reject</option>
+              <option value="request_changes">request_changes</option>
+            </select>
+          </label>
+          <label htmlFor="release-approval-signed-by">
+            <span>Signed by</span>
+            <input
+              id="release-approval-signed-by"
+              value={approvalSignedBy}
+              onChange={(event) => setApprovalSignedBy(event.target.value)}
+              disabled={activeIntentMissing}
+              required
+            />
+          </label>
+          <label htmlFor="release-approval-reason">
+            <span>Approval reason</span>
+            <textarea
+              id="release-approval-reason"
+              value={approvalReason}
+              onChange={(event) => setApprovalReason(event.target.value)}
+              disabled={activeIntentMissing}
+              required
+            />
+          </label>
+          <button type="submit" disabled={activeIntentMissing || actionRunning}>Record approval</button>
+        </form>
+
+        <form className="agent-admin-governance-form" onSubmit={handleRecordRollbackPlan}>
+          <h3>Record rollback plan</h3>
+          <label htmlFor="release-rollback-owner">
+            <span>Rollback owner</span>
+            <input
+              id="release-rollback-owner"
+              value={rollbackOwner}
+              onChange={(event) => setRollbackOwner(event.target.value)}
+              disabled={activeIntentMissing}
+              required
+            />
+          </label>
+          <label htmlFor="release-rollback-status">
+            <span>Rollback status</span>
+            <select
+              id="release-rollback-status"
+              value={rollbackStatus}
+              onChange={(event) => setRollbackStatus(event.target.value as AdminReleaseRollbackPlanStatus)}
+              disabled={activeIntentMissing}
+            >
+              <option value="proposed">proposed</option>
+              <option value="accepted">accepted</option>
+            </select>
+          </label>
+          <label htmlFor="release-rollback-steps">
+            <span>Verification steps</span>
+            <textarea
+              id="release-rollback-steps"
+              value={rollbackSteps}
+              onChange={(event) => setRollbackSteps(event.target.value)}
+              disabled={activeIntentMissing}
+              required
+            />
+          </label>
+          <button type="submit" disabled={activeIntentMissing || actionRunning}>Record rollback plan</button>
+        </form>
+
+        <form className="agent-admin-governance-form" onSubmit={handleCancelIntent}>
+          <h3>Cancel intent</h3>
+          <label htmlFor="release-cancel-actor">
+            <span>Cancel actor</span>
+            <input
+              id="release-cancel-actor"
+              value={cancelActor}
+              onChange={(event) => setCancelActor(event.target.value)}
+              disabled={activeIntentMissing}
+              required
+            />
+          </label>
+          <label htmlFor="release-cancel-reason">
+            <span>Cancel reason</span>
+            <textarea
+              id="release-cancel-reason"
+              value={cancelReason}
+              onChange={(event) => setCancelReason(event.target.value)}
+              disabled={activeIntentMissing}
+              required
+            />
+          </label>
+          <button type="submit" disabled={activeIntentMissing || actionRunning}>Cancel intent</button>
+        </form>
+      </div>
+    </AgentAdminPanel>
   );
 }
 

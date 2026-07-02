@@ -5089,6 +5089,93 @@ body {
   color: var(--color-text-muted);
 }
 
+.agent-admin-action-status {
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-muted);
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+  font-weight: 700;
+}
+
+.agent-admin-action-status-error {
+  border-color: color-mix(in srgb, var(--color-warning) 42%, var(--color-border));
+  color: var(--color-warning);
+}
+
+.agent-admin-governance-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.agent-admin-governance-form {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-width: 0;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  background: var(--color-surface-muted);
+}
+
+.agent-admin-governance-form h3 {
+  margin: 0;
+  color: var(--color-text);
+  font-size: var(--font-md);
+}
+
+.agent-admin-governance-form label {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-xs);
+  font-weight: 700;
+}
+
+.agent-admin-governance-form input,
+.agent-admin-governance-form select,
+.agent-admin-governance-form textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.agent-admin-governance-form textarea {
+  min-height: 74px;
+  resize: vertical;
+}
+
+.agent-admin-governance-form button {
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.agent-admin-governance-form button:disabled,
+.agent-admin-governance-form :disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
 .agent-admin-session-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -5518,6 +5605,7 @@ body {
   .agent-admin-metrics-grid,
   .agent-admin-workbench,
   .agent-admin-memory-workbench,
+  .agent-admin-governance-form-grid,
   .agent-admin-lower-grid,
   .agent-admin-recent-grid,
   .agent-admin-session-grid,
