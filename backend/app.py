@@ -96,6 +96,10 @@ def _requires_admin_token(request: Request) -> bool:
         return True
     if method == "GET" and path == "/api/admin/release-dashboard":
         return True
+    if method == "GET" and path == "/api/admin/release-governance":
+        return True
+    if method == "POST" and path.startswith("/api/admin/release-governance/"):
+        return True
     return False
 
 

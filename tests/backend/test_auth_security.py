@@ -57,6 +57,26 @@ def _auth_client(*, user_token: str = "user-token", admin_token: str | None = "a
     async def admin_release_dashboard() -> dict[str, object]:
         return {"runtime": {"auth": "admin"}}
 
+    @app.get("/api/admin/release-governance")
+    async def admin_release_governance() -> dict[str, object]:
+        return {"runtime": {"auth": "admin", "mode": "audit_only"}}
+
+    @app.post("/api/admin/release-governance/intents")
+    async def create_release_intent() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.post("/api/admin/release-governance/intents/{intent_id}/approvals")
+    async def record_release_approval(intent_id: str) -> dict[str, bool | str]:
+        return {"ok": True, "intent_id": intent_id}
+
+    @app.post("/api/admin/release-governance/intents/{intent_id}/rollback-plan")
+    async def record_release_rollback_plan(intent_id: str) -> dict[str, bool | str]:
+        return {"ok": True, "intent_id": intent_id}
+
+    @app.post("/api/admin/release-governance/intents/{intent_id}/cancel")
+    async def cancel_release_intent(intent_id: str) -> dict[str, bool | str]:
+        return {"ok": True, "intent_id": intent_id}
+
     app.add_middleware(
         BearerAuthMiddleware,
         settings=RuntimeSettings(
@@ -86,6 +106,11 @@ def test_bearer_auth_required_for_api_routes() -> None:
         ("delete", "/api/patient-registry/patients/123"),
         ("get", "/api/admin/tools"),
         ("get", "/api/admin/release-dashboard"),
+        ("get", "/api/admin/release-governance"),
+        ("post", "/api/admin/release-governance/intents"),
+        ("post", "/api/admin/release-governance/intents/intent-1/approvals"),
+        ("post", "/api/admin/release-governance/intents/intent-1/rollback-plan"),
+        ("post", "/api/admin/release-governance/intents/intent-1/cancel"),
     ],
 )
 def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: str, path: str) -> None:
@@ -108,6 +133,11 @@ def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: 
         ("delete", "/api/patient-registry/patients/123"),
         ("get", "/api/admin/tools"),
         ("get", "/api/admin/release-dashboard"),
+        ("get", "/api/admin/release-governance"),
+        ("post", "/api/admin/release-governance/intents"),
+        ("post", "/api/admin/release-governance/intents/intent-1/approvals"),
+        ("post", "/api/admin/release-governance/intents/intent-1/rollback-plan"),
+        ("post", "/api/admin/release-governance/intents/intent-1/cancel"),
     ],
 )
 def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
@@ -129,6 +159,11 @@ def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
         ("delete", "/api/patient-registry/patients/123"),
         ("get", "/api/admin/tools"),
         ("get", "/api/admin/release-dashboard"),
+        ("get", "/api/admin/release-governance"),
+        ("post", "/api/admin/release-governance/intents"),
+        ("post", "/api/admin/release-governance/intents/intent-1/approvals"),
+        ("post", "/api/admin/release-governance/intents/intent-1/rollback-plan"),
+        ("post", "/api/admin/release-governance/intents/intent-1/cancel"),
     ],
 )
 def test_admin_endpoints_use_user_token_when_no_separate_admin_token(method: str, path: str) -> None:

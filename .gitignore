@@ -31,6 +31,7 @@ tests/backend/*
 !tests/backend/test_app_runtime_wiring.py
 !tests/backend/test_assets_api.py
 !tests/backend/test_auth_security.py
+!tests/backend/test_release_governance_api.py
 !tests/backend/test_context_maintenance.py
 !tests/backend/test_crc_triage_patient_commands.py
 !tests/backend/test_crc_triage_flow.py
