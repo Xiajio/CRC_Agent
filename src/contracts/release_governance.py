@@ -112,10 +112,14 @@ _PATIENT_IDENTIFIER_TOKENS = frozenset(
         "identifier",
         "identifiers",
         "mrn",
+        "mrns",
         "name",
+        "names",
         "number",
+        "numbers",
     }
 )
+_PATIENT_CONTEXT_TOKENS = frozenset({"patient", "patients"})
 _SENSITIVE_PAYLOAD_TOKENS = frozenset(
     {
         "authorization",
@@ -556,9 +560,14 @@ def _is_forbidden_payload_key(
         return True
     if token_set & _SENSITIVE_PAYLOAD_TOKENS:
         return True
-    if "patient" in token_set and token_set & _PATIENT_IDENTIFIER_TOKENS:
+    if (
+        token_set & _PATIENT_CONTEXT_TOKENS
+        and token_set & _PATIENT_IDENTIFIER_TOKENS
+    ):
         return True
-    if any(tokens == ("patient",) for tokens in ancestor_key_tokens):
+    if any(
+        set(tokens) & _PATIENT_CONTEXT_TOKENS for tokens in ancestor_key_tokens
+    ):
         if token_set & _PATIENT_IDENTIFIER_TOKENS:
             return True
         if normalized_key == "medical_record_number":
