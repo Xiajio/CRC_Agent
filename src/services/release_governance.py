@@ -89,6 +89,7 @@ class ReleaseGovernanceService:
         reason: str,
     ) -> dict[str, Any]:
         self._require_non_empty("reason", reason)
+        self._require_create_status(status)
         dashboard = self._dashboard_loader()
         release_run = self._required_run(dashboard, "release_safety")
         p0_runs = self._runs_by_kind(dashboard, "p0_crc_harness")
@@ -512,6 +513,12 @@ class ReleaseGovernanceService:
         if not isinstance(value, str) or not value.strip():
             raise GovernanceValidationError(
                 f"{field_name} must be a non-empty string"
+            )
+
+    def _require_create_status(self, status: str) -> None:
+        if status not in {"draft", "pending_approval"}:
+            raise GovernanceValidationError(
+                "intent status must be draft or pending_approval"
             )
 
 

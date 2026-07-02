@@ -1,25 +1,25 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.contracts.release_governance import (
     ReleaseApprovalDecision,
     ReleaseApproverRole,
-    ReleaseIntentStatus,
     ReleaseRollbackPlanStatus,
     ReleaseTargetScope,
 )
 
 
 NonEmptyString = Annotated[str, Field(min_length=1)]
+ReleaseIntentCreateStatus = Literal["draft", "pending_approval"]
 
 
 class ReleaseGovernanceCreateIntentRequest(BaseModel):
     requested_by: NonEmptyString
     target_scope: ReleaseTargetScope
-    status: ReleaseIntentStatus
+    status: ReleaseIntentCreateStatus
     reason: NonEmptyString
 
     model_config = ConfigDict(extra="forbid")

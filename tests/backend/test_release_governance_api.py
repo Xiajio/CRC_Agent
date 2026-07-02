@@ -212,6 +212,27 @@ def test_release_governance_payload_validation_returns_422(monkeypatch) -> None:
     assert service.calls == []
 
 
+def test_create_release_intent_rejects_terminal_status(monkeypatch) -> None:
+    service = FakeReleaseGovernanceService()
+    client = _client_with_fake_service(monkeypatch, service)
+
+    try:
+        response = client.post(
+            "/api/admin/release-governance/intents",
+            json={
+                "requested_by": "admin_operator",
+                "target_scope": "shadow",
+                "status": "approved",
+                "reason": "Bypass review.",
+            },
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 422
+    assert service.calls == []
+
+
 def test_release_governance_service_errors_map_to_http_status(monkeypatch) -> None:
     cases = [
         (GovernanceValidationError("invalid governance request"), 422),

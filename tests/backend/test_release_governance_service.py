@@ -129,6 +129,21 @@ def test_hard_fail_blocks_pending_approval_intent(tmp_path: Path) -> None:
         )
 
 
+def test_create_intent_rejects_terminal_status_without_review_events(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        GovernanceValidationError,
+        match="intent status must be draft or pending_approval",
+    ):
+        service(tmp_path).create_intent(
+            requested_by="admin_operator",
+            target_scope="shadow",
+            status="approved",
+            reason="Bypass review.",
+        )
+
+
 def test_invalid_release_safety_run_blocks_pending_approval_intent(
     tmp_path: Path,
 ) -> None:
