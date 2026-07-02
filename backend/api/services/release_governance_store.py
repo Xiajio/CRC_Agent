@@ -410,6 +410,26 @@ class ReleaseGovernanceStore:
             return f"{path} {label} path resolves outside governance root {self.root}"
         return None
 
+    def _file_layout_warning(self, path: Path, label: str) -> str | None:
+        try:
+            if path.is_symlink():
+                return f"{path} {label} path is a symlink"
+            if not path.is_file():
+                return f"{path} {label} path must be a regular file"
+        except OSError as exc:
+            return f"{path} {label} path could not be inspected: {exc}"
+
+        try:
+            resolved_path = path.resolve(strict=True)
+        except OSError as exc:
+            return f"{path} {label} path could not be resolved: {exc}"
+        resolved_root = self.root.resolve(strict=False)
+        try:
+            resolved_path.relative_to(resolved_root)
+        except ValueError:
+            return f"{path} {label} path resolves outside governance root {self.root}"
+        return None
+
     def _raise_if_integrity_failed(self, intent_id: str) -> ReleaseGovernanceState:
         state = self.read_state()
         if state.integrity["status"] == "failed":
@@ -570,6 +590,12 @@ class ReleaseGovernanceStore:
                 audit_file_date = _audit_file_date(path)
             except ValueError as exc:
                 warnings.append(f"{path} audit filename is invalid: {exc}")
+                global_failure = True
+                continue
+
+            file_layout_warning = self._file_layout_warning(path, "audit file")
+            if file_layout_warning is not None:
+                warnings.append(file_layout_warning)
                 global_failure = True
                 continue
 

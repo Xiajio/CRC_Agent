@@ -511,6 +511,89 @@ def test_symlinked_audit_directory_escape_fails_read_integrity(
     )
 
 
+def test_symlinked_audit_file_escape_fails_read_integrity(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    audit_dir = root / "audit"
+    audit_dir.mkdir(parents=True)
+    outside_file = tmp_path / "outside_audit.jsonl"
+    intent = make_intent()
+    event = build_audit_event(
+        event_id=make_release_audit_event_id(
+            intent.intent_id,
+            "intent_created",
+            "2026-07-02T00:00:00+08:00",
+        ),
+        intent_id=intent.intent_id,
+        event_type="intent_created",
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+        payload=intent.to_dict(),
+        previous_event_hash=GENESIS_EVENT_HASH,
+    )
+    outside_file.write_text(
+        json.dumps(event.to_dict(), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    try:
+        (audit_dir / "release_audit_20260702.jsonl").symlink_to(outside_file)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"file symlink unsupported: {exc}")
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.audit_events == []
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["global_failure"] is True
+    assert any("symlink" in warning for warning in state.integrity["warnings"])
+
+
+def test_audit_file_symlink_check_fails_read_integrity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "release_governance"
+    audit_dir = root / "audit"
+    audit_dir.mkdir(parents=True)
+    audit_file = audit_dir / "release_audit_20260702.jsonl"
+    intent = make_intent()
+    event = build_audit_event(
+        event_id=make_release_audit_event_id(
+            intent.intent_id,
+            "intent_created",
+            "2026-07-02T00:00:00+08:00",
+        ),
+        intent_id=intent.intent_id,
+        event_type="intent_created",
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+        payload=intent.to_dict(),
+        previous_event_hash=GENESIS_EVENT_HASH,
+    )
+    audit_file.write_text(
+        json.dumps(event.to_dict(), sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_symlink(path: Path) -> bool:
+        if path == audit_file:
+            return True
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.audit_events == []
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["global_failure"] is True
+    assert any("symlink" in warning for warning in state.integrity["warnings"])
+
+
 def test_write_approval_and_rollback_plan_append_to_audit_chain(
     tmp_path: Path,
 ) -> None:
