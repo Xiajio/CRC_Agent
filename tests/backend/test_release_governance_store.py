@@ -95,6 +95,14 @@ def _write_audit_event(root: Path, *, event: object) -> None:
     )
 
 
+def _write_json_artifact(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_empty_store_reads_without_creating_files(tmp_path: Path) -> None:
     store = ReleaseGovernanceStore(tmp_path / "release_governance")
 
@@ -900,6 +908,70 @@ def test_malformed_intent_artifact_returns_integrity_warning_and_blocks_writes(
             actor="admin_operator",
             timestamp="2026-07-02T00:00:00+08:00",
         )
+
+
+def test_seeded_intent_with_invalid_file_safe_id_is_not_trusted(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    payload = {
+        **make_intent().to_dict(),
+        "intent_id": "bad name",
+    }
+    _write_json_artifact(root / "intents" / "bad name.json", payload)
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.intents == []
+    assert state.integrity["status"] == "failed"
+    assert any("file-safe" in warning for warning in state.integrity["warnings"])
+
+
+def test_approval_for_seeded_invalid_intent_id_is_rejected_without_writes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    payload = {
+        **make_intent().to_dict(),
+        "intent_id": "bad name",
+    }
+    _write_json_artifact(root / "intents" / "bad name.json", payload)
+    store = ReleaseGovernanceStore(root)
+    approval = ReleaseApproval(
+        **{
+            **make_approval("bad name").to_dict(),
+            "approval_id": "approval_for_bad_name",
+        }
+    )
+
+    with pytest.raises(GovernanceIntegrityError):
+        store.write_approval(
+            approval,
+            actor="release_admin",
+            timestamp=approval.signed_at,
+        )
+
+    assert not (root / "approvals").exists()
+    assert not (root / "audit").exists()
+
+
+def test_seeded_intent_with_colon_id_payload_is_not_trusted(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    payload = {
+        **make_intent().to_dict(),
+        "intent_id": "bad:stream",
+    }
+    _write_json_artifact(root / "intents" / "safe_seed_name.json", payload)
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.intents == []
+    assert state.integrity["status"] == "failed"
+    assert any("file-safe" in warning for warning in state.integrity["warnings"])
 
 
 def test_orphan_approval_artifact_and_audit_row_fails_integrity(

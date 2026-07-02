@@ -423,6 +423,7 @@ class ReleaseGovernanceStore:
         intent_id: str,
         state: ReleaseGovernanceState,
     ) -> None:
+        _validate_artifact_id(intent_id)
         if intent_id not in {intent.intent_id for intent in state.intents}:
             raise GovernanceIntegrityError(f"unknown release intent: {intent_id}")
 
@@ -496,6 +497,14 @@ class ReleaseGovernanceStore:
 
             primary_id = getattr(artifact, id_field)
             intent_id = getattr(artifact, "intent_id", primary_id)
+            try:
+                _validate_artifact_id(primary_id)
+            except (TypeError, ValueError) as exc:
+                warnings.append(
+                    f"{path} {artifact_name} artifact {id_field} is not file-safe: {exc}"
+                )
+                affected_intent_ids.add(intent_id)
+                continue
             if path.stem != primary_id:
                 warnings.append(
                     f"{path} {artifact_name} artifact filename does not match {id_field}: {primary_id}"
