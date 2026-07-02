@@ -591,6 +591,95 @@ def test_global_cross_day_backdated_new_intent_is_rejected_without_writes(
     ]
 
 
+def test_non_canonical_audit_filename_fails_integrity_and_blocks_writes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    intent_a = make_intent()
+    intent_b = make_second_intent()
+    store.write_intent(
+        intent_a,
+        actor="admin_operator",
+        timestamp="2026-07-03T00:00:00+08:00",
+    )
+    canonical_audit_file = root / "audit" / "release_audit_20260703.jsonl"
+    manual_audit_file = root / "audit" / "manual_future.jsonl"
+    canonical_audit_file.rename(manual_audit_file)
+    original_manual_content = manual_audit_file.read_bytes()
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert any(
+        "release_audit_YYYYMMDD.jsonl" in warning
+        for warning in state.integrity["warnings"]
+    )
+    with pytest.raises(GovernanceIntegrityError):
+        store.write_intent(
+            intent_b,
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+    assert not (root / "intents" / f"{intent_b.intent_id}.json").exists()
+    assert not (root / "audit" / "release_audit_20260702.jsonl").exists()
+    assert manual_audit_file.read_bytes() == original_manual_content
+
+
+def test_audit_filename_date_mismatch_fails_integrity(tmp_path: Path) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-03T00:00:00+08:00",
+    )
+    audit_file = root / "audit" / "release_audit_20260703.jsonl"
+    mismatched_audit_file = root / "audit" / "release_audit_20260702.jsonl"
+    audit_file.rename(mismatched_audit_file)
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["affected_intent_ids"] == [intent.intent_id]
+    assert any(
+        "does not match event timestamp date" in warning
+        for warning in state.integrity["warnings"]
+    )
+
+
+def test_audit_file_without_final_newline_fails_integrity_and_blocks_write(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    audit_file = root / "audit" / "release_audit_20260702.jsonl"
+    original_content = audit_file.read_bytes()
+    assert original_content.endswith(b"\n")
+    truncated_content = original_content[:-1]
+    audit_file.write_bytes(truncated_content)
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert any("final newline" in warning for warning in state.integrity["warnings"])
+    with pytest.raises(GovernanceIntegrityError):
+        store.append_cancel_event(
+            intent_id=intent.intent_id,
+            actor="admin_operator",
+            reason="Should not append to malformed JSONL.",
+            timestamp="2026-07-02T00:20:00+08:00",
+        )
+    assert audit_file.read_bytes() == truncated_content
+
+
 def test_invalid_utf8_audit_file_returns_integrity_warning(
     tmp_path: Path,
 ) -> None:

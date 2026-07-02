@@ -69,6 +69,7 @@ class _PreparedAuditEvent:
 
 
 _Artifact = TypeVar("_Artifact")
+_AUDIT_FILE_NAME_RE = re.compile(r"^release_audit_(\d{8})\.jsonl$")
 
 
 class ReleaseGovernanceStore:
@@ -320,14 +321,20 @@ class ReleaseGovernanceStore:
         if not self.audit_dir.exists():
             return None
         try:
-            audit_file_names = [
-                path.name
-                for path in self.audit_dir.glob("release_audit_*.jsonl")
-            ]
+            audit_paths = sorted(self.audit_dir.glob("*.jsonl"))
         except OSError as exc:
             raise GovernanceIntegrityError(
                 f"{self.audit_dir} audit files could not be listed: {exc}"
             ) from exc
+        audit_file_names = []
+        for path in audit_paths:
+            try:
+                _audit_file_date(path)
+            except ValueError as exc:
+                raise GovernanceIntegrityError(
+                    f"{path} audit filename is invalid: {exc}"
+                ) from exc
+            audit_file_names.append(path.name)
         if not audit_file_names:
             return None
         return max(audit_file_names)
@@ -491,13 +498,27 @@ class ReleaseGovernanceStore:
 
         for path in audit_paths:
             try:
-                lines = path.read_text(encoding="utf-8").splitlines()
-            except UnicodeDecodeError as exc:
-                warnings.append(f"{path} is not valid UTF-8: {exc}")
+                audit_file_date = _audit_file_date(path)
+            except ValueError as exc:
+                warnings.append(f"{path} audit filename is invalid: {exc}")
                 global_failure = True
                 continue
+
+            try:
+                content = path.read_bytes()
             except OSError as exc:
                 warnings.append(f"{path} could not be read: {exc}")
+                global_failure = True
+                continue
+
+            if content and not content.endswith(b"\n"):
+                warnings.append(f"{path} audit file must end with a final newline")
+                global_failure = True
+
+            try:
+                lines = content.decode("utf-8").splitlines()
+            except UnicodeDecodeError as exc:
+                warnings.append(f"{path} is not valid UTF-8: {exc}")
                 global_failure = True
                 continue
 
@@ -523,6 +544,23 @@ class ReleaseGovernanceStore:
                 intent_id = payload.get("intent_id")
                 try:
                     event = ReleaseAuditEvent(**payload)
+                    try:
+                        event_date = _audit_date(event.timestamp)
+                    except ValueError as exc:
+                        warnings.append(
+                            f"{path}:{line_number} audit event timestamp date is invalid: {exc}"
+                        )
+                        if isinstance(intent_id, str) and intent_id.strip():
+                            failed_intent_ids.add(intent_id)
+                        else:
+                            global_failure = True
+                    else:
+                        if event_date != audit_file_date:
+                            warnings.append(
+                                f"{path}:{line_number} audit filename date {audit_file_date} "
+                                f"does not match event timestamp date {event_date}"
+                            )
+                            failed_intent_ids.add(event.intent_id)
                     records.append(
                         _AuditEventRecord(
                             event=event,
@@ -780,6 +818,19 @@ def _audit_date(timestamp: str) -> str:
     except ValueError as exc:
         raise ValueError("timestamp must start with a valid YYYY-MM-DD date") from exc
     return date_prefix.replace("-", "")
+
+
+def _audit_file_date(path: Path) -> str:
+    match = _AUDIT_FILE_NAME_RE.fullmatch(path.name)
+    if match is None:
+        raise ValueError("audit filename must match release_audit_YYYYMMDD.jsonl")
+    audit_date = match.group(1)
+    date_prefix = f"{audit_date[:4]}-{audit_date[4:6]}-{audit_date[6:]}"
+    try:
+        date.fromisoformat(date_prefix)
+    except ValueError as exc:
+        raise ValueError("audit filename must contain a valid YYYYMMDD date") from exc
+    return audit_date
 
 
 __all__ = [
