@@ -132,6 +132,83 @@ def test_store_rejects_overwriting_existing_intent(tmp_path: Path) -> None:
         )
 
 
+def test_copied_intent_artifact_filename_mismatch_fails_integrity(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    intent_file = (
+        tmp_path
+        / "release_governance"
+        / "intents"
+        / f"{intent.intent_id}.json"
+    )
+    copy_file = tmp_path / "release_governance" / "intents" / "copy.json"
+    copy_file.write_text(intent_file.read_text(encoding="utf-8"), encoding="utf-8")
+
+    state = store.read_state()
+
+    assert [item.intent_id for item in state.intents] == [intent.intent_id]
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["affected_intent_ids"] == [intent.intent_id]
+    assert any(
+        "filename" in warning and "intent artifact" in warning
+        for warning in state.integrity["warnings"]
+    )
+
+
+def test_symlinked_intents_directory_cannot_escape_root(tmp_path: Path) -> None:
+    root = tmp_path / "release_governance"
+    escaped = tmp_path / "escaped_intents"
+    escaped.mkdir()
+    root.mkdir()
+    try:
+        (root / "intents").symlink_to(escaped, target_is_directory=True)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"directory symlink unsupported: {exc}")
+    store = ReleaseGovernanceStore(root)
+    intent = make_intent()
+
+    with pytest.raises(GovernanceIntegrityError, match="outside governance root"):
+        store.write_intent(
+            intent,
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+
+    assert not (escaped / f"{intent.intent_id}.json").exists()
+
+
+def test_symlinked_audit_directory_cannot_escape_root(tmp_path: Path) -> None:
+    root = tmp_path / "release_governance"
+    escaped = tmp_path / "escaped_audit"
+    escaped.mkdir()
+    root.mkdir()
+    try:
+        (root / "audit").symlink_to(escaped, target_is_directory=True)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"directory symlink unsupported: {exc}")
+    store = ReleaseGovernanceStore(root)
+    intent = make_intent()
+
+    with pytest.raises(GovernanceIntegrityError, match="outside governance root"):
+        store.write_intent(
+            intent,
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+
+    assert not (escaped / "release_audit_20260702.jsonl").exists()
+    assert not (
+        root / "intents" / f"{intent.intent_id}.json"
+    ).exists()
+
+
 def test_write_approval_and_rollback_plan_append_to_audit_chain(
     tmp_path: Path,
 ) -> None:

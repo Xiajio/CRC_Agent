@@ -53,6 +53,7 @@ class _AuditReadResult:
 class _ArtifactReadResult:
     artifacts: list[Any]
     warnings: list[str]
+    affected_intent_ids: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -84,16 +85,19 @@ class ReleaseGovernanceStore:
             self.intents_dir,
             ReleaseIntent,
             artifact_name="intent",
+            id_field="intent_id",
         )
         approval_result = self._read_json_dir(
             self.approvals_dir,
             ReleaseApproval,
             artifact_name="approval",
+            id_field="approval_id",
         )
         rollback_plan_result = self._read_json_dir(
             self.rollback_plans_dir,
             ReleaseRollbackPlan,
             artifact_name="rollback plan",
+            id_field="rollback_plan_id",
         )
         artifact_warnings = (
             intent_result.warnings
@@ -127,6 +131,9 @@ class ReleaseGovernanceStore:
                 consistency_warnings=consistency_result.warnings,
                 artifact_affected_intent_ids=(
                     consistency_result.affected_intent_ids
+                    | intent_result.affected_intent_ids
+                    | approval_result.affected_intent_ids
+                    | rollback_plan_result.affected_intent_ids
                 ),
             ),
         )
@@ -236,6 +243,7 @@ class ReleaseGovernanceStore:
             raise
 
     def _write_json_once(self, path: Path, payload: dict[str, Any]) -> None:
+        self._raise_if_parent_outside_root(path)
         if path.exists():
             raise FileExistsError(path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -283,20 +291,27 @@ class ReleaseGovernanceStore:
 
     def _append_prepared_event(self, prepared_event: _PreparedAuditEvent) -> None:
         audit_path = prepared_event.audit_path
+        self._raise_if_parent_outside_root(audit_path)
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         with audit_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(prepared_event.event.to_dict(), sort_keys=True))
             handle.write("\n")
-
-    def _last_event_hash(self, intent_id: str) -> str:
-        record = self._last_event_record(intent_id)
-        return record.event.event_hash if record is not None else GENESIS_EVENT_HASH
 
     def _last_event_record(self, intent_id: str) -> _AuditEventRecord | None:
         for record in reversed(self._read_audit_events_with_integrity().records):
             if record.event.intent_id == intent_id:
                 return record
         return None
+
+    def _raise_if_parent_outside_root(self, path: Path) -> None:
+        resolved_root = self.root.resolve(strict=False)
+        resolved_parent = path.parent.resolve(strict=False)
+        try:
+            resolved_parent.relative_to(resolved_root)
+        except ValueError as exc:
+            raise GovernanceIntegrityError(
+                f"{path.parent} resolves outside governance root {self.root}"
+            ) from exc
 
     def _raise_if_integrity_failed(self, intent_id: str) -> None:
         state = self.read_state()
@@ -311,12 +326,19 @@ class ReleaseGovernanceStore:
         factory: Callable[..., _Artifact],
         *,
         artifact_name: str,
+        id_field: str,
     ) -> _ArtifactReadResult:
         if not directory.exists():
-            return _ArtifactReadResult(artifacts=[], warnings=[])
+            return _ArtifactReadResult(
+                artifacts=[],
+                warnings=[],
+                affected_intent_ids=frozenset(),
+            )
 
         artifacts: list[Any] = []
         warnings: list[str] = []
+        affected_intent_ids: set[str] = set()
+        seen_primary_ids: set[str] = set()
         try:
             paths = sorted(directory.glob("*.json"))
         except OSError as exc:
@@ -325,6 +347,7 @@ class ReleaseGovernanceStore:
                 warnings=[
                     f"{directory} {artifact_name} files could not be listed: {exc}"
                 ],
+                affected_intent_ids=frozenset(),
             )
 
         for path in paths:
@@ -353,11 +376,34 @@ class ReleaseGovernanceStore:
                 continue
 
             try:
-                artifacts.append(factory(**payload))
+                artifact = factory(**payload)
             except (TypeError, ValueError) as exc:
                 warnings.append(f"{path} {artifact_name} artifact is invalid: {exc}")
+                continue
 
-        return _ArtifactReadResult(artifacts=artifacts, warnings=warnings)
+            primary_id = getattr(artifact, id_field)
+            intent_id = getattr(artifact, "intent_id", primary_id)
+            if path.stem != primary_id:
+                warnings.append(
+                    f"{path} {artifact_name} artifact filename does not match {id_field}: {primary_id}"
+                )
+                affected_intent_ids.add(intent_id)
+                continue
+            if primary_id in seen_primary_ids:
+                warnings.append(
+                    f"{path} duplicate {artifact_name} artifact id: {primary_id}"
+                )
+                affected_intent_ids.add(intent_id)
+                continue
+
+            seen_primary_ids.add(primary_id)
+            artifacts.append(artifact)
+
+        return _ArtifactReadResult(
+            artifacts=artifacts,
+            warnings=warnings,
+            affected_intent_ids=frozenset(affected_intent_ids),
+        )
 
     def _read_audit_events(self) -> list[ReleaseAuditEvent]:
         return [
