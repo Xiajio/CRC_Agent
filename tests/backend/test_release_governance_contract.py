@@ -89,6 +89,16 @@ def test_release_governance_contracts_round_trip_to_dict() -> None:
     assert event.to_dict()["payload_hash"].startswith("sha256:")
     assert event.to_dict()["event_hash"].startswith("sha256:")
 
+    intent_dict = intent.to_dict()
+    approval_dict = approval.to_dict()
+    rollback_plan_dict = rollback_plan.to_dict()
+    event_dict = event.to_dict()
+
+    assert ReleaseIntent(**intent_dict).to_dict() == intent_dict
+    assert ReleaseApproval(**approval_dict).to_dict() == approval_dict
+    assert ReleaseRollbackPlan(**rollback_plan_dict).to_dict() == rollback_plan_dict
+    assert ReleaseAuditEvent(**event_dict).to_dict() == event_dict
+
 
 @pytest.mark.parametrize(
     ("field_name", "value", "expected"),
@@ -104,6 +114,27 @@ def test_release_intent_rejects_invalid_enums(
     payload[field_name] = value
 
     with pytest.raises(ValueError, match=expected):
+        ReleaseIntent(**payload)
+
+
+@pytest.mark.parametrize(
+    "source_report_path",
+    [
+        "/reports/release_safety/release.json",
+        "\\reports\\release_safety\\release.json",
+        "C:/reports/release_safety/release.json",
+        "C:reports/release_safety/release.json",
+    ],
+)
+def test_release_intent_rejects_non_repo_relative_source_report_paths(
+    source_report_path: str,
+) -> None:
+    payload = make_intent().to_dict()
+    payload["source_report_path"] = source_report_path
+
+    with pytest.raises(
+        ValueError, match="source_report_path must be a repo-relative path"
+    ):
         ReleaseIntent(**payload)
 
 
@@ -182,11 +213,17 @@ def test_id_helpers_are_stable_for_same_inputs() -> None:
     ) == make_release_intent_id("release_safety_20260629_001")
     assert make_release_approval_id(
         "release_intent_1", "release_manager", "2026-07-02T00:00:00+08:00"
+    ) == make_release_approval_id(
+        "release_intent_1", "release_manager", "2026-07-02T00:00:00+08:00"
     )
     assert make_release_rollback_plan_id(
         "release_intent_1", "2026-07-02T00:00:00+08:00"
+    ) == make_release_rollback_plan_id(
+        "release_intent_1", "2026-07-02T00:00:00+08:00"
     )
     assert make_release_audit_event_id(
+        "release_intent_1", "intent_created", "2026-07-02T00:00:00+08:00"
+    ) == make_release_audit_event_id(
         "release_intent_1", "intent_created", "2026-07-02T00:00:00+08:00"
     )
 

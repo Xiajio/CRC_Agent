@@ -452,7 +452,12 @@ def _require_string_list(
 
 def _require_repo_relative_path(field_name: str, value: str) -> None:
     _require_non_empty(field_name, value)
-    if PurePosixPath(value).is_absolute() or PureWindowsPath(value).is_absolute():
+    windows_path = PureWindowsPath(value)
+    if (
+        PurePosixPath(value).is_absolute()
+        or windows_path.is_absolute()
+        or windows_path.drive
+    ):
         raise ValueError(f"{field_name} must be a repo-relative path")
     normalized_parts = value.replace("\\", "/").split("/")
     if any(part in ("", ".", "..") for part in normalized_parts):
