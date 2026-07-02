@@ -1,0 +1,3220 @@
+# Controlled Release Governance Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build P2 Step 12 audit-only release governance so Agent Admin can record release intent, human approvals, rollback plans, and append-only audit events without executing release or rollback.
+
+**Architecture:** Backend adds contract objects, a file-backed governance store under `reports/release_governance/`, a pure governance service that validates Step 11 release dashboard state, and admin-protected governance APIs. Frontend extends the existing Agent Admin Release task with server-confirmed governance state and forms while keeping execute release and execute rollback controls disabled.
+
+**Tech Stack:** Python 3.10, dataclasses, Pydantic v2, FastAPI, pytest, TypeScript, React, Vitest, Testing Library, existing Agent Admin UI primitives.
+
+---
+
+## Source Spec
+
+Read before implementation:
+
+- `docs/superpowers/specs/2026-07-02-controlled-release-governance-design.md`
+- `docs/superpowers/specs/2026-06-30-agent-admin-release-dashboard-design.md`
+- `docs/superpowers/specs/2026-06-30-evidenceclaim-literature-harness-design.md`
+- `docs/superpowers/specs/2026-06-29-p1-clinical-review-loop-design.md`
+- `docs/superpowers/specs/2026-06-29-p0-crc-safety-loop-design.md`
+
+Step 12 is audit-only. It may write only governance artifacts under `reports/release_governance/`. It must not execute release, execute rollback, toggle feature flags, mutate safety policy, mutate prompts/rubrics/routes/templates, write clinical RAG indexes, promote literature evidence, alter patient or doctor default paths, run network/model/deployment calls, or edit `CRC-client/`.
+
+## File Structure
+
+Backend contracts:
+
+- Create `src/contracts/release_governance.py`
+  - Dataclass contracts and validation for `ReleaseIntent`, `ReleaseApproval`, `ReleaseRollbackPlan`, and `ReleaseAuditEvent`.
+  - Stable ID helpers and audit hash helpers.
+- Create `tests/backend/test_release_governance_contract.py`
+  - Contract validation, enum rejection, JSON safety, and audit hash chain tests.
+
+Backend persistence and service:
+
+- Create `backend/api/services/release_governance_store.py`
+  - File-backed store rooted at `reports/release_governance/`.
+  - Read-only state loading, write-once JSON files, append-only audit JSONL, and chain verification.
+- Create `src/services/release_governance.py`
+  - Pure governance orchestration around Step 11 dashboard snapshots and the store.
+  - Eligibility validation, derived read model, required approvals, and disabled execution actions.
+- Create `tests/backend/test_release_governance_store.py`
+  - Store behavior and audit-chain tests.
+- Create `tests/backend/test_release_governance_service.py`
+  - Intent creation, approval, rollback plan, cancellation, duplicate active intent, hard fail blocking, and derived read model tests.
+
+Backend API:
+
+- Create `backend/api/schemas/release_governance.py`
+  - Pydantic request/response schemas for governance routes.
+- Modify `backend/api/routes/admin.py`
+  - Add governance GET and POST routes.
+- Modify `backend/app.py`
+  - Add governance routes to admin-token guard.
+- Create `tests/backend/test_release_governance_api.py`
+  - API route behavior and typed validation tests.
+- Modify `tests/backend/test_auth_security.py`
+  - Add governance route paths to existing admin auth matrix.
+- Create `tests/backend/test_release_governance_non_mutation.py`
+  - Verify governance writes do not mutate protected files and report directories.
+
+Frontend API:
+
+- Modify `frontend/src/app/api/types.ts`
+  - Add release governance types and request payload types.
+- Modify `frontend/src/app/api/client.ts`
+  - Add governance client methods.
+- Modify `frontend/src/app/api/client.test.ts`
+  - Add endpoint/header/body tests.
+- Modify `frontend/src/test/test-utils.tsx`
+  - Add default governance client mocks if the test helper exposes a full API client.
+
+Frontend Agent Admin:
+
+- Modify `frontend/src/features/agent-admin/agent-admin-view.tsx`
+  - Load governance state when the release task is active.
+  - Pass governance resource and mutation handlers to pages.
+- Modify `frontend/src/features/agent-admin/agent-admin-pages.tsx`
+  - Add governance status, intent, approvals, rollback plan, audit trail, and disabled execution controls under the Release page.
+- Modify `frontend/src/features/agent-admin/agent-admin-view.test.tsx`
+  - Add governance loading/success/error/create/approval/rollback-plan/disabled-execution tests.
+
+Docs and generated artifacts:
+
+- Create `reports/release_governance/README.md`
+  - Documents audit-only governance artifacts.
+- Do not commit generated intent, approval, rollback plan, or audit JSONL files unless a test fixture intentionally requires them. Runtime governance files should be generated by usage, not checked in as normal source.
+
+---
+
+### Task 1: Release Governance Contracts
+
+**Files:**
+- Create: `src/contracts/release_governance.py`
+- Create: `tests/backend/test_release_governance_contract.py`
+
+- [ ] **Step 1: Write failing contract tests**
+
+Create `tests/backend/test_release_governance_contract.py`:
+
+```python
+from __future__ import annotations
+
+import pytest
+
+from src.contracts.release_governance import (
+    ReleaseApproval,
+    ReleaseAuditEvent,
+    ReleaseIntent,
+    ReleaseRollbackPlan,
+    build_audit_event,
+    canonical_payload_hash,
+    make_release_approval_id,
+    make_release_audit_event_id,
+    make_release_intent_id,
+    make_release_rollback_plan_id,
+)
+
+
+VERSION_CHAIN = {
+    "agent_policy_version": "agent_policy_20260629_0",
+    "clinical_safety_policy_version": "crc_safety_policy_v0",
+    "evidence_index_version": "rag_crc_guideline_20260620",
+    "judge_rubric_version": "crc_rubric_v0",
+}
+
+
+def make_intent() -> ReleaseIntent:
+    return ReleaseIntent(
+        intent_id="release_intent_release_safety_20260629_001_6da729a0",
+        source_release_report_id="release_safety_20260629_001",
+        source_report_path="reports/release_safety/release_safety_20260629_001.json",
+        harness_run_ids=["harness_20260629_001"],
+        literature_run_id="literature_harness_20260630_001",
+        version_chain=VERSION_CHAIN,
+        release_decision_snapshot="feature_flag_or_pass",
+        rollback_target="agent_policy_20260624_0",
+        requested_by="admin_operator",
+        requested_at="2026-07-02T00:00:00+08:00",
+        target_scope="shadow",
+        status="pending_approval",
+        blocking_summary={
+            "hard_fail_count": 0,
+            "literature_isolation_violations": 0,
+            "clinical_rag_ingest_enabled": False,
+        },
+    )
+
+
+def test_release_governance_contracts_round_trip_to_dict() -> None:
+    intent = make_intent()
+    approval = ReleaseApproval(
+        approval_id="release_approval_release_intent_release_manager_d79a98c1",
+        intent_id=intent.intent_id,
+        approver_role="release_manager",
+        decision="approve",
+        reason="P0 hard fails are zero.",
+        signed_by="release_admin",
+        signed_at="2026-07-02T00:10:00+08:00",
+        required=True,
+    )
+    rollback_plan = ReleaseRollbackPlan(
+        rollback_plan_id="rollback_plan_release_intent_1c338f15",
+        intent_id=intent.intent_id,
+        rollback_target="agent_policy_20260624_0",
+        owner="release_manager",
+        status="accepted",
+        verification_steps=[
+            "Confirm the active release report id.",
+            "Run P0 harness before any future rollback execution.",
+        ],
+        created_at="2026-07-02T00:15:00+08:00",
+    )
+    event = build_audit_event(
+        event_id="release_audit_intent_created_27005abc",
+        intent_id=intent.intent_id,
+        event_type="intent_created",
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+        payload=intent.to_dict(),
+        previous_event_hash="sha256:GENESIS",
+    )
+
+    assert intent.to_dict()["target_scope"] == "shadow"
+    assert approval.to_dict()["decision"] == "approve"
+    assert rollback_plan.to_dict()["verification_steps"] == [
+        "Confirm the active release report id.",
+        "Run P0 harness before any future rollback execution.",
+    ]
+    assert event.to_dict()["payload_hash"].startswith("sha256:")
+    assert event.to_dict()["event_hash"].startswith("sha256:")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "expected"),
+    [
+        ("target_scope", "production", "target_scope must be one of"),
+        ("status", "executed", "status must be one of"),
+    ],
+)
+def test_release_intent_rejects_invalid_enums(field_name: str, value: str, expected: str) -> None:
+    payload = make_intent().to_dict()
+    payload[field_name] = value
+
+    with pytest.raises(ValueError, match=expected):
+        ReleaseIntent(**payload)
+
+
+def test_release_approval_rejects_invalid_decision_and_empty_reason() -> None:
+    with pytest.raises(ValueError, match="decision must be one of"):
+        ReleaseApproval(
+            approval_id="release_approval_bad",
+            intent_id="release_intent_1",
+            approver_role="release_manager",
+            decision="sign",
+            reason="valid reason",
+            signed_by="reviewer",
+            signed_at="2026-07-02T00:10:00+08:00",
+            required=True,
+        )
+
+    with pytest.raises(ValueError, match="reason must be a non-empty string"):
+        ReleaseApproval(
+            approval_id="release_approval_bad",
+            intent_id="release_intent_1",
+            approver_role="release_manager",
+            decision="approve",
+            reason=" ",
+            signed_by="reviewer",
+            signed_at="2026-07-02T00:10:00+08:00",
+            required=True,
+        )
+
+
+def test_rollback_plan_requires_two_verification_steps() -> None:
+    with pytest.raises(ValueError, match="verification_steps must contain at least two steps"):
+        ReleaseRollbackPlan(
+            rollback_plan_id="rollback_plan_bad",
+            intent_id="release_intent_1",
+            rollback_target="agent_policy_20260624_0",
+            owner="release_manager",
+            status="accepted",
+            verification_steps=["Only one check"],
+            created_at="2026-07-02T00:15:00+08:00",
+        )
+
+
+def test_payload_hash_is_canonical_and_audit_chain_uses_previous_hash() -> None:
+    left = canonical_payload_hash({"b": 2, "a": 1})
+    right = canonical_payload_hash({"a": 1, "b": 2})
+    first = build_audit_event(
+        event_id="release_audit_1",
+        intent_id="release_intent_1",
+        event_type="intent_created",
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+        payload={"a": 1},
+        previous_event_hash="sha256:GENESIS",
+    )
+    second = build_audit_event(
+        event_id="release_audit_2",
+        intent_id="release_intent_1",
+        event_type="approval_recorded",
+        actor="reviewer",
+        timestamp="2026-07-02T00:01:00+08:00",
+        payload={"b": 2},
+        previous_event_hash=first.event_hash,
+    )
+
+    assert left == right
+    assert first.previous_event_hash == "sha256:GENESIS"
+    assert second.previous_event_hash == first.event_hash
+    assert second.event_hash != first.event_hash
+
+
+def test_id_helpers_are_stable_for_same_inputs() -> None:
+    assert make_release_intent_id("release_safety_20260629_001") == make_release_intent_id(
+        "release_safety_20260629_001"
+    )
+    assert make_release_approval_id("release_intent_1", "release_manager", "2026-07-02T00:00:00+08:00")
+    assert make_release_rollback_plan_id("release_intent_1", "2026-07-02T00:00:00+08:00")
+    assert make_release_audit_event_id("release_intent_1", "intent_created", "2026-07-02T00:00:00+08:00")
+
+
+def test_audit_event_rejects_secret_like_payload() -> None:
+    with pytest.raises(ValueError, match="payload contains forbidden key"):
+        build_audit_event(
+            event_id="release_audit_bad",
+            intent_id="release_intent_1",
+            event_type="intent_created",
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+            payload={"api_key": "secret"},
+            previous_event_hash="sha256:GENESIS",
+        )
+```
+
+- [ ] **Step 2: Run the contract tests to verify failure**
+
+Run:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_release_governance_contract.py -q
+```
+
+Expected: FAIL with `ModuleNotFoundError: No module named 'src.contracts.release_governance'`.
+
+- [ ] **Step 3: Implement the release governance contracts**
+
+Create `src/contracts/release_governance.py` using the existing dataclass style from `src/contracts/evidence_claim.py`:
+
+```python
+from __future__ import annotations
+
+from dataclasses import dataclass
+import hashlib
+import json
+import math
+import re
+from typing import Any, Literal, TypeAlias
+
+
+JsonValue: TypeAlias = (
+    str
+    | int
+    | float
+    | bool
+    | None
+    | list["JsonValue"]
+    | dict[str, "JsonValue"]
+)
+
+ReleaseTargetScope = Literal["shadow", "feature_flag_candidate"]
+ReleaseIntentStatus = Literal["draft", "pending_approval", "approved", "rejected", "cancelled"]
+ReleaseApproverRole = Literal["release_manager", "clinical_safety_reviewer", "evidence_reviewer"]
+ReleaseApprovalDecision = Literal["approve", "reject", "request_changes"]
+ReleaseRollbackPlanStatus = Literal["proposed", "accepted"]
+ReleaseAuditEventType = Literal[
+    "intent_created",
+    "approval_recorded",
+    "rollback_plan_recorded",
+    "intent_cancelled",
+    "governance_read",
+]
+
+TARGET_SCOPES: tuple[ReleaseTargetScope, ...] = ("shadow", "feature_flag_candidate")
+INTENT_STATUSES: tuple[ReleaseIntentStatus, ...] = (
+    "draft",
+    "pending_approval",
+    "approved",
+    "rejected",
+    "cancelled",
+)
+APPROVER_ROLES: tuple[ReleaseApproverRole, ...] = (
+    "release_manager",
+    "clinical_safety_reviewer",
+    "evidence_reviewer",
+)
+APPROVAL_DECISIONS: tuple[ReleaseApprovalDecision, ...] = (
+    "approve",
+    "reject",
+    "request_changes",
+)
+ROLLBACK_PLAN_STATUSES: tuple[ReleaseRollbackPlanStatus, ...] = ("proposed", "accepted")
+AUDIT_EVENT_TYPES: tuple[ReleaseAuditEventType, ...] = (
+    "intent_created",
+    "approval_recorded",
+    "rollback_plan_recorded",
+    "intent_cancelled",
+    "governance_read",
+)
+GENESIS_EVENT_HASH = "sha256:GENESIS"
+FORBIDDEN_PAYLOAD_KEYS = frozenset(
+    {
+        "api_key",
+        "apikey",
+        "authorization",
+        "bearer",
+        "token",
+        "password",
+        "secret",
+        "credential",
+        "deployment_credential",
+        "prompt",
+        "hidden_reasoning",
+        "chain_of_thought",
+        "patient_name",
+        "patient_number",
+    }
+)
+
+
+@dataclass(frozen=True)
+class ReleaseIntent:
+    intent_id: str
+    source_release_report_id: str
+    source_report_path: str
+    harness_run_ids: list[str]
+    literature_run_id: str | None
+    version_chain: dict[str, JsonValue]
+    release_decision_snapshot: str
+    rollback_target: str
+    requested_by: str
+    requested_at: str
+    target_scope: ReleaseTargetScope
+    status: ReleaseIntentStatus
+    blocking_summary: dict[str, JsonValue]
+
+    def __post_init__(self) -> None:
+        _require_non_empty("intent_id", self.intent_id)
+        _require_non_empty("source_release_report_id", self.source_release_report_id)
+        _require_repo_relative_path("source_report_path", self.source_report_path)
+        _require_string_list("harness_run_ids", self.harness_run_ids)
+        _require_optional_string("literature_run_id", self.literature_run_id)
+        _require_non_empty("release_decision_snapshot", self.release_decision_snapshot)
+        _require_non_empty("rollback_target", self.rollback_target)
+        _require_non_empty("requested_by", self.requested_by)
+        _require_non_empty("requested_at", self.requested_at)
+        _validate_choice("target_scope", self.target_scope, TARGET_SCOPES)
+        _validate_choice("status", self.status, INTENT_STATUSES)
+        validate_json_safe(self.version_chain, path="version_chain")
+        validate_json_safe(self.blocking_summary, path="blocking_summary")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "intent_id": self.intent_id,
+            "source_release_report_id": self.source_release_report_id,
+            "source_report_path": self.source_report_path,
+            "harness_run_ids": list(self.harness_run_ids),
+            "literature_run_id": self.literature_run_id,
+            "version_chain": _copy_json_safe(self.version_chain, path="version_chain"),
+            "release_decision_snapshot": self.release_decision_snapshot,
+            "rollback_target": self.rollback_target,
+            "requested_by": self.requested_by,
+            "requested_at": self.requested_at,
+            "target_scope": self.target_scope,
+            "status": self.status,
+            "blocking_summary": _copy_json_safe(self.blocking_summary, path="blocking_summary"),
+        }
+
+
+@dataclass(frozen=True)
+class ReleaseApproval:
+    approval_id: str
+    intent_id: str
+    approver_role: ReleaseApproverRole
+    decision: ReleaseApprovalDecision
+    reason: str
+    signed_by: str
+    signed_at: str
+    required: bool
+
+    def __post_init__(self) -> None:
+        _require_non_empty("approval_id", self.approval_id)
+        _require_non_empty("intent_id", self.intent_id)
+        _validate_choice("approver_role", self.approver_role, APPROVER_ROLES)
+        _validate_choice("decision", self.decision, APPROVAL_DECISIONS)
+        _require_non_empty("reason", self.reason)
+        _require_non_empty("signed_by", self.signed_by)
+        _require_non_empty("signed_at", self.signed_at)
+        if type(self.required) is not bool:
+            raise TypeError("required must be bool")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "approval_id": self.approval_id,
+            "intent_id": self.intent_id,
+            "approver_role": self.approver_role,
+            "decision": self.decision,
+            "reason": self.reason,
+            "signed_by": self.signed_by,
+            "signed_at": self.signed_at,
+            "required": self.required,
+        }
+
+
+@dataclass(frozen=True)
+class ReleaseRollbackPlan:
+    rollback_plan_id: str
+    intent_id: str
+    rollback_target: str
+    owner: str
+    status: ReleaseRollbackPlanStatus
+    verification_steps: list[str]
+    created_at: str
+
+    def __post_init__(self) -> None:
+        _require_non_empty("rollback_plan_id", self.rollback_plan_id)
+        _require_non_empty("intent_id", self.intent_id)
+        _require_non_empty("rollback_target", self.rollback_target)
+        _require_non_empty("owner", self.owner)
+        _validate_choice("status", self.status, ROLLBACK_PLAN_STATUSES)
+        _require_string_list("verification_steps", self.verification_steps)
+        if len(self.verification_steps) < 2:
+            raise ValueError("verification_steps must contain at least two steps")
+        _require_non_empty("created_at", self.created_at)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "rollback_plan_id": self.rollback_plan_id,
+            "intent_id": self.intent_id,
+            "rollback_target": self.rollback_target,
+            "owner": self.owner,
+            "status": self.status,
+            "verification_steps": list(self.verification_steps),
+            "created_at": self.created_at,
+        }
+
+
+@dataclass(frozen=True)
+class ReleaseAuditEvent:
+    event_id: str
+    intent_id: str
+    event_type: ReleaseAuditEventType
+    actor: str
+    timestamp: str
+    payload_hash: str
+    previous_event_hash: str
+    event_hash: str
+
+    def __post_init__(self) -> None:
+        _require_non_empty("event_id", self.event_id)
+        _require_non_empty("intent_id", self.intent_id)
+        _validate_choice("event_type", self.event_type, AUDIT_EVENT_TYPES)
+        _require_non_empty("actor", self.actor)
+        _require_non_empty("timestamp", self.timestamp)
+        _require_hash("payload_hash", self.payload_hash)
+        if self.previous_event_hash != GENESIS_EVENT_HASH:
+            _require_hash("previous_event_hash", self.previous_event_hash)
+        _require_hash("event_hash", self.event_hash)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "intent_id": self.intent_id,
+            "event_type": self.event_type,
+            "actor": self.actor,
+            "timestamp": self.timestamp,
+            "payload_hash": self.payload_hash,
+            "previous_event_hash": self.previous_event_hash,
+            "event_hash": self.event_hash,
+        }
+
+
+def make_release_intent_id(source_release_report_id: str) -> str:
+    _require_non_empty("source_release_report_id", source_release_report_id)
+    return f"release_intent_{_slug(source_release_report_id)}_{_stable_hash({'source_release_report_id': source_release_report_id})}"
+
+
+def make_release_approval_id(intent_id: str, approver_role: str, signed_at: str) -> str:
+    payload = {"intent_id": intent_id, "approver_role": approver_role, "signed_at": signed_at}
+    return f"release_approval_{_slug(intent_id)}_{_slug(approver_role)}_{_stable_hash(payload)}"
+
+
+def make_release_rollback_plan_id(intent_id: str, created_at: str) -> str:
+    payload = {"intent_id": intent_id, "created_at": created_at}
+    return f"rollback_plan_{_slug(intent_id)}_{_stable_hash(payload)}"
+
+
+def make_release_audit_event_id(intent_id: str, event_type: str, timestamp: str) -> str:
+    payload = {"intent_id": intent_id, "event_type": event_type, "timestamp": timestamp}
+    return f"release_audit_{_slug(intent_id)}_{_slug(event_type)}_{_stable_hash(payload)}"
+
+
+def canonical_payload_hash(payload: JsonValue) -> str:
+    validate_json_safe(payload, path="payload")
+    _reject_forbidden_payload_keys(payload, path="payload")
+    stable_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return f"sha256:{hashlib.sha256(stable_json.encode('utf-8')).hexdigest()}"
+
+
+def build_audit_event(
+    *,
+    event_id: str,
+    intent_id: str,
+    event_type: ReleaseAuditEventType,
+    actor: str,
+    timestamp: str,
+    payload: JsonValue,
+    previous_event_hash: str,
+) -> ReleaseAuditEvent:
+    payload_hash = canonical_payload_hash(payload)
+    event_without_hash = {
+        "event_id": event_id,
+        "intent_id": intent_id,
+        "event_type": event_type,
+        "actor": actor,
+        "timestamp": timestamp,
+        "payload_hash": payload_hash,
+        "previous_event_hash": previous_event_hash,
+    }
+    event_hash = canonical_payload_hash(event_without_hash)
+    return ReleaseAuditEvent(
+        event_id=event_id,
+        intent_id=intent_id,
+        event_type=event_type,
+        actor=actor,
+        timestamp=timestamp,
+        payload_hash=payload_hash,
+        previous_event_hash=previous_event_hash,
+        event_hash=event_hash,
+    )
+
+
+def validate_audit_event_hash(event: ReleaseAuditEvent) -> bool:
+    event_payload = event.to_dict()
+    expected_hash = event_payload.pop("event_hash")
+    return canonical_payload_hash(event_payload) == expected_hash
+
+
+def validate_json_safe(value: JsonValue, *, path: str = "value") -> None:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise TypeError(f"{path} must be JSON-safe")
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            validate_json_safe(item, path=f"{path}[{index}]")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise TypeError(f"{path} must contain only string keys")
+            validate_json_safe(item, path=f"{path}.{key}")
+        return
+    raise TypeError(f"{path} must be JSON-safe")
+
+
+def _copy_json_safe(value: JsonValue, *, path: str) -> JsonValue:
+    validate_json_safe(value, path=path)
+    if isinstance(value, list):
+        return [_copy_json_safe(item, path=f"{path}[{index}]") for index, item in enumerate(value)]
+    if isinstance(value, dict):
+        return {key: _copy_json_safe(item, path=f"{path}.{key}") for key, item in value.items()}
+    return value
+
+
+def _stable_hash(payload: dict[str, JsonValue]) -> str:
+    stable_json = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(stable_json.encode("utf-8")).hexdigest()[:8]
+
+
+def _slug(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9]+", "_", str(value).strip()).strip("_").lower()
+    return slug or "unknown"
+
+
+def _require_non_empty(field_name: str, value: str) -> None:
+    if not isinstance(value, str):
+        raise TypeError(f"{field_name} must be a string")
+    if not value.strip():
+        raise ValueError(f"{field_name} must be a non-empty string")
+
+
+def _require_optional_string(field_name: str, value: str | None) -> None:
+    if value is not None and not isinstance(value, str):
+        raise TypeError(f"{field_name} must be a string or None")
+
+
+def _require_string_list(field_name: str, value: list[str]) -> None:
+    if type(value) is not list:
+        raise TypeError(f"{field_name} must be a list")
+    for index, item in enumerate(value):
+        _require_non_empty(f"{field_name}[{index}]", item)
+
+
+def _require_repo_relative_path(field_name: str, value: str) -> None:
+    _require_non_empty(field_name, value)
+    if ":" in value or value.startswith("/") or value.startswith("\\"):
+        raise ValueError(f"{field_name} must be repo-relative")
+
+
+def _validate_choice(field_name: str, value: str, allowed_values: tuple[str, ...]) -> None:
+    if value not in allowed_values:
+        raise ValueError(f"{field_name} must be one of: {', '.join(allowed_values)}")
+
+
+def _require_hash(field_name: str, value: str) -> None:
+    _require_non_empty(field_name, value)
+    if not value.startswith("sha256:"):
+        raise ValueError(f"{field_name} must start with sha256:")
+
+
+def _reject_forbidden_payload_keys(value: JsonValue, *, path: str) -> None:
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _reject_forbidden_payload_keys(item, path=f"{path}[{index}]")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            normalized = key.lower().replace("-", "_")
+            if normalized in FORBIDDEN_PAYLOAD_KEYS:
+                raise ValueError(f"payload contains forbidden key: {path}.{key}")
+            _reject_forbidden_payload_keys(item, path=f"{path}.{key}")
+```
+
+Also add `__all__` exports at the bottom for every public type/helper used by tests.
+
+- [ ] **Step 4: Run contract tests**
+
+Run:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_release_governance_contract.py -q
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit Task 1**
+
+Run:
+
+```powershell
+git add src/contracts/release_governance.py tests/backend/test_release_governance_contract.py
+git commit -m "feat: add release governance contracts"
+```
+
+---
+
+### Task 2: File-Backed Governance Store
+
+**Files:**
+- Create: `backend/api/services/release_governance_store.py`
+- Create: `tests/backend/test_release_governance_store.py`
+- Create: `reports/release_governance/README.md`
+
+- [ ] **Step 1: Write failing store tests**
+
+Create `tests/backend/test_release_governance_store.py`:
+
+```python
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from backend.api.services.release_governance_store import (
+    GovernanceIntegrityError,
+    ReleaseGovernanceStore,
+)
+from src.contracts.release_governance import (
+    ReleaseApproval,
+    ReleaseIntent,
+    ReleaseRollbackPlan,
+)
+
+
+def make_intent() -> ReleaseIntent:
+    return ReleaseIntent(
+        intent_id="release_intent_release_safety_20260629_001_6da729a0",
+        source_release_report_id="release_safety_20260629_001",
+        source_report_path="reports/release_safety/release_safety_20260629_001.json",
+        harness_run_ids=["harness_20260629_001"],
+        literature_run_id="literature_harness_20260630_001",
+        version_chain={
+            "agent_policy_version": "agent_policy_20260629_0",
+            "clinical_safety_policy_version": "crc_safety_policy_v0",
+            "evidence_index_version": "rag_crc_guideline_20260620",
+            "judge_rubric_version": "crc_rubric_v0",
+        },
+        release_decision_snapshot="feature_flag_or_pass",
+        rollback_target="agent_policy_20260624_0",
+        requested_by="admin_operator",
+        requested_at="2026-07-02T00:00:00+08:00",
+        target_scope="shadow",
+        status="pending_approval",
+        blocking_summary={
+            "hard_fail_count": 0,
+            "literature_isolation_violations": 0,
+            "clinical_rag_ingest_enabled": False,
+        },
+    )
+
+
+def test_empty_store_reads_without_creating_files(tmp_path: Path) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+
+    state = store.read_state()
+
+    assert state.intents == []
+    assert state.approvals == []
+    assert state.rollback_plans == []
+    assert state.audit_events == []
+    assert state.integrity == {"status": "verified", "warnings": []}
+    assert not (tmp_path / "release_governance").exists()
+
+
+def test_write_intent_creates_intent_file_and_audit_event(tmp_path: Path) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+
+    store.write_intent(intent, actor="admin_operator", timestamp="2026-07-02T00:00:00+08:00")
+    state = store.read_state()
+
+    assert [item.intent_id for item in state.intents] == [intent.intent_id]
+    assert [event.event_type for event in state.audit_events] == ["intent_created"]
+    assert (tmp_path / "release_governance" / "intents" / f"{intent.intent_id}.json").exists()
+    assert (tmp_path / "release_governance" / "audit" / "release_audit_20260702.jsonl").exists()
+
+
+def test_store_rejects_overwriting_existing_intent(tmp_path: Path) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    store.write_intent(intent, actor="admin_operator", timestamp="2026-07-02T00:00:00+08:00")
+
+    with pytest.raises(FileExistsError):
+        store.write_intent(intent, actor="admin_operator", timestamp="2026-07-02T00:01:00+08:00")
+
+
+def test_write_approval_and_rollback_plan_append_to_audit_chain(tmp_path: Path) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    store.write_intent(intent, actor="admin_operator", timestamp="2026-07-02T00:00:00+08:00")
+    approval = ReleaseApproval(
+        approval_id="release_approval_release_intent_release_manager_d79a98c1",
+        intent_id=intent.intent_id,
+        approver_role="release_manager",
+        decision="approve",
+        reason="P0 hard fails are zero.",
+        signed_by="release_admin",
+        signed_at="2026-07-02T00:10:00+08:00",
+        required=True,
+    )
+    rollback_plan = ReleaseRollbackPlan(
+        rollback_plan_id="rollback_plan_release_intent_1c338f15",
+        intent_id=intent.intent_id,
+        rollback_target="agent_policy_20260624_0",
+        owner="release_manager",
+        status="accepted",
+        verification_steps=[
+            "Confirm the active release report id.",
+            "Run P0 harness before any future rollback execution.",
+        ],
+        created_at="2026-07-02T00:15:00+08:00",
+    )
+
+    store.write_approval(approval, actor="release_admin", timestamp=approval.signed_at)
+    store.write_rollback_plan(rollback_plan, actor="release_manager", timestamp=rollback_plan.created_at)
+    state = store.read_state()
+
+    assert len(state.approvals) == 1
+    assert len(state.rollback_plans) == 1
+    assert [event.event_type for event in state.audit_events] == [
+        "intent_created",
+        "approval_recorded",
+        "rollback_plan_recorded",
+    ]
+    assert state.audit_events[1].previous_event_hash == state.audit_events[0].event_hash
+    assert state.audit_events[2].previous_event_hash == state.audit_events[1].event_hash
+
+
+def test_chain_mismatch_returns_integrity_warning_and_rejects_write(tmp_path: Path) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    store.write_intent(intent, actor="admin_operator", timestamp="2026-07-02T00:00:00+08:00")
+    audit_file = tmp_path / "release_governance" / "audit" / "release_audit_20260702.jsonl"
+    event = json.loads(audit_file.read_text(encoding="utf-8").splitlines()[0])
+    event["event_hash"] = "sha256:broken"
+    audit_file.write_text(json.dumps(event) + "\n", encoding="utf-8")
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["warnings"]
+    with pytest.raises(GovernanceIntegrityError):
+        store.write_approval(
+            ReleaseApproval(
+                approval_id="release_approval_release_intent_release_manager_late",
+                intent_id=intent.intent_id,
+                approver_role="release_manager",
+                decision="approve",
+                reason="Late approval",
+                signed_by="release_admin",
+                signed_at="2026-07-02T00:20:00+08:00",
+                required=True,
+            ),
+            actor="release_admin",
+            timestamp="2026-07-02T00:20:00+08:00",
+        )
+```
+
+- [ ] **Step 2: Run store tests to verify failure**
+
+Run:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_release_governance_store.py -q
+```
+
+Expected: FAIL because `backend.api.services.release_governance_store` does not exist.
+
+- [ ] **Step 3: Implement the store**
+
+Create `backend/api/services/release_governance_store.py`:
+
+```python
+from __future__ import annotations
+
+from dataclasses import dataclass
+import json
+from pathlib import Path
+from typing import Any
+
+from src.contracts.release_governance import (
+    GENESIS_EVENT_HASH,
+    ReleaseApproval,
+    ReleaseAuditEvent,
+    ReleaseIntent,
+    ReleaseRollbackPlan,
+    build_audit_event,
+    make_release_audit_event_id,
+    validate_audit_event_hash,
+)
+
+
+class GovernanceIntegrityError(RuntimeError):
+    pass
+
+
+@dataclass(frozen=True)
+class ReleaseGovernanceState:
+    intents: list[ReleaseIntent]
+    approvals: list[ReleaseApproval]
+    rollback_plans: list[ReleaseRollbackPlan]
+    audit_events: list[ReleaseAuditEvent]
+    integrity: dict[str, Any]
+
+
+class ReleaseGovernanceStore:
+    def __init__(self, root: Path) -> None:
+        self.root = root
+        self.intents_dir = root / "intents"
+        self.approvals_dir = root / "approvals"
+        self.rollback_plans_dir = root / "rollback_plans"
+        self.audit_dir = root / "audit"
+
+    def read_state(self) -> ReleaseGovernanceState:
+        intents = [ReleaseIntent(**payload) for payload in self._read_json_dir(self.intents_dir)]
+        approvals = [ReleaseApproval(**payload) for payload in self._read_json_dir(self.approvals_dir)]
+        rollback_plans = [ReleaseRollbackPlan(**payload) for payload in self._read_json_dir(self.rollback_plans_dir)]
+        audit_events = self._read_audit_events()
+        integrity = self._verify_integrity(audit_events)
+        return ReleaseGovernanceState(
+            intents=sorted(intents, key=lambda item: item.requested_at),
+            approvals=sorted(approvals, key=lambda item: item.signed_at),
+            rollback_plans=sorted(rollback_plans, key=lambda item: item.created_at),
+            audit_events=audit_events,
+            integrity=integrity,
+        )
+
+    def write_intent(self, intent: ReleaseIntent, *, actor: str, timestamp: str) -> None:
+        self._raise_if_integrity_failed(intent.intent_id)
+        self._write_json_once(self.intents_dir / f"{intent.intent_id}.json", intent.to_dict())
+        self._append_event(intent.intent_id, "intent_created", actor, timestamp, intent.to_dict())
+
+    def write_approval(self, approval: ReleaseApproval, *, actor: str, timestamp: str) -> None:
+        self._raise_if_integrity_failed(approval.intent_id)
+        path = self.approvals_dir / f"{approval.approval_id}.json"
+        self._write_json_once(path, approval.to_dict())
+        self._append_event(approval.intent_id, "approval_recorded", actor, timestamp, approval.to_dict())
+
+    def write_rollback_plan(self, plan: ReleaseRollbackPlan, *, actor: str, timestamp: str) -> None:
+        self._raise_if_integrity_failed(plan.intent_id)
+        path = self.rollback_plans_dir / f"{plan.rollback_plan_id}.json"
+        self._write_json_once(path, plan.to_dict())
+        self._append_event(plan.intent_id, "rollback_plan_recorded", actor, timestamp, plan.to_dict())
+
+    def append_cancel_event(self, *, intent_id: str, actor: str, reason: str, timestamp: str) -> None:
+        self._raise_if_integrity_failed(intent_id)
+        self._append_event(
+            intent_id,
+            "intent_cancelled",
+            actor,
+            timestamp,
+            {"intent_id": intent_id, "actor": actor, "reason": reason},
+        )
+
+    def _write_json_once(self, path: Path, payload: dict[str, Any]) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists():
+            raise FileExistsError(path)
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
+    def _append_event(
+        self,
+        intent_id: str,
+        event_type: str,
+        actor: str,
+        timestamp: str,
+        payload: dict[str, Any],
+    ) -> None:
+        self.audit_dir.mkdir(parents=True, exist_ok=True)
+        previous_hash = self._last_event_hash(intent_id)
+        event = build_audit_event(
+            event_id=make_release_audit_event_id(intent_id, event_type, timestamp),
+            intent_id=intent_id,
+            event_type=event_type,
+            actor=actor,
+            timestamp=timestamp,
+            payload=payload,
+            previous_event_hash=previous_hash,
+        )
+        audit_file = self.audit_dir / f"release_audit_{timestamp[:10].replace('-', '')}.jsonl"
+        with audit_file.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event.to_dict(), ensure_ascii=False, sort_keys=True) + "\n")
+
+    def _last_event_hash(self, intent_id: str) -> str:
+        events = [event for event in self._read_audit_events() if event.intent_id == intent_id]
+        return events[-1].event_hash if events else GENESIS_EVENT_HASH
+
+    def _raise_if_integrity_failed(self, intent_id: str) -> None:
+        state = self.read_state()
+        if state.integrity["status"] == "failed":
+            affected = [
+                event.intent_id
+                for event in state.audit_events
+                if event.intent_id == intent_id
+            ]
+            if affected:
+                raise GovernanceIntegrityError("release governance audit chain failed verification")
+
+    def _read_json_dir(self, directory: Path) -> list[dict[str, Any]]:
+        if not directory.exists():
+            return []
+        payloads: list[dict[str, Any]] = []
+        for path in sorted(directory.glob("*.json")):
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                payloads.append(payload)
+        return payloads
+
+    def _read_audit_events(self) -> list[ReleaseAuditEvent]:
+        if not self.audit_dir.exists():
+            return []
+        events: list[ReleaseAuditEvent] = []
+        for path in sorted(self.audit_dir.glob("*.jsonl")):
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if line.strip():
+                    payload = json.loads(line)
+                    events.append(ReleaseAuditEvent(**payload))
+        return sorted(events, key=lambda item: item.timestamp)
+
+    def _verify_integrity(self, events: list[ReleaseAuditEvent]) -> dict[str, Any]:
+        warnings: list[str] = []
+        last_hash_by_intent: dict[str, str] = {}
+        for event in events:
+            expected_previous = last_hash_by_intent.get(event.intent_id, GENESIS_EVENT_HASH)
+            if event.previous_event_hash != expected_previous:
+                warnings.append(f"{event.event_id} previous_event_hash mismatch")
+            if not validate_audit_event_hash(event):
+                warnings.append(f"{event.event_id} event_hash mismatch")
+            last_hash_by_intent[event.intent_id] = event.event_hash
+        return {"status": "failed" if warnings else "verified", "warnings": warnings}
+```
+
+Create `reports/release_governance/README.md`:
+
+```markdown
+# Release Governance Reports
+
+This directory stores Step 12 audit-only release governance artifacts.
+
+Allowed generated artifacts:
+
+- `intents/*.json`
+- `approvals/*.json`
+- `rollback_plans/*.json`
+- `audit/*.jsonl`
+
+These files record release intent, human approvals, rollback plans, and audit
+events. They do not execute release, execute rollback, toggle feature flags,
+mutate safety policy, update prompts, write RAG indexes, promote literature
+evidence, or deploy model/tool changes.
+```
+
+- [ ] **Step 4: Run store tests**
+
+Run:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_release_governance_contract.py tests/backend/test_release_governance_store.py -q
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit Task 2**
+
+Run:
+
+```powershell
+git add backend/api/services/release_governance_store.py tests/backend/test_release_governance_store.py reports/release_governance/README.md
+git commit -m "feat: add release governance store"
+```
+
+---
+
+### Task 3: Governance Service And Read Model
+
+**Files:**
+- Create: `src/services/release_governance.py`
+- Create: `tests/backend/test_release_governance_service.py`
+
+- [ ] **Step 1: Write failing service tests**
+
+Create `tests/backend/test_release_governance_service.py`:
+
+```python
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from backend.api.services.release_governance_store import ReleaseGovernanceStore
+from src.services.release_governance import (
+    GovernanceConflictError,
+    GovernanceValidationError,
+    ReleaseGovernanceService,
+)
+
+
+def dashboard(
+    *,
+    hard_fail_count: int = 0,
+    release_decision: str = "feature_flag_or_pass",
+    rollback_target: str | None = "agent_policy_20260624_0",
+    literature_status: str = "shadow_only",
+    literature_violations: int = 0,
+) -> dict[str, object]:
+    return {
+        "version_chain": {
+            "agent_policy_version": "agent_policy_20260629_0",
+            "clinical_safety_policy_version": "crc_safety_policy_v0",
+            "evidence_index_version": "rag_crc_guideline_20260620",
+            "judge_rubric_version": "crc_rubric_v0",
+        },
+        "release_decision": release_decision,
+        "rollback_target": rollback_target,
+        "summary": {
+            "hard_fail_count": hard_fail_count,
+            "literature_isolation_violations": literature_violations,
+            "clinical_rag_ingest_enabled": False,
+        },
+        "runs": [
+            {
+                "run_id": "harness_20260629_001",
+                "kind": "p0_crc_harness",
+                "status": "pass",
+                "source_path": "reports/harness/harness_20260629_001.json",
+                "hard_fail_count": 0,
+            },
+            {
+                "run_id": "release_safety_20260629_001",
+                "kind": "release_safety",
+                "status": "pass" if hard_fail_count == 0 else "fail",
+                "source_path": "reports/release_safety/release_safety_20260629_001.json",
+                "hard_fail_count": hard_fail_count,
+            },
+            {
+                "run_id": "literature_harness_20260630_001",
+                "kind": "literature_shadow_harness",
+                "status": literature_status,
+                "source_path": "reports/literature/literature_harness_20260630_001.json",
+                "hard_fail_count": 0,
+            },
+        ],
+    }
+
+
+def service(tmp_path: Path, payload: dict[str, object] | None = None) -> ReleaseGovernanceService:
+    return ReleaseGovernanceService(
+        store=ReleaseGovernanceStore(tmp_path / "release_governance"),
+        dashboard_loader=lambda: payload or dashboard(),
+        now=lambda: "2026-07-02T00:00:00+08:00",
+    )
+
+
+def test_read_model_is_empty_before_writes(tmp_path: Path) -> None:
+    model = service(tmp_path).read_governance()
+
+    assert model["active_intent"] is None
+    assert model["required_approvals"][0]["role"] == "release_manager"
+    assert model["integrity"] == {"status": "verified", "warnings": []}
+    assert model["disabled_execution_actions"] == [
+        {
+            "id": "execute_release",
+            "label": "Execute release",
+            "reason": "Step 12 records governance only.",
+        },
+        {
+            "id": "execute_rollback",
+            "label": "Execute rollback",
+            "reason": "Rollback execution requires a later execution-path design.",
+        },
+    ]
+
+
+def test_create_intent_from_dashboard_snapshot(tmp_path: Path) -> None:
+    model = service(tmp_path).create_intent(
+        requested_by="admin_operator",
+        target_scope="shadow",
+        status="pending_approval",
+        reason="Prepare audited governance.",
+    )
+
+    active = model["active_intent"]
+    assert active["source_release_report_id"] == "release_safety_20260629_001"
+    assert active["rollback_target"] == "agent_policy_20260624_0"
+    assert active["blocking_summary"]["hard_fail_count"] == 0
+    assert model["audit_events"][0]["event_type"] == "intent_created"
+
+
+def test_hard_fail_blocks_pending_approval_intent(tmp_path: Path) -> None:
+    with pytest.raises(GovernanceValidationError, match="hard fails prevent pending approval"):
+        service(tmp_path, dashboard(hard_fail_count=1)).create_intent(
+            requested_by="admin_operator",
+            target_scope="shadow",
+            status="pending_approval",
+            reason="Prepare audited governance.",
+        )
+
+
+def test_duplicate_active_intent_is_rejected(tmp_path: Path) -> None:
+    governance = service(tmp_path)
+    governance.create_intent(
+        requested_by="admin_operator",
+        target_scope="shadow",
+        status="pending_approval",
+        reason="Prepare audited governance.",
+    )
+
+    with pytest.raises(GovernanceConflictError, match="active intent already exists"):
+        governance.create_intent(
+            requested_by="admin_operator",
+            target_scope="shadow",
+            status="pending_approval",
+            reason="Prepare audited governance again.",
+        )
+
+
+def test_feature_flag_candidate_requires_shadow_literature(tmp_path: Path) -> None:
+    with pytest.raises(GovernanceValidationError, match="literature run must be shadow_only"):
+        service(tmp_path, dashboard(literature_status="invalid")).create_intent(
+            requested_by="admin_operator",
+            target_scope="feature_flag_candidate",
+            status="pending_approval",
+            reason="Prepare feature flag candidate.",
+        )
+
+
+def test_record_approval_and_rollback_plan_derives_read_model(tmp_path: Path) -> None:
+    governance = service(tmp_path)
+    model = governance.create_intent(
+        requested_by="admin_operator",
+        target_scope="shadow",
+        status="pending_approval",
+        reason="Prepare audited governance.",
+    )
+    intent_id = model["active_intent"]["intent_id"]
+
+    model = governance.record_approval(
+        intent_id=intent_id,
+        approver_role="release_manager",
+        decision="approve",
+        reason="Release manager approval.",
+        signed_by="release_admin",
+    )
+    model = governance.record_approval(
+        intent_id=intent_id,
+        approver_role="clinical_safety_reviewer",
+        decision="approve",
+        reason="Clinical safety approval.",
+        signed_by="safety_admin",
+    )
+    model = governance.record_rollback_plan(
+        intent_id=intent_id,
+        owner="release_manager",
+        status="accepted",
+        verification_steps=[
+            "Confirm release report id.",
+            "Run P0 harness before future rollback execution.",
+        ],
+    )
+
+    assert model["active_intent"]["derived_status"] == "approved"
+    assert {item["status"] for item in model["required_approvals"]} == {"approved"}
+    assert model["rollback_plan"]["rollback_target"] == "agent_policy_20260624_0"
+    assert [event["event_type"] for event in model["audit_events"]] == [
+        "intent_created",
+        "approval_recorded",
+        "approval_recorded",
+        "rollback_plan_recorded",
+    ]
+
+
+def test_rejection_prevents_approved_derived_status(tmp_path: Path) -> None:
+    governance = service(tmp_path)
+    model = governance.create_intent(
+        requested_by="admin_operator",
+        target_scope="shadow",
+        status="pending_approval",
+        reason="Prepare audited governance.",
+    )
+    intent_id = model["active_intent"]["intent_id"]
+
+    model = governance.record_approval(
+        intent_id=intent_id,
+        approver_role="release_manager",
+        decision="reject",
+        reason="Release manager rejection.",
+        signed_by="release_admin",
+    )
+
+    assert model["active_intent"]["derived_status"] == "rejected"
+
+
+def test_cancel_intent_is_derived_without_deleting_records(tmp_path: Path) -> None:
+    governance = service(tmp_path)
+    model = governance.create_intent(
+        requested_by="admin_operator",
+        target_scope="shadow",
+        status="pending_approval",
+        reason="Prepare audited governance.",
+    )
+    intent_id = model["active_intent"]["intent_id"]
+
+    model = governance.cancel_intent(
+        intent_id=intent_id,
+        actor="release_manager",
+        reason="Superseded by a later release report.",
+    )
+
+    assert model["active_intent"] is None
+    assert model["intents"][0]["derived_status"] == "cancelled"
+```
+
+- [ ] **Step 2: Run service tests to verify failure**
+
+Run:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_release_governance_service.py -q
+```
+
+Expected: FAIL because `src.services.release_governance` does not exist.
+
+- [ ] **Step 3: Implement the governance service**
+
+Create `src/services/release_governance.py`:
+
+```python
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+from backend.api.services.release_governance_store import ReleaseGovernanceStore
+from src.contracts.release_governance import (
+    APPROVER_ROLES,
+    ReleaseApproval,
+    ReleaseIntent,
+    ReleaseRollbackPlan,
+    make_release_approval_id,
+    make_release_intent_id,
+    make_release_rollback_plan_id,
+)
+
+
+class GovernanceValidationError(ValueError):
+    pass
+
+
+class GovernanceConflictError(ValueError):
+    pass
+
+
+class ReleaseGovernanceService:
+    def __init__(
+        self,
+        *,
+        store: ReleaseGovernanceStore,
+        dashboard_loader: Callable[[], dict[str, Any]],
+        now: Callable[[], str],
+    ) -> None:
+        self.store = store
+        self.dashboard_loader = dashboard_loader
+        self.now = now
+
+    def read_governance(self) -> dict[str, Any]:
+        dashboard = self.dashboard_loader()
+        state = self.store.read_state()
+        return self._read_model(dashboard, state)
+
+    def create_intent(
+        self,
+        *,
+        requested_by: str,
+        target_scope: str,
+        status: str,
+        reason: str,
+    ) -> dict[str, Any]:
+        if not reason.strip():
+            raise GovernanceValidationError("reason is required")
+        dashboard = self.dashboard_loader()
+        state = self.store.read_state()
+        self._validate_intent_request(dashboard, state, target_scope=target_scope, status=status)
+        timestamp = self.now()
+        release_run = self._release_run(dashboard)
+        literature_run = self._literature_run(dashboard)
+        intent = ReleaseIntent(
+            intent_id=make_release_intent_id(str(release_run["run_id"])),
+            source_release_report_id=str(release_run["run_id"]),
+            source_report_path=str(release_run["source_path"]),
+            harness_run_ids=[
+                str(run["run_id"])
+                for run in dashboard.get("runs", [])
+                if isinstance(run, dict) and run.get("kind") == "p0_crc_harness"
+            ],
+            literature_run_id=str(literature_run["run_id"]) if literature_run else None,
+            version_chain=dict(dashboard["version_chain"]),
+            release_decision_snapshot=str(dashboard["release_decision"]),
+            rollback_target=str(dashboard["rollback_target"]),
+            requested_by=requested_by,
+            requested_at=timestamp,
+            target_scope=target_scope,
+            status=status,
+            blocking_summary={
+                "hard_fail_count": int(dashboard["summary"]["hard_fail_count"]),
+                "literature_isolation_violations": int(dashboard["summary"]["literature_isolation_violations"]),
+                "clinical_rag_ingest_enabled": bool(dashboard["summary"]["clinical_rag_ingest_enabled"]),
+            },
+        )
+        self.store.write_intent(intent, actor=requested_by, timestamp=timestamp)
+        return self.read_governance()
+
+    def record_approval(
+        self,
+        *,
+        intent_id: str,
+        approver_role: str,
+        decision: str,
+        reason: str,
+        signed_by: str,
+    ) -> dict[str, Any]:
+        state = self.store.read_state()
+        intent = self._intent_by_id(state.intents, intent_id)
+        if self._is_cancelled(intent_id, state.audit_events):
+            raise GovernanceValidationError("cancelled intents cannot receive approvals")
+        signed_at = self.now()
+        approval = ReleaseApproval(
+            approval_id=make_release_approval_id(intent_id, approver_role, signed_at),
+            intent_id=intent.intent_id,
+            approver_role=approver_role,
+            decision=decision,
+            reason=reason,
+            signed_by=signed_by,
+            signed_at=signed_at,
+            required=approver_role in self._required_roles(intent.target_scope),
+        )
+        self.store.write_approval(approval, actor=signed_by, timestamp=signed_at)
+        return self.read_governance()
+
+    def record_rollback_plan(
+        self,
+        *,
+        intent_id: str,
+        owner: str,
+        status: str,
+        verification_steps: list[str],
+    ) -> dict[str, Any]:
+        state = self.store.read_state()
+        intent = self._intent_by_id(state.intents, intent_id)
+        created_at = self.now()
+        plan = ReleaseRollbackPlan(
+            rollback_plan_id=make_release_rollback_plan_id(intent_id, created_at),
+            intent_id=intent.intent_id,
+            rollback_target=intent.rollback_target,
+            owner=owner,
+            status=status,
+            verification_steps=verification_steps,
+            created_at=created_at,
+        )
+        self.store.write_rollback_plan(plan, actor=owner, timestamp=created_at)
+        return self.read_governance()
+
+    def cancel_intent(self, *, intent_id: str, actor: str, reason: str) -> dict[str, Any]:
+        if not reason.strip():
+            raise GovernanceValidationError("reason is required")
+        state = self.store.read_state()
+        self._intent_by_id(state.intents, intent_id)
+        self.store.append_cancel_event(intent_id=intent_id, actor=actor, reason=reason, timestamp=self.now())
+        return self.read_governance()
+
+    def _read_model(self, dashboard: dict[str, Any], state: Any) -> dict[str, Any]:
+        intents = [self._intent_payload(intent, state) for intent in state.intents]
+        active_intent = next((item for item in reversed(intents) if item["derived_status"] != "cancelled"), None)
+        required_roles = self._required_roles(active_intent["target_scope"]) if active_intent else ("release_manager", "clinical_safety_reviewer")
+        approvals = [approval.to_dict() for approval in state.approvals]
+        rollback_plan = self._latest_plan_for_intent(state.rollback_plans, active_intent["intent_id"] if active_intent else None)
+        return {
+            "dashboard_snapshot": {
+                "release_decision": dashboard.get("release_decision"),
+                "rollback_target": dashboard.get("rollback_target"),
+                "hard_fail_count": dashboard.get("summary", {}).get("hard_fail_count", 0),
+                "literature_status": self._literature_status(dashboard),
+            },
+            "intents": intents,
+            "active_intent": active_intent,
+            "approvals": approvals,
+            "required_approvals": self._required_approval_rows(required_roles, state.approvals, active_intent),
+            "rollback_plan": rollback_plan.to_dict() if rollback_plan else None,
+            "audit_events": [event.to_dict() for event in state.audit_events],
+            "integrity": state.integrity,
+            "disabled_execution_actions": [
+                {
+                    "id": "execute_release",
+                    "label": "Execute release",
+                    "reason": "Step 12 records governance only.",
+                },
+                {
+                    "id": "execute_rollback",
+                    "label": "Execute rollback",
+                    "reason": "Rollback execution requires a later execution-path design.",
+                },
+            ],
+            "runtime": {
+                "auth": "admin",
+                "source": "reports/release_governance",
+                "mode": "audit_only",
+            },
+        }
+
+    def _validate_intent_request(self, dashboard: dict[str, Any], state: Any, *, target_scope: str, status: str) -> None:
+        release_run = self._release_run(dashboard)
+        if release_run.get("status") not in {"pass", "shadow_only"}:
+            raise GovernanceValidationError("valid release safety report is required")
+        if not dashboard.get("rollback_target"):
+            raise GovernanceValidationError("rollback target is required")
+        if status == "pending_approval" and int(dashboard["summary"]["hard_fail_count"]) > 0:
+            raise GovernanceValidationError("hard fails prevent pending approval")
+        if status == "pending_approval" and dashboard.get("release_decision") == "block":
+            raise GovernanceValidationError("block release decision prevents pending approval")
+        if target_scope == "feature_flag_candidate" and self._literature_status(dashboard) != "shadow_only":
+            raise GovernanceValidationError("literature run must be shadow_only")
+        for intent in state.intents:
+            if intent.source_release_report_id == release_run["run_id"] and not self._is_cancelled(intent.intent_id, state.audit_events):
+                raise GovernanceConflictError("active intent already exists for this release report")
+
+    def _intent_payload(self, intent: ReleaseIntent, state: Any) -> dict[str, Any]:
+        payload = intent.to_dict()
+        payload["derived_status"] = self._derived_status(intent, state)
+        return payload
+
+    def _derived_status(self, intent: ReleaseIntent, state: Any) -> str:
+        if self._is_cancelled(intent.intent_id, state.audit_events):
+            return "cancelled"
+        latest_by_role = self._latest_approvals_by_role(intent.intent_id, state.approvals)
+        if any(approval.decision == "reject" for approval in latest_by_role.values()):
+            return "rejected"
+        required = self._required_roles(intent.target_scope)
+        if all(latest_by_role.get(role) and latest_by_role[role].decision == "approve" for role in required):
+            return "approved"
+        return intent.status
+
+    def _required_roles(self, target_scope: str) -> tuple[str, ...]:
+        if target_scope == "feature_flag_candidate":
+            return ("release_manager", "clinical_safety_reviewer", "evidence_reviewer")
+        return ("release_manager", "clinical_safety_reviewer")
+
+    def _required_approval_rows(self, roles: tuple[str, ...], approvals: list[ReleaseApproval], active_intent: dict[str, Any] | None) -> list[dict[str, Any]]:
+        intent_id = active_intent["intent_id"] if active_intent else None
+        latest = self._latest_approvals_by_role(intent_id, approvals) if intent_id else {}
+        rows = []
+        for role in roles:
+            approval = latest.get(role)
+            rows.append(
+                {
+                    "role": role,
+                    "status": approval.decision if approval else "missing",
+                    "latest_decision": approval.to_dict() if approval else None,
+                }
+            )
+        return rows
+
+    def _latest_approvals_by_role(self, intent_id: str, approvals: list[ReleaseApproval]) -> dict[str, ReleaseApproval]:
+        latest: dict[str, ReleaseApproval] = {}
+        for approval in approvals:
+            if approval.intent_id == intent_id:
+                latest[approval.approver_role] = approval
+        return latest
+
+    def _latest_plan_for_intent(self, plans: list[ReleaseRollbackPlan], intent_id: str | None) -> ReleaseRollbackPlan | None:
+        matching = [plan for plan in plans if plan.intent_id == intent_id]
+        return matching[-1] if matching else None
+
+    def _intent_by_id(self, intents: list[ReleaseIntent], intent_id: str) -> ReleaseIntent:
+        for intent in intents:
+            if intent.intent_id == intent_id:
+                return intent
+        raise GovernanceValidationError("intent does not exist")
+
+    def _is_cancelled(self, intent_id: str, events: list[Any]) -> bool:
+        return any(event.intent_id == intent_id and event.event_type == "intent_cancelled" for event in events)
+
+    def _release_run(self, dashboard: dict[str, Any]) -> dict[str, Any]:
+        for run in dashboard.get("runs", []):
+            if isinstance(run, dict) and run.get("kind") == "release_safety":
+                return run
+        raise GovernanceValidationError("release safety run is required")
+
+    def _literature_run(self, dashboard: dict[str, Any]) -> dict[str, Any] | None:
+        for run in dashboard.get("runs", []):
+            if isinstance(run, dict) and run.get("kind") == "literature_shadow_harness":
+                return run
+        return None
+
+    def _literature_status(self, dashboard: dict[str, Any]) -> str:
+        run = self._literature_run(dashboard)
+        return str(run["status"]) if run else "missing"
+```
+
+- [ ] **Step 4: Run service tests**
+
+Run:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_release_governance_contract.py tests/backend/test_release_governance_store.py tests/backend/test_release_governance_service.py -q
+```
+
+Expected: PASS.
+
+- [ ] **Step 5: Commit Task 3**
+
+Run:
+
+```powershell
+git add src/services/release_governance.py tests/backend/test_release_governance_service.py
+git commit -m "feat: add release governance service"
+```
+
+---
+
+### Task 4: Admin Governance API And Auth
+
+**Files:**
+- Create: `backend/api/schemas/release_governance.py`
+- Create: `tests/backend/test_release_governance_api.py`
+- Modify: `backend/api/routes/admin.py`
+- Modify: `backend/app.py`
+- Modify: `tests/backend/test_auth_security.py`
+
+- [ ] **Step 1: Write failing API tests**
+
+Create `tests/backend/test_release_governance_api.py`:
+
+```python
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from backend.api.routes import admin as admin_routes
+from backend.api.services.release_governance_store import ReleaseGovernanceStore
+from src.services.release_governance import ReleaseGovernanceService
+
+
+def dashboard() -> dict[str, object]:
+    return {
+        "version_chain": {
+            "agent_policy_version": "agent_policy_20260629_0",
+            "clinical_safety_policy_version": "crc_safety_policy_v0",
+            "evidence_index_version": "rag_crc_guideline_20260620",
+            "judge_rubric_version": "crc_rubric_v0",
+        },
+        "release_decision": "feature_flag_or_pass",
+        "rollback_target": "agent_policy_20260624_0",
+        "summary": {
+            "hard_fail_count": 0,
+            "literature_isolation_violations": 0,
+            "clinical_rag_ingest_enabled": False,
+        },
+        "runs": [
+            {
+                "run_id": "harness_20260629_001",
+                "kind": "p0_crc_harness",
+                "status": "pass",
+                "source_path": "reports/harness/harness_20260629_001.json",
+                "hard_fail_count": 0,
+            },
+            {
+                "run_id": "release_safety_20260629_001",
+                "kind": "release_safety",
+                "status": "pass",
+                "source_path": "reports/release_safety/release_safety_20260629_001.json",
+                "hard_fail_count": 0,
+            },
+            {
+                "run_id": "literature_harness_20260630_001",
+                "kind": "literature_shadow_harness",
+                "status": "shadow_only",
+                "source_path": "reports/literature/literature_harness_20260630_001.json",
+                "hard_fail_count": 0,
+            },
+        ],
+    }
+
+
+def test_get_release_governance_returns_read_model(tmp_path: Path, monkeypatch) -> None:
+    service = ReleaseGovernanceService(
+        store=ReleaseGovernanceStore(tmp_path / "release_governance"),
+        dashboard_loader=dashboard,
+        now=lambda: "2026-07-02T00:00:00+08:00",
+    )
+    monkeypatch.setattr(admin_routes, "build_release_governance_service", lambda: service)
+    app = FastAPI()
+    app.include_router(admin_routes.router)
+    client = TestClient(app)
+
+    try:
+        response = client.get("/api/admin/release-governance")
+    finally:
+        client.close()
+
+    assert response.status_code == 200
+    assert response.json()["runtime"]["mode"] == "audit_only"
+    assert response.json()["active_intent"] is None
+
+
+def test_release_governance_post_flow(tmp_path: Path, monkeypatch) -> None:
+    service = ReleaseGovernanceService(
+        store=ReleaseGovernanceStore(tmp_path / "release_governance"),
+        dashboard_loader=dashboard,
+        now=lambda: "2026-07-02T00:00:00+08:00",
+    )
+    monkeypatch.setattr(admin_routes, "build_release_governance_service", lambda: service)
+    app = FastAPI()
+    app.include_router(admin_routes.router)
+    client = TestClient(app)
+
+    try:
+        intent_response = client.post(
+            "/api/admin/release-governance/intents",
+            json={
+                "requested_by": "admin_operator",
+                "target_scope": "shadow",
+                "status": "pending_approval",
+                "reason": "Prepare audited governance.",
+            },
+        )
+        intent_id = intent_response.json()["active_intent"]["intent_id"]
+        approval_response = client.post(
+            f"/api/admin/release-governance/intents/{intent_id}/approvals",
+            json={
+                "approver_role": "release_manager",
+                "decision": "approve",
+                "reason": "Release manager approval.",
+                "signed_by": "release_admin",
+            },
+        )
+        rollback_response = client.post(
+            f"/api/admin/release-governance/intents/{intent_id}/rollback-plan",
+            json={
+                "owner": "release_manager",
+                "status": "accepted",
+                "verification_steps": [
+                    "Confirm release report id.",
+                    "Run P0 harness before future rollback execution.",
+                ],
+            },
+        )
+    finally:
+        client.close()
+
+    assert intent_response.status_code == 200
+    assert approval_response.status_code == 200
+    assert rollback_response.status_code == 200
+    assert rollback_response.json()["rollback_plan"]["rollback_target"] == "agent_policy_20260624_0"
+
+
+def test_release_governance_validation_error_returns_422(tmp_path: Path, monkeypatch) -> None:
+    service = ReleaseGovernanceService(
+        store=ReleaseGovernanceStore(tmp_path / "release_governance"),
+        dashboard_loader=dashboard,
+        now=lambda: "2026-07-02T00:00:00+08:00",
+    )
+    monkeypatch.setattr(admin_routes, "build_release_governance_service", lambda: service)
+    app = FastAPI()
+    app.include_router(admin_routes.router)
+    client = TestClient(app)
+
+    try:
+        response = client.post(
+            "/api/admin/release-governance/intents",
+            json={
+                "requested_by": "admin_operator",
+                "target_scope": "production",
+                "status": "pending_approval",
+                "reason": "Invalid target.",
+            },
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 422
+```
+
+- [ ] **Step 2: Update auth tests before implementation**
+
+Modify `_auth_client()` in `tests/backend/test_auth_security.py` by adding routes:
+
+```python
+    @app.get("/api/admin/release-governance")
+    async def admin_release_governance() -> dict[str, object]:
+        return {"runtime": {"auth": "admin"}}
+
+    @app.post("/api/admin/release-governance/intents")
+    async def admin_release_governance_intents() -> dict[str, object]:
+        return {"ok": True}
+
+    @app.post("/api/admin/release-governance/intents/{intent_id}/approvals")
+    async def admin_release_governance_approvals(intent_id: str) -> dict[str, object]:
+        return {"ok": True, "intent_id": intent_id}
+```
+
+Add to every existing admin route parametrization:
+
+```python
+        ("get", "/api/admin/release-governance"),
+        ("post", "/api/admin/release-governance/intents"),
+        ("post", "/api/admin/release-governance/intents/release_intent_1/approvals"),
+```
+
+- [ ] **Step 3: Run API/auth tests to verify failure**
+
+Run:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_release_governance_api.py tests/backend/test_auth_security.py -q
+```
+
+Expected: FAIL because schemas/routes/auth guard are not implemented.
+
+- [ ] **Step 4: Add Pydantic schemas**
+
+Create `backend/api/schemas/release_governance.py`:
+
+```python
+from __future__ import annotations
+
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
+
+
+class ReleaseIntentRequest(BaseModel):
+    requested_by: str = Field(min_length=1)
+    target_scope: Literal["shadow", "feature_flag_candidate"]
+    status: Literal["draft", "pending_approval"]
+    reason: str = Field(min_length=1)
+
+
+class ReleaseApprovalRequest(BaseModel):
+    approver_role: Literal["release_manager", "clinical_safety_reviewer", "evidence_reviewer"]
+    decision: Literal["approve", "reject", "request_changes"]
+    reason: str = Field(min_length=1)
+    signed_by: str = Field(min_length=1)
+
+
+class ReleaseRollbackPlanRequest(BaseModel):
+    owner: str = Field(min_length=1)
+    status: Literal["proposed", "accepted"]
+    verification_steps: list[str] = Field(min_length=2)
+
+
+class ReleaseCancelIntentRequest(BaseModel):
+    actor: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class ReleaseGovernanceResponse(BaseModel):
+    dashboard_snapshot: dict[str, Any]
+    intents: list[dict[str, Any]]
+    active_intent: dict[str, Any] | None
+    approvals: list[dict[str, Any]]
+    required_approvals: list[dict[str, Any]]
+    rollback_plan: dict[str, Any] | None
+    audit_events: list[dict[str, Any]]
+    integrity: dict[str, Any]
+    disabled_execution_actions: list[dict[str, Any]]
+    runtime: dict[str, Any]
+```
+
+- [ ] **Step 5: Add admin route handlers**
+
+Modify `backend/api/routes/admin.py`:
+
+```python
+from pathlib import Path
+
+from fastapi import APIRouter, HTTPException, Request
+
+from backend.api.schemas.release_governance import (
+    ReleaseApprovalRequest,
+    ReleaseCancelIntentRequest,
+    ReleaseGovernanceResponse,
+    ReleaseIntentRequest,
+    ReleaseRollbackPlanRequest,
+)
+from backend.api.services.release_governance_store import (
+    GovernanceIntegrityError,
+    ReleaseGovernanceStore,
+)
+from src.services.release_governance import (
+    GovernanceConflictError,
+    GovernanceValidationError,
+    ReleaseGovernanceService,
+)
+```
+
+Add a builder near the existing helper functions:
+
+```python
+REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def build_release_governance_service() -> ReleaseGovernanceService:
+    return ReleaseGovernanceService(
+        store=ReleaseGovernanceStore(REPO_ROOT / "reports" / "release_governance"),
+        dashboard_loader=build_release_dashboard,
+        now=_utc_now,
+    )
+
+
+def _utc_now() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _governance_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, GovernanceConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    if isinstance(exc, (GovernanceValidationError, GovernanceIntegrityError, ValueError)):
+        return HTTPException(status_code=422, detail=str(exc))
+    return HTTPException(status_code=500, detail="Release governance operation failed")
+```
+
+Add routes:
+
+```python
+@router.get("/release-governance", response_model=ReleaseGovernanceResponse)
+async def get_admin_release_governance() -> dict[str, Any]:
+    try:
+        return build_release_governance_service().read_governance()
+    except Exception as exc:
+        raise _governance_error(exc) from exc
+
+
+@router.post("/release-governance/intents", response_model=ReleaseGovernanceResponse)
+async def create_admin_release_intent(payload: ReleaseIntentRequest) -> dict[str, Any]:
+    try:
+        return build_release_governance_service().create_intent(**payload.model_dump())
+    except Exception as exc:
+        raise _governance_error(exc) from exc
+
+
+@router.post("/release-governance/intents/{intent_id}/approvals", response_model=ReleaseGovernanceResponse)
+async def record_admin_release_approval(intent_id: str, payload: ReleaseApprovalRequest) -> dict[str, Any]:
+    try:
+        return build_release_governance_service().record_approval(
+            intent_id=intent_id,
+            **payload.model_dump(),
+        )
+    except Exception as exc:
+        raise _governance_error(exc) from exc
+
+
+@router.post("/release-governance/intents/{intent_id}/rollback-plan", response_model=ReleaseGovernanceResponse)
+async def record_admin_release_rollback_plan(intent_id: str, payload: ReleaseRollbackPlanRequest) -> dict[str, Any]:
+    try:
+        return build_release_governance_service().record_rollback_plan(
+            intent_id=intent_id,
+            **payload.model_dump(),
+        )
+    except Exception as exc:
+        raise _governance_error(exc) from exc
+
+
+@router.post("/release-governance/intents/{intent_id}/cancel", response_model=ReleaseGovernanceResponse)
+async def cancel_admin_release_intent(intent_id: str, payload: ReleaseCancelIntentRequest) -> dict[str, Any]:
+    try:
+        return build_release_governance_service().cancel_intent(
+            intent_id=intent_id,
+            **payload.model_dump(),
+        )
+    except Exception as exc:
+        raise _governance_error(exc) from exc
+```
+
+- [ ] **Step 6: Extend admin auth guard**
+
+Modify `_requires_admin_token()` in `backend/app.py`:
+
+```python
+    if method == "GET" and path == "/api/admin/release-governance":
+        return True
+    if method == "POST" and path.startswith("/api/admin/release-governance/"):
+        return True
+```
+
+- [ ] **Step 7: Run API/auth tests**
+
+Run:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_release_governance_api.py tests/backend/test_auth_security.py -q
+```
+
+Expected: PASS.
+
+- [ ] **Step 8: Commit Task 4**
+
+Run:
+
+```powershell
+git add backend/api/schemas/release_governance.py backend/api/routes/admin.py backend/app.py tests/backend/test_release_governance_api.py tests/backend/test_auth_security.py
+git commit -m "feat: expose release governance admin api"
+```
+
+---
+
+### Task 5: Frontend API Types And Client
+
+**Files:**
+- Modify: `frontend/src/app/api/types.ts`
+- Modify: `frontend/src/app/api/client.ts`
+- Modify: `frontend/src/app/api/client.test.ts`
+- Modify: `frontend/src/test/test-utils.tsx` if needed
+
+- [ ] **Step 1: Write failing frontend API tests**
+
+Add to `frontend/src/app/api/client.test.ts`:
+
+```ts
+  it("loads admin release governance with configured Authorization headers", async () => {
+    const payload = {
+      dashboard_snapshot: {
+        release_decision: "feature_flag_or_pass",
+        rollback_target: "agent_policy_20260624_0",
+        hard_fail_count: 0,
+        literature_status: "shadow_only",
+      },
+      intents: [],
+      active_intent: null,
+      approvals: [],
+      required_approvals: [{ role: "release_manager", status: "missing", latest_decision: null }],
+      rollback_plan: null,
+      audit_events: [],
+      integrity: { status: "verified", warnings: [] },
+      disabled_execution_actions: [
+        { id: "execute_release", label: "Execute release", reason: "Step 12 records governance only." },
+      ],
+      runtime: { auth: "admin", source: "reports/release_governance", mode: "audit_only" },
+    };
+    const response = { ok: true, json: vi.fn(async () => payload) } as unknown as Response;
+    const fetchImpl = vi.fn(async () => response);
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+
+    await expect(client.getAdminReleaseGovernance()).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/release-governance",
+      { headers: { Authorization: "Bearer dev-token" } },
+    );
+  });
+
+  it("creates admin release intent with a JSON body", async () => {
+    const payload = {
+      dashboard_snapshot: {},
+      intents: [],
+      active_intent: { intent_id: "release_intent_1" },
+      approvals: [],
+      required_approvals: [],
+      rollback_plan: null,
+      audit_events: [],
+      integrity: { status: "verified", warnings: [] },
+      disabled_execution_actions: [],
+      runtime: { auth: "admin", source: "reports/release_governance", mode: "audit_only" },
+    };
+    const response = { ok: true, json: vi.fn(async () => payload) } as unknown as Response;
+    let latestInit: RequestInit | undefined;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      latestInit = init;
+      return response;
+    });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+    const request = {
+      requested_by: "admin_operator",
+      target_scope: "shadow" as const,
+      status: "pending_approval" as const,
+      reason: "Prepare audited governance.",
+    };
+
+    await expect(client.createAdminReleaseIntent(request)).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/release-governance/intents",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify(request),
+      },
+    );
+    const headers = latestInit?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer dev-token");
+    expect(headers.get("Content-Type")).toBe("application/json");
+  });
+
+  it("records admin release approval and rollback plan", async () => {
+    const payload = {
+      dashboard_snapshot: {},
+      intents: [],
+      active_intent: { intent_id: "release_intent_1" },
+      approvals: [],
+      required_approvals: [],
+      rollback_plan: null,
+      audit_events: [],
+      integrity: { status: "verified", warnings: [] },
+      disabled_execution_actions: [],
+      runtime: { auth: "admin", source: "reports/release_governance", mode: "audit_only" },
+    };
+    const response = { ok: true, json: vi.fn(async () => payload) } as unknown as Response;
+    const fetchImpl = vi.fn(async () => response);
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+
+    await client.recordAdminReleaseApproval("release_intent_1", {
+      approver_role: "release_manager",
+      decision: "approve",
+      reason: "Release manager approval.",
+      signed_by: "release_admin",
+    });
+    await client.recordAdminReleaseRollbackPlan("release_intent_1", {
+      owner: "release_manager",
+      status: "accepted",
+      verification_steps: [
+        "Confirm release report id.",
+        "Run P0 harness before future rollback execution.",
+      ],
+    });
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/release-governance/intents/release_intent_1/approvals",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/release-governance/intents/release_intent_1/rollback-plan",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+```
+
+- [ ] **Step 2: Run frontend API tests to verify failure**
+
+Run:
+
+```powershell
+cmd /c D:\anaconda3\envs\LangG\npm.cmd --prefix frontend run test -- --run src/app/api/client.test.ts
+```
+
+Expected: FAIL because governance types and client methods do not exist.
+
+- [ ] **Step 3: Add frontend governance types**
+
+Modify `frontend/src/app/api/types.ts` after the release dashboard interfaces:
+
+```ts
+export type AdminReleaseIntentTargetScope = "shadow" | "feature_flag_candidate";
+export type AdminReleaseIntentStatus = "draft" | "pending_approval" | "approved" | "rejected" | "cancelled";
+export type AdminReleaseApprovalRole = "release_manager" | "clinical_safety_reviewer" | "evidence_reviewer";
+export type AdminReleaseApprovalDecision = "approve" | "reject" | "request_changes";
+export type AdminReleaseRollbackPlanStatus = "proposed" | "accepted";
+export type AdminReleaseAuditEventType =
+  | "intent_created"
+  | "approval_recorded"
+  | "rollback_plan_recorded"
+  | "intent_cancelled"
+  | "governance_read";
+
+export interface AdminReleaseIntent {
+  intent_id: string;
+  source_release_report_id: string;
+  source_report_path: string;
+  harness_run_ids: string[];
+  literature_run_id: string | null;
+  version_chain: AdminReleaseDashboardVersionChain;
+  release_decision_snapshot: string;
+  rollback_target: string;
+  requested_by: string;
+  requested_at: string;
+  target_scope: AdminReleaseIntentTargetScope;
+  status: AdminReleaseIntentStatus;
+  derived_status?: AdminReleaseIntentStatus;
+  blocking_summary: {
+    hard_fail_count: number;
+    literature_isolation_violations: number;
+    clinical_rag_ingest_enabled: boolean;
+  };
+}
+
+export interface AdminReleaseApproval {
+  approval_id: string;
+  intent_id: string;
+  approver_role: AdminReleaseApprovalRole;
+  decision: AdminReleaseApprovalDecision;
+  reason: string;
+  signed_by: string;
+  signed_at: string;
+  required: boolean;
+}
+
+export interface AdminReleaseRequiredApproval {
+  role: AdminReleaseApprovalRole;
+  status: AdminReleaseApprovalDecision | "missing";
+  latest_decision: AdminReleaseApproval | null;
+}
+
+export interface AdminReleaseRollbackPlan {
+  rollback_plan_id: string;
+  intent_id: string;
+  rollback_target: string;
+  owner: string;
+  status: AdminReleaseRollbackPlanStatus;
+  verification_steps: string[];
+  created_at: string;
+}
+
+export interface AdminReleaseAuditEvent {
+  event_id: string;
+  intent_id: string;
+  event_type: AdminReleaseAuditEventType;
+  actor: string;
+  timestamp: string;
+  payload_hash: string;
+  previous_event_hash: string;
+  event_hash: string;
+}
+
+export interface AdminReleaseGovernanceResponse {
+  dashboard_snapshot: {
+    release_decision: string | null;
+    rollback_target: string | null;
+    hard_fail_count: number;
+    literature_status: string;
+  };
+  intents: AdminReleaseIntent[];
+  active_intent: AdminReleaseIntent | null;
+  approvals: AdminReleaseApproval[];
+  required_approvals: AdminReleaseRequiredApproval[];
+  rollback_plan: AdminReleaseRollbackPlan | null;
+  audit_events: AdminReleaseAuditEvent[];
+  integrity: {
+    status: "verified" | "failed";
+    warnings: string[];
+  };
+  disabled_execution_actions: Array<{
+    id: "execute_release" | "execute_rollback";
+    label: string;
+    reason: string;
+  }>;
+  runtime: {
+    auth: "admin";
+    source: "reports/release_governance";
+    mode: "audit_only";
+  };
+}
+
+export interface AdminReleaseIntentRequest {
+  requested_by: string;
+  target_scope: AdminReleaseIntentTargetScope;
+  status: "draft" | "pending_approval";
+  reason: string;
+}
+
+export interface AdminReleaseApprovalRequest {
+  approver_role: AdminReleaseApprovalRole;
+  decision: AdminReleaseApprovalDecision;
+  reason: string;
+  signed_by: string;
+}
+
+export interface AdminReleaseRollbackPlanRequest {
+  owner: string;
+  status: AdminReleaseRollbackPlanStatus;
+  verification_steps: string[];
+}
+
+export interface AdminReleaseCancelIntentRequest {
+  actor: string;
+  reason: string;
+}
+```
+
+- [ ] **Step 4: Add frontend client methods**
+
+Modify imports and `ApiClient` in `frontend/src/app/api/client.ts`:
+
+```ts
+  AdminReleaseApprovalRequest,
+  AdminReleaseCancelIntentRequest,
+  AdminReleaseGovernanceResponse,
+  AdminReleaseIntentRequest,
+  AdminReleaseRollbackPlanRequest,
+```
+
+Add methods to `ApiClient`:
+
+```ts
+  getAdminReleaseGovernance(): Promise<AdminReleaseGovernanceResponse>;
+  createAdminReleaseIntent(request: AdminReleaseIntentRequest): Promise<AdminReleaseGovernanceResponse>;
+  recordAdminReleaseApproval(
+    intentId: string,
+    request: AdminReleaseApprovalRequest,
+  ): Promise<AdminReleaseGovernanceResponse>;
+  recordAdminReleaseRollbackPlan(
+    intentId: string,
+    request: AdminReleaseRollbackPlanRequest,
+  ): Promise<AdminReleaseGovernanceResponse>;
+  cancelAdminReleaseIntent(
+    intentId: string,
+    request: AdminReleaseCancelIntentRequest,
+  ): Promise<AdminReleaseGovernanceResponse>;
+```
+
+Add implementations near the existing admin methods:
+
+```ts
+    async getAdminReleaseGovernance() {
+      const response = await fetchImpl(buildUrl("/api/admin/release-governance", baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
+    },
+
+    async createAdminReleaseIntent(request) {
+      const response = await fetchImpl(buildUrl("/api/admin/release-governance/intents", baseUrl), {
+        method: "POST",
+        headers: buildJsonHeaders(defaultHeaders),
+        body: JSON.stringify(request),
+      });
+      return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
+    },
+
+    async recordAdminReleaseApproval(intentId, request) {
+      const response = await fetchImpl(
+        buildUrl(`/api/admin/release-governance/intents/${encodeURIComponent(intentId)}/approvals`, baseUrl),
+        {
+          method: "POST",
+          headers: buildJsonHeaders(defaultHeaders),
+          body: JSON.stringify(request),
+        },
+      );
+      return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
+    },
+
+    async recordAdminReleaseRollbackPlan(intentId, request) {
+      const response = await fetchImpl(
+        buildUrl(`/api/admin/release-governance/intents/${encodeURIComponent(intentId)}/rollback-plan`, baseUrl),
+        {
+          method: "POST",
+          headers: buildJsonHeaders(defaultHeaders),
+          body: JSON.stringify(request),
+        },
+      );
+      return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
+    },
+
+    async cancelAdminReleaseIntent(intentId, request) {
+      const response = await fetchImpl(
+        buildUrl(`/api/admin/release-governance/intents/${encodeURIComponent(intentId)}/cancel`, baseUrl),
+        {
+          method: "POST",
+          headers: buildJsonHeaders(defaultHeaders),
+          body: JSON.stringify(request),
+        },
+      );
+      return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
+    },
+```
+
+- [ ] **Step 5: Run frontend API tests**
+
+Run:
+
+```powershell
+cmd /c D:\anaconda3\envs\LangG\npm.cmd --prefix frontend run test -- --run src/app/api/client.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit Task 5**
+
+Run:
+
+```powershell
+git add frontend/src/app/api/types.ts frontend/src/app/api/client.ts frontend/src/app/api/client.test.ts frontend/src/test/test-utils.tsx
+git commit -m "feat: add release governance api client"
+```
+
+---
+
+### Task 6: Agent Admin Governance UI
+
+**Files:**
+- Modify: `frontend/src/features/agent-admin/agent-admin-view.tsx`
+- Modify: `frontend/src/features/agent-admin/agent-admin-pages.tsx`
+- Modify: `frontend/src/features/agent-admin/agent-admin-view.test.tsx`
+
+- [ ] **Step 1: Write failing Agent Admin governance tests**
+
+Add helpers to `frontend/src/features/agent-admin/agent-admin-view.test.tsx`:
+
+```ts
+function makeAdminReleaseGovernance() {
+  return {
+    dashboard_snapshot: {
+      release_decision: "feature_flag_or_pass",
+      rollback_target: "agent_policy_20260624_0",
+      hard_fail_count: 0,
+      literature_status: "shadow_only",
+    },
+    intents: [],
+    active_intent: null,
+    approvals: [],
+    required_approvals: [
+      { role: "release_manager", status: "missing", latest_decision: null },
+      { role: "clinical_safety_reviewer", status: "missing", latest_decision: null },
+    ],
+    rollback_plan: null,
+    audit_events: [],
+    integrity: { status: "verified", warnings: [] },
+    disabled_execution_actions: [
+      { id: "execute_release", label: "Execute release", reason: "Step 12 records governance only." },
+      { id: "execute_rollback", label: "Execute rollback", reason: "Rollback execution requires a later execution-path design." },
+    ],
+    runtime: {
+      auth: "admin",
+      source: "reports/release_governance",
+      mode: "audit_only",
+    },
+  };
+}
+
+function makeAdminReleaseGovernanceWithIntent() {
+  const base = makeAdminReleaseGovernance();
+  return {
+    ...base,
+    active_intent: {
+      intent_id: "release_intent_1",
+      source_release_report_id: "release_safety_20260629_001",
+      source_report_path: "reports/release_safety/release_safety_20260629_001.json",
+      harness_run_ids: ["harness_20260629_001"],
+      literature_run_id: "literature_harness_20260630_001",
+      version_chain: makeAdminReleaseDashboard().version_chain,
+      release_decision_snapshot: "feature_flag_or_pass",
+      rollback_target: "agent_policy_20260624_0",
+      requested_by: "admin_operator",
+      requested_at: "2026-07-02T00:00:00+08:00",
+      target_scope: "shadow",
+      status: "pending_approval",
+      derived_status: "pending_approval",
+      blocking_summary: {
+        hard_fail_count: 0,
+        literature_isolation_violations: 0,
+        clinical_rag_ingest_enabled: false,
+      },
+    },
+    intents: [],
+    audit_events: [
+      {
+        event_id: "release_audit_1",
+        intent_id: "release_intent_1",
+        event_type: "intent_created",
+        actor: "admin_operator",
+        timestamp: "2026-07-02T00:00:00+08:00",
+        payload_hash: "sha256:payload",
+        previous_event_hash: "sha256:GENESIS",
+        event_hash: "sha256:event",
+      },
+    ],
+  };
+}
+```
+
+Add tests:
+
+```ts
+  it("loads governance state when the release task is selected", async () => {
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-governance" })}
+        doctor={makeState({ sessionId: "doctor-governance" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(apiClient.getAdminReleaseGovernance).toHaveBeenCalledTimes(1));
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("Release governance");
+    expect(page).toHaveTextContent("no release intent has been recorded");
+    expect(page).toHaveTextContent("Execute release");
+    expect(within(page).getByText("Execute release").closest("button")).toBeDisabled();
+  });
+
+  it("creates release intent through the governance panel", async () => {
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      createAdminReleaseIntent: vi.fn(async () => makeAdminReleaseGovernanceWithIntent()),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-create-intent" })}
+        doctor={makeState({ sessionId: "doctor-create-intent" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Create release intent"));
+    fireEvent.click(screen.getByRole("button", { name: /Create release intent/ }));
+
+    await waitFor(() => expect(apiClient.createAdminReleaseIntent).toHaveBeenCalledTimes(1));
+    expect(apiClient.createAdminReleaseIntent).toHaveBeenCalledWith({
+      requested_by: "admin_operator",
+      target_scope: "shadow",
+      status: "pending_approval",
+      reason: "Prepare audited governance before controlled release execution exists.",
+    });
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("release_intent_1");
+  });
+
+  it("records approval and rollback plan while execution remains disabled", async () => {
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernanceWithIntent()),
+      recordAdminReleaseApproval: vi.fn(async () => makeAdminReleaseGovernanceWithIntent()),
+      recordAdminReleaseRollbackPlan: vi.fn(async () => ({
+        ...makeAdminReleaseGovernanceWithIntent(),
+        rollback_plan: {
+          rollback_plan_id: "rollback_plan_1",
+          intent_id: "release_intent_1",
+          rollback_target: "agent_policy_20260624_0",
+          owner: "release_manager",
+          status: "accepted",
+          verification_steps: [
+            "Confirm release report id.",
+            "Run P0 harness before future rollback execution.",
+          ],
+          created_at: "2026-07-02T00:15:00+08:00",
+        },
+      })),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-approval" })}
+        doctor={makeState({ sessionId: "doctor-approval" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Record release manager approval"));
+    fireEvent.click(screen.getByRole("button", { name: /Record release manager approval/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Record rollback plan/ }));
+
+    await waitFor(() => expect(apiClient.recordAdminReleaseApproval).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(apiClient.recordAdminReleaseRollbackPlan).toHaveBeenCalledTimes(1));
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(within(page).getByText("Execute release").closest("button")).toBeDisabled();
+    expect(within(page).getByText("Execute rollback").closest("button")).toBeDisabled();
+  });
+
+  it("shows governance error without hiding release dashboard data", async () => {
+    const apiClient = {
+      getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => {
+        throw new Error("Governance unavailable");
+      }),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-governance-error" })}
+        doctor={makeState({ sessionId: "doctor-governance-error" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("release governance unavailable"));
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("agent_policy_20260629_0");
+  });
+```
+
+- [ ] **Step 2: Run Agent Admin tests to verify failure**
+
+Run:
+
+```powershell
+cmd /c D:\anaconda3\envs\LangG\npm.cmd --prefix frontend run test -- --run src/features/agent-admin/agent-admin-view.test.tsx
+```
+
+Expected: FAIL because governance resource loading and UI are not implemented.
+
+- [ ] **Step 3: Extend AgentAdminView resource loading**
+
+Modify imports and props in `frontend/src/features/agent-admin/agent-admin-view.tsx`:
+
+```ts
+import type {
+  AdminReleaseDashboardResponse,
+  AdminReleaseGovernanceResponse,
+  AdminToolManifestResponse,
+} from "../../app/api/types";
+
+type AgentAdminViewProps = {
+  activeScene: Scene;
+  patient: SessionState;
+  doctor: SessionState;
+  surfaceSwitcher: ReactNode;
+  apiClient?: Partial<
+    Pick<
+      ApiClient,
+      | "getAdminTools"
+      | "getAdminReleaseDashboard"
+      | "getAdminReleaseGovernance"
+      | "createAdminReleaseIntent"
+      | "recordAdminReleaseApproval"
+      | "recordAdminReleaseRollbackPlan"
+      | "cancelAdminReleaseIntent"
+    >
+  >;
+};
+```
+
+Add resource type and state:
+
+```ts
+export type AgentAdminReleaseGovernanceResource =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: AdminReleaseGovernanceResponse }
+  | { status: "error"; error: { status?: number; message: string } };
+
+const [releaseGovernanceResource, setReleaseGovernanceResource] = useState<AgentAdminReleaseGovernanceResource>({ status: "idle" });
+```
+
+Add effect modeled on the release dashboard effect:
+
+```ts
+  useEffect(() => {
+    if (activeTaskId !== "release") {
+      return;
+    }
+
+    if (!apiClient || typeof apiClient.getAdminReleaseGovernance !== "function") {
+      setReleaseGovernanceResource({ status: "idle" });
+      return;
+    }
+
+    let cancelled = false;
+    setReleaseGovernanceResource({ status: "loading" });
+
+    void apiClient.getAdminReleaseGovernance().then(
+      (data) => {
+        if (!cancelled) {
+          setReleaseGovernanceResource({ status: "success", data });
+        }
+      },
+      (error) => {
+        if (cancelled) {
+          return;
+        }
+        if (error instanceof ApiClientError) {
+          setReleaseGovernanceResource({
+            status: "error",
+            error: { status: error.status, message: error.message },
+          });
+          return;
+        }
+        setReleaseGovernanceResource({
+          status: "error",
+          error: {
+            message: error instanceof Error ? error.message : "Unknown admin release governance error",
+          },
+        });
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTaskId, apiClient]);
+```
+
+Add mutation handlers:
+
+```ts
+  async function createReleaseIntent() {
+    if (!apiClient?.createAdminReleaseIntent) {
+      return;
+    }
+    setReleaseGovernanceResource({ status: "loading" });
+    const data = await apiClient.createAdminReleaseIntent({
+      requested_by: "admin_operator",
+      target_scope: "shadow",
+      status: "pending_approval",
+      reason: "Prepare audited governance before controlled release execution exists.",
+    });
+    setReleaseGovernanceResource({ status: "success", data });
+  }
+
+  async function recordReleaseManagerApproval(intentId: string) {
+    if (!apiClient?.recordAdminReleaseApproval) {
+      return;
+    }
+    setReleaseGovernanceResource({ status: "loading" });
+    const data = await apiClient.recordAdminReleaseApproval(intentId, {
+      approver_role: "release_manager",
+      decision: "approve",
+      reason: "Release manager reviewed the Step 11 dashboard and accepts audit-only governance.",
+      signed_by: "release_admin",
+    });
+    setReleaseGovernanceResource({ status: "success", data });
+  }
+
+  async function recordRollbackPlan(intentId: string) {
+    if (!apiClient?.recordAdminReleaseRollbackPlan) {
+      return;
+    }
+    setReleaseGovernanceResource({ status: "loading" });
+    const data = await apiClient.recordAdminReleaseRollbackPlan(intentId, {
+      owner: "release_manager",
+      status: "accepted",
+      verification_steps: [
+        "Confirm release report id before future execution.",
+        "Run P0 harness before future rollback execution.",
+      ],
+    });
+    setReleaseGovernanceResource({ status: "success", data });
+  }
+```
+
+Pass to `AgentAdminTaskPages`:
+
+```tsx
+          releaseGovernanceResource={releaseGovernanceResource}
+          onCreateReleaseIntent={createReleaseIntent}
+          onRecordReleaseManagerApproval={recordReleaseManagerApproval}
+          onRecordRollbackPlan={recordRollbackPlan}
+```
+
+- [ ] **Step 4: Render governance panels**
+
+Modify `frontend/src/features/agent-admin/agent-admin-pages.tsx`.
+
+Add prop types:
+
+```ts
+import type { AgentAdminReleaseDashboardResource, AgentAdminReleaseGovernanceResource, AgentAdminToolsResource } from "./agent-admin-view";
+
+type AgentAdminPagesProps = {
+  activeTaskId: AgentAdminTaskId;
+  activeScene: Scene;
+  patient: SessionState;
+  doctor: SessionState;
+  onNavigateTask: (taskId: AgentAdminTaskId) => void;
+  toolsResource: AgentAdminToolsResource;
+  releaseDashboardResource: AgentAdminReleaseDashboardResource;
+  releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
+  onCreateReleaseIntent: () => void;
+  onRecordReleaseManagerApproval: (intentId: string) => void;
+  onRecordRollbackPlan: (intentId: string) => void;
+};
+```
+
+Pass governance props into the release page:
+
+```tsx
+      ) : activeTaskId === "release" ? (
+        <ReleasePage
+          releaseDashboardResource={releaseDashboardResource}
+          releaseGovernanceResource={releaseGovernanceResource}
+          onCreateReleaseIntent={onCreateReleaseIntent}
+          onRecordReleaseManagerApproval={onRecordReleaseManagerApproval}
+          onRecordRollbackPlan={onRecordRollbackPlan}
+        />
+```
+
+Extend `ReleaseSuccessPage` to render a new section after the existing disabled controls:
+
+```tsx
+function ReleaseGovernancePanel({
+  resource,
+  onCreateReleaseIntent,
+  onRecordReleaseManagerApproval,
+  onRecordRollbackPlan,
+}: {
+  resource: AgentAdminReleaseGovernanceResource;
+  onCreateReleaseIntent: () => void;
+  onRecordReleaseManagerApproval: (intentId: string) => void;
+  onRecordRollbackPlan: (intentId: string) => void;
+}) {
+  if (resource.status === "loading") {
+    return (
+      <AgentAdminPanel eyebrow="release governance" title="Release governance" icon={GitBranch}>
+        <div className="agent-admin-detail-list">
+          <span>reading release governance records</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  if (resource.status === "error") {
+    return (
+      <AgentAdminPanel eyebrow="release governance" title="Release governance" icon={AlertTriangle}>
+        <div className="agent-admin-detail-list">
+          <span>release governance unavailable: {resource.error.message}</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  if (resource.status !== "success") {
+    return (
+      <AgentAdminPanel eyebrow="release governance" title="Release governance" icon={GitBranch}>
+        <div className="agent-admin-detail-list">
+          <span>release governance idle</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  const data = resource.data;
+  const activeIntent = data.active_intent;
+
+  return (
+    <>
+      <AgentAdminPanel eyebrow="release governance" title="Release governance" icon={GitBranch}>
+        <div className="agent-admin-detail-list">
+          <span>{activeIntent ? `active intent / ${activeIntent.intent_id}` : "no release intent has been recorded"}</span>
+          <span>audit integrity / {data.integrity.status}</span>
+          <span>runtime / {data.runtime.mode}</span>
+          {!activeIntent ? (
+            <button type="button" onClick={onCreateReleaseIntent}>
+              Create release intent
+            </button>
+          ) : (
+            <>
+              <button type="button" onClick={() => onRecordReleaseManagerApproval(activeIntent.intent_id)}>
+                Record release manager approval
+              </button>
+              <button type="button" onClick={() => onRecordRollbackPlan(activeIntent.intent_id)}>
+                Record rollback plan
+              </button>
+            </>
+          )}
+        </div>
+      </AgentAdminPanel>
+
+      <AgentAdminPanel eyebrow="approvals" title="Required approvals" icon={KeyRound}>
+        <div className="agent-admin-detail-list">
+          {data.required_approvals.map((approval) => (
+            <span key={approval.role}>
+              {approval.role} / {approval.status}
+            </span>
+          ))}
+        </div>
+      </AgentAdminPanel>
+
+      <AgentAdminPanel eyebrow="rollback plan" title="Rollback plan" icon={ShieldCheck}>
+        <div className="agent-admin-detail-list">
+          {data.rollback_plan ? (
+            <>
+              <span>{data.rollback_plan.rollback_target}</span>
+              {data.rollback_plan.verification_steps.map((step) => (
+                <span key={step}>{step}</span>
+              ))}
+            </>
+          ) : (
+            <span>rollback plan missing</span>
+          )}
+        </div>
+      </AgentAdminPanel>
+
+      <AgentAdminPanel eyebrow="audit trail" title="Audit trail" icon={ListChecks}>
+        <div className="agent-admin-detail-list">
+          {data.audit_events.length > 0 ? (
+            data.audit_events.map((event) => (
+              <span key={event.event_id}>
+                {event.event_type} / {event.actor} / {event.event_hash.slice(0, 18)}
+              </span>
+            ))
+          ) : (
+            <span>audit trail empty</span>
+          )}
+        </div>
+      </AgentAdminPanel>
+
+      <AgentAdminPanel eyebrow="execution locked" title="Disabled execution controls" icon={KeyRound}>
+        <div className="agent-admin-detail-list">
+          {data.disabled_execution_actions.map((action) => (
+            <button key={action.id} type="button" className="agent-admin-disabled-action" disabled>
+              <KeyRound size={15} aria-hidden="true" />
+              <span>{action.label}</span>
+              <small>{action.reason}</small>
+            </button>
+          ))}
+        </div>
+      </AgentAdminPanel>
+    </>
+  );
+}
+```
+
+Call it from `ReleaseSuccessPage`:
+
+```tsx
+      <ReleaseGovernancePanel
+        resource={releaseGovernanceResource}
+        onCreateReleaseIntent={onCreateReleaseIntent}
+        onRecordReleaseManagerApproval={onRecordReleaseManagerApproval}
+        onRecordRollbackPlan={onRecordRollbackPlan}
+      />
+```
+
+Thread the new props through `ReleasePage` and `ReleaseSuccessPage` rather than using global state.
+
+- [ ] **Step 5: Run Agent Admin tests**
+
+Run:
+
+```powershell
+cmd /c D:\anaconda3\envs\LangG\npm.cmd --prefix frontend run test -- --run src/features/agent-admin/agent-admin-view.test.tsx
+```
+
+Expected: PASS.
+
+- [ ] **Step 6: Commit Task 6**
+
+Run:
+
+```powershell
+git add frontend/src/features/agent-admin/agent-admin-view.tsx frontend/src/features/agent-admin/agent-admin-pages.tsx frontend/src/features/agent-admin/agent-admin-view.test.tsx
+git commit -m "feat: add release governance admin panel"
+```
+
+---
+
+### Task 7: Non-Mutation Tests And Final Verification
+
+**Files:**
+- Create: `tests/backend/test_release_governance_non_mutation.py`
+- Modify source files only if this task exposes a bug.
+
+- [ ] **Step 1: Write non-mutation tests**
+
+Create `tests/backend/test_release_governance_non_mutation.py`:
+
+```python
+from __future__ import annotations
+
+from pathlib import Path
+
+from backend.api.services.release_governance_store import ReleaseGovernanceStore
+from src.services.release_governance import ReleaseGovernanceService
+
+
+def dashboard() -> dict[str, object]:
+    return {
+        "version_chain": {
+            "agent_policy_version": "agent_policy_20260629_0",
+            "clinical_safety_policy_version": "crc_safety_policy_v0",
+            "evidence_index_version": "rag_crc_guideline_20260620",
+            "judge_rubric_version": "crc_rubric_v0",
+        },
+        "release_decision": "feature_flag_or_pass",
+        "rollback_target": "agent_policy_20260624_0",
+        "summary": {
+            "hard_fail_count": 0,
+            "literature_isolation_violations": 0,
+            "clinical_rag_ingest_enabled": False,
+        },
+        "runs": [
+            {
+                "run_id": "harness_20260629_001",
+                "kind": "p0_crc_harness",
+                "status": "pass",
+                "source_path": "reports/harness/harness_20260629_001.json",
+                "hard_fail_count": 0,
+            },
+            {
+                "run_id": "release_safety_20260629_001",
+                "kind": "release_safety",
+                "status": "pass",
+                "source_path": "reports/release_safety/release_safety_20260629_001.json",
+                "hard_fail_count": 0,
+            },
+            {
+                "run_id": "literature_harness_20260630_001",
+                "kind": "literature_shadow_harness",
+                "status": "shadow_only",
+                "source_path": "reports/literature/literature_harness_20260630_001.json",
+                "hard_fail_count": 0,
+            },
+        ],
+    }
+
+
+def read_if_exists(path: Path) -> str | None:
+    return path.read_text(encoding="utf-8") if path.exists() else None
+
+
+def test_governance_writes_only_to_governance_root(tmp_path: Path) -> None:
+    protected_paths = {
+        "safety": tmp_path / "config" / "safety_policy.yaml",
+        "harness": tmp_path / "reports" / "harness" / "harness_20260629_001.json",
+        "release": tmp_path / "reports" / "release_safety" / "release_safety_20260629_001.json",
+        "literature": tmp_path / "reports" / "literature" / "literature_harness_20260630_001.json",
+        "prompt": tmp_path / "src" / "prompts" / "decision_prompts.py",
+    }
+    for label, path in protected_paths.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"{label}: original\n", encoding="utf-8")
+    before = {label: read_if_exists(path) for label, path in protected_paths.items()}
+    governance = ReleaseGovernanceService(
+        store=ReleaseGovernanceStore(tmp_path / "reports" / "release_governance"),
+        dashboard_loader=dashboard,
+        now=lambda: "2026-07-02T00:00:00+08:00",
+    )
+
+    model = governance.create_intent(
+        requested_by="admin_operator",
+        target_scope="shadow",
+        status="pending_approval",
+        reason="Prepare audited governance.",
+    )
+    intent_id = model["active_intent"]["intent_id"]
+    governance.record_approval(
+        intent_id=intent_id,
+        approver_role="release_manager",
+        decision="approve",
+        reason="Release manager approval.",
+        signed_by="release_admin",
+    )
+    governance.record_rollback_plan(
+        intent_id=intent_id,
+        owner="release_manager",
+        status="accepted",
+        verification_steps=[
+            "Confirm release report id.",
+            "Run P0 harness before future rollback execution.",
+        ],
+    )
+
+    assert {label: read_if_exists(path) for label, path in protected_paths.items()} == before
+    written_files = sorted(
+        path.relative_to(tmp_path).as_posix()
+        for path in (tmp_path / "reports" / "release_governance").rglob("*")
+        if path.is_file()
+    )
+    assert written_files == [
+        "reports/release_governance/approvals/release_approval_release_intent_release_safety_20260629_001_6da729a0_release_manager_14927ffd.json",
+        "reports/release_governance/audit/release_audit_20260702.jsonl",
+        "reports/release_governance/intents/release_intent_release_safety_20260629_001_6da729a0.json",
+        "reports/release_governance/rollback_plans/rollback_plan_release_intent_release_safety_20260629_001_6da729a0_14927ffd.json",
+    ]
+```
+
+If the exact generated IDs differ after implementation, update the expected file list to the deterministic IDs produced by the Task 1 helpers. Do not weaken this assertion to a broad directory-only check.
+
+- [ ] **Step 2: Run backend Step 12 tests**
+
+Run:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_release_governance_contract.py tests/backend/test_release_governance_store.py tests/backend/test_release_governance_service.py tests/backend/test_release_governance_api.py tests/backend/test_release_governance_non_mutation.py -q
+```
+
+Expected: PASS.
+
+- [ ] **Step 3: Run Step 11 regressions**
+
+Run:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_admin_release_dashboard.py tests/backend/test_admin_release_dashboard_api.py tests/backend/test_auth_security.py -q
+cmd /c D:\anaconda3\envs\LangG\npm.cmd --prefix frontend run test -- --run src/app/api/client.test.ts src/features/agent-admin/agent-admin-view.test.tsx
+```
+
+Expected: backend admin/release/auth tests PASS; frontend API/Admin tests PASS.
+
+- [ ] **Step 4: Run Step 10, P1, and P0 regressions**
+
+Run Step 10:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_evidence_claim_contract.py tests/backend/test_literature_harness.py -q
+```
+
+Expected: PASS, currently `52 passed`.
+
+Run P1:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_clinical_assertion_projection.py tests/backend/test_doctor_review_api.py tests/backend/test_doctor_action_trace.py -q
+```
+
+Expected: PASS, currently `34 passed`.
+
+Run P0:
+
+```powershell
+D:\anaconda3\envs\LangG\python.exe -m pytest tests/backend/test_clinical_safety_policy.py tests/backend/test_crc_triage_flow.py tests/backend/test_crc_triage_save.py tests/backend/test_crc_harness_replay.py -q
+```
+
+Expected: PASS, currently `29 passed`.
+
+- [ ] **Step 5: Run diff and scope checks**
+
+Run:
+
+```powershell
+git diff --check
+git status --short
+git diff --name-only
+```
+
+Expected:
+
+- `git diff --check` has no output.
+- Changed source files match this implementation plan.
+- No files under `CRC-client/` are changed.
+- No generated governance intent, approval, rollback plan, or audit files are accidentally staged.
+- `reports/release_governance/README.md` may be staged; generated runtime artifacts under its subdirectories should not be staged.
+
+- [ ] **Step 6: Commit final verification fixes if needed**
+
+If Task 7 required fixes, commit them:
+
+```powershell
+git add tests/backend/test_release_governance_non_mutation.py src/contracts/release_governance.py src/services/release_governance.py backend/api/services/release_governance_store.py backend/api/schemas/release_governance.py backend/api/routes/admin.py backend/app.py frontend/src/app/api/types.ts frontend/src/app/api/client.ts frontend/src/features/agent-admin/agent-admin-view.tsx frontend/src/features/agent-admin/agent-admin-pages.tsx frontend/src/features/agent-admin/agent-admin-view.test.tsx frontend/src/app/api/client.test.ts
+git commit -m "fix: finalize release governance integration"
+```
+
+If Task 7 required no fixes, do not create an empty commit.
+
+## Final Handoff
+
+When all tasks pass, report:
+
+- backend Step 12 test results;
+- Step 11 backend/frontend regression results;
+- Step 10/P1/P0 regression results;
+- final changed file list;
+- confirmation that release execution and rollback execution remain disabled;
+- confirmation that only `reports/release_governance/` is writable for governance artifacts;
+- current branch and whether it has been pushed.
+
+Do not push to `origin/main` unless the user explicitly asks.
+
+## Self-Review
+
+Spec coverage: Task 1 covers contracts and audit hashing. Task 2 covers file-backed append-only storage. Task 3 covers governance service validation and derived read model. Task 4 covers API and admin auth. Task 5 covers frontend API types/client. Task 6 covers Agent Admin governance UI and disabled execution controls. Task 7 covers non-mutation checks and P0/P1/Step10/Step11 regressions.
+
+Marker scan: the plan contains no unresolved work markers and no unspecified file paths.
+
+Type consistency: backend response keys match frontend interfaces: `dashboard_snapshot`, `intents`, `active_intent`, `approvals`, `required_approvals`, `rollback_plan`, `audit_events`, `integrity`, `disabled_execution_actions`, and `runtime`. The client method names are consistently `getAdminReleaseGovernance()`, `createAdminReleaseIntent()`, `recordAdminReleaseApproval()`, `recordAdminReleaseRollbackPlan()`, and `cancelAdminReleaseIntent()`.
+
+Scope check: this plan implements only audit-only controlled release governance. It does not execute release, execute rollback, toggle feature flags, mutate safety policy, update prompts/rubrics/routes/templates, write clinical RAG, promote literature, create LearningJob automation, perform research cohort feasibility, or edit `CRC-client/`.
