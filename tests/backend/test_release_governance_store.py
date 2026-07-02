@@ -504,6 +504,46 @@ def test_schema_valid_intent_artifact_tampering_fails_integrity(
     assert any("intent artifact" in warning for warning in state.integrity["warnings"])
 
 
+def test_forbidden_key_in_intent_artifact_returns_integrity_warning_and_blocks_writes(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    intent_file = (
+        tmp_path
+        / "release_governance"
+        / "intents"
+        / f"{intent.intent_id}.json"
+    )
+    tampered = intent.to_dict()
+    tampered["blocking_summary"]["patient_id"] = "MRN-1"
+    intent_file.write_text(
+        json.dumps(tampered, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["affected_intent_ids"] == [intent.intent_id]
+    assert any(
+        "intent artifact" in warning and intent.intent_id in warning
+        for warning in state.integrity["warnings"]
+    )
+    with pytest.raises(GovernanceIntegrityError):
+        store.append_cancel_event(
+            intent_id=intent.intent_id,
+            actor="admin_operator",
+            reason="No writes while artifact integrity is failed.",
+            timestamp="2026-07-02T00:20:00+08:00",
+        )
+
+
 def test_failed_audit_append_removes_newly_created_intent_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

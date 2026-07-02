@@ -457,18 +457,44 @@ class ReleaseGovernanceStore:
         warnings: list[str] = []
         affected_intent_ids: set[str] = set()
 
-        intent_hashes = {
-            (intent.intent_id, canonical_payload_hash(intent.to_dict()))
-            for intent in intents
-        }
-        approval_hashes = {
-            (approval.intent_id, canonical_payload_hash(approval.to_dict()))
-            for approval in approvals
-        }
-        rollback_plan_hashes = {
-            (plan.intent_id, canonical_payload_hash(plan.to_dict()))
-            for plan in rollback_plans
-        }
+        intent_hashes: set[tuple[str, str]] = set()
+        for intent in intents:
+            try:
+                intent_hashes.add(
+                    (intent.intent_id, canonical_payload_hash(intent.to_dict()))
+                )
+            except (TypeError, ValueError) as exc:
+                warnings.append(
+                    f"intent artifact {intent.intent_id} payload hash validation failed: {exc}"
+                )
+                affected_intent_ids.add(intent.intent_id)
+
+        approval_hashes: set[tuple[str, str]] = set()
+        for approval in approvals:
+            try:
+                approval_hashes.add(
+                    (
+                        approval.intent_id,
+                        canonical_payload_hash(approval.to_dict()),
+                    )
+                )
+            except (TypeError, ValueError) as exc:
+                warnings.append(
+                    f"approval artifact for {approval.intent_id} payload hash validation failed: {exc}"
+                )
+                affected_intent_ids.add(approval.intent_id)
+
+        rollback_plan_hashes: set[tuple[str, str]] = set()
+        for plan in rollback_plans:
+            try:
+                rollback_plan_hashes.add(
+                    (plan.intent_id, canonical_payload_hash(plan.to_dict()))
+                )
+            except (TypeError, ValueError) as exc:
+                warnings.append(
+                    f"rollback plan artifact for {plan.intent_id} payload hash validation failed: {exc}"
+                )
+                affected_intent_ids.add(plan.intent_id)
 
         audit_hashes_by_type = {
             "intent_created": set(),
