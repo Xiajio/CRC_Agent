@@ -387,9 +387,9 @@ class ReleaseGovernanceStore:
         except OSError as exc:
             return f"{path} {label} path could not be inspected: {exc}"
 
+        if path_is_symlink:
+            return f"{path} {label} path is a symlink"
         if not path_exists:
-            if path_is_symlink:
-                return f"{path} {label} path is a broken symlink"
             return None
 
         try:
@@ -485,6 +485,14 @@ class ReleaseGovernanceStore:
             )
 
         for path in paths:
+            file_layout_warning = self._file_layout_warning(
+                path,
+                f"{artifact_name} artifact",
+            )
+            if file_layout_warning is not None:
+                warnings.append(file_layout_warning)
+                continue
+
             try:
                 payload = json.loads(path.read_text(encoding="utf-8"))
             except UnicodeDecodeError as exc:

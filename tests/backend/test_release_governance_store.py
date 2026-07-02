@@ -506,9 +506,33 @@ def test_symlinked_audit_directory_escape_fails_read_integrity(
     assert state.integrity["status"] == "failed"
     assert state.integrity["global_failure"] is True
     assert any(
-        "outside governance root" in warning
+        "outside governance root" in warning or "symlink" in warning
         for warning in state.integrity["warnings"]
     )
+
+
+def test_audit_directory_symlink_check_fails_read_integrity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "release_governance"
+    audit_dir = root / "audit"
+    audit_dir.mkdir(parents=True)
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_symlink(path: Path) -> bool:
+        if path == audit_dir:
+            return True
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["global_failure"] is True
+    assert any("symlink" in warning for warning in state.integrity["warnings"])
 
 
 def test_symlinked_audit_file_escape_fails_read_integrity(
@@ -545,6 +569,31 @@ def test_symlinked_audit_file_escape_fails_read_integrity(
     state = store.read_state()
 
     assert state.audit_events == []
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["global_failure"] is True
+    assert any("symlink" in warning for warning in state.integrity["warnings"])
+
+
+def test_artifact_file_symlink_check_fails_read_integrity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "release_governance"
+    artifact_file = root / "intents" / f"{make_intent().intent_id}.json"
+    _write_json_artifact(artifact_file, make_intent().to_dict())
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_symlink(path: Path) -> bool:
+        if path == artifact_file:
+            return True
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.intents == []
     assert state.integrity["status"] == "failed"
     assert state.integrity["global_failure"] is True
     assert any("symlink" in warning for warning in state.integrity["warnings"])
