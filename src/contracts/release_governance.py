@@ -552,11 +552,18 @@ def _is_forbidden_payload_key(
     ancestor_key_tokens: tuple[tuple[str, ...], ...],
 ) -> bool:
     token_set = set(key_tokens)
+    path_token_set = set(key_tokens)
+    for ancestor_tokens in ancestor_key_tokens:
+        path_token_set.update(ancestor_tokens)
     if normalized_key in FORBIDDEN_PAYLOAD_KEYS:
         return True
-    if "api" in token_set and "key" in token_set:
+    if "api" in path_token_set and "key" in path_token_set:
         return True
-    if "private" in token_set and "key" in token_set:
+    if "private" in path_token_set and "key" in path_token_set:
+        return True
+    if "hidden" in path_token_set and "reasoning" in path_token_set:
+        return True
+    if {"chain", "of", "thought"}.issubset(path_token_set):
         return True
     if token_set & _SENSITIVE_PAYLOAD_TOKENS:
         return True
