@@ -268,6 +268,14 @@ class ReleaseGovernanceStore:
         payload: dict[str, Any],
     ) -> _PreparedAuditEvent:
         audit_path = self.audit_dir / f"release_audit_{_audit_date(timestamp)}.jsonl"
+        latest_audit_file_name = self._latest_audit_file_name()
+        if (
+            latest_audit_file_name is not None
+            and audit_path.name < latest_audit_file_name
+        ):
+            raise GovernanceIntegrityError(
+                "backdated audit event would be stored before existing audit log"
+            )
         last_record = self._last_event_record(intent_id)
         if last_record is not None and audit_path.name < last_record.audit_path.name:
             raise GovernanceIntegrityError(
@@ -307,6 +315,22 @@ class ReleaseGovernanceStore:
             if record.event.intent_id == intent_id:
                 return record
         return None
+
+    def _latest_audit_file_name(self) -> str | None:
+        if not self.audit_dir.exists():
+            return None
+        try:
+            audit_file_names = [
+                path.name
+                for path in self.audit_dir.glob("release_audit_*.jsonl")
+            ]
+        except OSError as exc:
+            raise GovernanceIntegrityError(
+                f"{self.audit_dir} audit files could not be listed: {exc}"
+            ) from exc
+        if not audit_file_names:
+            return None
+        return max(audit_file_names)
 
     def _raise_if_parent_outside_root(self, path: Path) -> None:
         resolved_root = self.root.resolve(strict=False)

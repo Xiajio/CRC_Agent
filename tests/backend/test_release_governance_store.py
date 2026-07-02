@@ -46,6 +46,17 @@ def make_intent() -> ReleaseIntent:
     )
 
 
+def make_second_intent() -> ReleaseIntent:
+    return ReleaseIntent(
+        **{
+            **make_intent().to_dict(),
+            "intent_id": "release_intent_release_safety_20260629_002_b9c4ad18",
+            "source_release_report_id": "release_safety_20260629_002",
+            "requested_at": "2026-07-02T00:00:00+08:00",
+        }
+    )
+
+
 def make_approval(intent_id: str) -> ReleaseApproval:
     return ReleaseApproval(
         approval_id="release_approval_release_intent_release_manager_d79a98c1",
@@ -545,6 +556,36 @@ def test_cross_day_backdated_append_is_rejected_without_audit_row(
     ).exists()
     state = store.read_state()
     assert state.integrity == {"status": "verified", "warnings": []}
+    assert [event.event_type for event in state.audit_events] == [
+        "intent_created"
+    ]
+
+
+def test_global_cross_day_backdated_new_intent_is_rejected_without_writes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    intent_a = make_intent()
+    intent_b = make_second_intent()
+    store.write_intent(
+        intent_a,
+        actor="admin_operator",
+        timestamp="2026-07-03T00:00:00+08:00",
+    )
+
+    with pytest.raises(GovernanceIntegrityError, match="backdated"):
+        store.write_intent(
+            intent_b,
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+
+    assert not (root / "intents" / f"{intent_b.intent_id}.json").exists()
+    assert not (root / "audit" / "release_audit_20260702.jsonl").exists()
+    state = store.read_state()
+    assert state.integrity == {"status": "verified", "warnings": []}
+    assert [intent.intent_id for intent in state.intents] == [intent_a.intent_id]
     assert [event.event_type for event in state.audit_events] == [
         "intent_created"
     ]
