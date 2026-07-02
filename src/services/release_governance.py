@@ -187,7 +187,7 @@ class ReleaseGovernanceService:
             actor=requested_by,
             timestamp=timestamp,
         )
-        return intent.to_dict()
+        return self.read_governance()
 
     def record_approval(
         self,
@@ -219,7 +219,7 @@ class ReleaseGovernanceService:
             actor=signed_by,
             timestamp=timestamp,
         )
-        return approval.to_dict()
+        return self.read_governance()
 
     def record_rollback_plan(
         self,
@@ -245,7 +245,7 @@ class ReleaseGovernanceService:
             actor=owner,
             timestamp=timestamp,
         )
-        return plan.to_dict()
+        return self.read_governance()
 
     def cancel_intent(
         self,
@@ -253,7 +253,7 @@ class ReleaseGovernanceService:
         intent_id: str,
         actor: str,
         reason: str,
-    ) -> None:
+    ) -> dict[str, Any]:
         self._require_non_empty("reason", reason)
         self._existing_non_cancelled_intent(intent_id)
         self._store.append_cancel_event(
@@ -262,6 +262,7 @@ class ReleaseGovernanceService:
             reason=reason,
             timestamp=self._now(),
         )
+        return self.read_governance()
 
     def _existing_non_cancelled_intent(self, intent_id: str) -> ReleaseIntent:
         state = self._store.read_state()

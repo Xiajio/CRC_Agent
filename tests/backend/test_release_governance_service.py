@@ -69,6 +69,13 @@ def service(
     )
 
 
+def assert_audit_only_read_model(model: dict[str, object]) -> None:
+    assert model["runtime"]["mode"] == "audit_only"
+    assert "dashboard_snapshot" in model
+    assert "active_intent" in model
+    assert "audit_events" in model
+
+
 def test_read_governance_before_writes_returns_empty_audit_only_model(
     tmp_path: Path,
 ) -> None:
@@ -89,14 +96,14 @@ def test_read_governance_before_writes_returns_empty_audit_only_model(
 def test_create_intent_from_dashboard_snapshot(tmp_path: Path) -> None:
     governance = service(tmp_path)
 
-    governance.create_intent(
+    model = governance.create_intent(
         requested_by="admin_operator",
         target_scope="shadow",
         status="pending_approval",
         reason="Prepare audited governance.",
     )
-    model = governance.read_governance()
 
+    assert_audit_only_read_model(model)
     assert (
         model["active_intent"]["source_release_report_id"]
         == "release_safety_20260629_001"
@@ -170,29 +177,36 @@ def test_record_approval_and_rollback_plan_derives_read_model(
     tmp_path: Path,
 ) -> None:
     governance = service(tmp_path)
-    intent = governance.create_intent(
+    model = governance.create_intent(
         requested_by="admin_operator",
         target_scope="shadow",
         status="pending_approval",
         reason="Prepare audited governance.",
     )
+    assert_audit_only_read_model(model)
+    intent_id = model["active_intent"]["intent_id"]
 
-    governance.record_approval(
-        intent_id=intent["intent_id"],
+    model = governance.record_approval(
+        intent_id=intent_id,
         approver_role="release_manager",
         decision="approve",
         reason="P0 hard fails are zero.",
         signed_by="release_admin",
     )
-    governance.record_approval(
-        intent_id=intent["intent_id"],
+    assert_audit_only_read_model(model)
+    assert model["active_intent"]["intent_id"] == intent_id
+
+    model = governance.record_approval(
+        intent_id=model["active_intent"]["intent_id"],
         approver_role="clinical_safety_reviewer",
         decision="approve",
         reason="Clinical safety gates are locked.",
         signed_by="clinical_admin",
     )
-    governance.record_rollback_plan(
-        intent_id=intent["intent_id"],
+    assert_audit_only_read_model(model)
+
+    model = governance.record_rollback_plan(
+        intent_id=model["active_intent"]["intent_id"],
         owner="release_manager",
         status="accepted",
         verification_steps=[
@@ -200,7 +214,7 @@ def test_record_approval_and_rollback_plan_derives_read_model(
             "Run P0 harness before any future rollback execution.",
         ],
     )
-    model = governance.read_governance()
+    assert_audit_only_read_model(model)
 
     assert model["active_intent"]["derived_status"] == "approved"
     assert {item["status"] for item in model["required_approvals"]} == {
@@ -219,22 +233,23 @@ def test_record_approval_and_rollback_plan_derives_read_model(
 
 def test_rejection_prevents_approved_derived_status(tmp_path: Path) -> None:
     governance = service(tmp_path)
-    intent = governance.create_intent(
+    model = governance.create_intent(
         requested_by="admin_operator",
         target_scope="shadow",
         status="pending_approval",
         reason="Prepare audited governance.",
     )
+    assert_audit_only_read_model(model)
 
-    governance.record_approval(
-        intent_id=intent["intent_id"],
+    model = governance.record_approval(
+        intent_id=model["active_intent"]["intent_id"],
         approver_role="release_manager",
         decision="reject",
         reason="Release window is closed.",
         signed_by="release_admin",
     )
-    model = governance.read_governance()
 
+    assert_audit_only_read_model(model)
     assert model["active_intent"]["derived_status"] == "rejected"
 
 
@@ -242,19 +257,20 @@ def test_cancel_intent_is_derived_without_deleting_records(
     tmp_path: Path,
 ) -> None:
     governance = service(tmp_path)
-    intent = governance.create_intent(
+    model = governance.create_intent(
         requested_by="admin_operator",
         target_scope="shadow",
         status="pending_approval",
         reason="Prepare audited governance.",
     )
+    assert_audit_only_read_model(model)
 
-    governance.cancel_intent(
-        intent_id=intent["intent_id"],
+    model = governance.cancel_intent(
+        intent_id=model["active_intent"]["intent_id"],
         actor="admin_operator",
         reason="Release window closed.",
     )
-    model = governance.read_governance()
 
+    assert_audit_only_read_model(model)
     assert model["active_intent"] is None
     assert model["intents"][0]["derived_status"] == "cancelled"
