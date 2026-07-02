@@ -331,6 +331,38 @@ def test_reordered_audit_lines_return_integrity_warning(
     )
 
 
+def test_cross_day_backdated_append_is_rejected_without_audit_row(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-03T00:00:00+08:00",
+    )
+
+    with pytest.raises(GovernanceIntegrityError, match="backdated"):
+        store.append_cancel_event(
+            intent_id=intent.intent_id,
+            actor="admin_operator",
+            reason="Release window closed.",
+            timestamp="2026-07-02T23:59:00+08:00",
+        )
+
+    assert not (
+        tmp_path
+        / "release_governance"
+        / "audit"
+        / "release_audit_20260702.jsonl"
+    ).exists()
+    state = store.read_state()
+    assert state.integrity == {"status": "verified", "warnings": []}
+    assert [event.event_type for event in state.audit_events] == [
+        "intent_created"
+    ]
+
+
 def test_invalid_utf8_audit_file_returns_integrity_warning(
     tmp_path: Path,
 ) -> None:
@@ -343,6 +375,56 @@ def test_invalid_utf8_audit_file_returns_integrity_warning(
 
     assert state.integrity["status"] == "failed"
     assert state.integrity["warnings"]
+
+
+def test_malformed_intent_artifact_returns_integrity_warning_and_blocks_writes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    intents_dir = root / "intents"
+    intents_dir.mkdir(parents=True)
+    (intents_dir / "broken.json").write_text("{", encoding="utf-8")
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.intents == []
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["warnings"]
+
+    with pytest.raises(GovernanceIntegrityError):
+        store.write_intent(
+            make_intent(),
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+
+
+def test_failed_audit_append_removes_newly_created_intent_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+
+    def fail_append(_prepared_event: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(store, "_append_prepared_event", fail_append)
+
+    with pytest.raises(OSError, match="disk full"):
+        store.write_intent(
+            intent,
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+
+    assert not (
+        tmp_path
+        / "release_governance"
+        / "intents"
+        / f"{intent.intent_id}.json"
+    ).exists()
 
 
 def test_chain_mismatch_returns_integrity_warning_and_rejects_write(

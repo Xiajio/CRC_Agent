@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 import json
 from pathlib import Path
 import re
@@ -20,7 +21,7 @@ from src.contracts.release_governance import (
 
 
 class GovernanceIntegrityError(RuntimeError):
-    """Raised when an existing audit chain is not safe to append to."""
+    """Raised when an existing governance store is not safe to append to."""
 
 
 @dataclass(frozen=True)
@@ -33,11 +34,24 @@ class ReleaseGovernanceState:
 
 
 @dataclass(frozen=True)
+class _AuditEventRecord:
+    event: ReleaseAuditEvent
+    audit_path: Path
+    line_number: int
+
+
+@dataclass(frozen=True)
 class _AuditReadResult:
-    events: list[ReleaseAuditEvent]
+    records: list[_AuditEventRecord]
     warnings: list[str]
     failed_intent_ids: frozenset[str]
     global_failure: bool
+
+
+@dataclass(frozen=True)
+class _ArtifactReadResult:
+    artifacts: list[Any]
+    warnings: list[str]
 
 
 @dataclass(frozen=True)
@@ -59,24 +73,45 @@ class ReleaseGovernanceStore:
 
     def read_state(self) -> ReleaseGovernanceState:
         audit_result = self._read_audit_events_with_integrity()
+        intent_result = self._read_json_dir(
+            self.intents_dir,
+            ReleaseIntent,
+            artifact_name="intent",
+        )
+        approval_result = self._read_json_dir(
+            self.approvals_dir,
+            ReleaseApproval,
+            artifact_name="approval",
+        )
+        rollback_plan_result = self._read_json_dir(
+            self.rollback_plans_dir,
+            ReleaseRollbackPlan,
+            artifact_name="rollback plan",
+        )
+        artifact_warnings = (
+            intent_result.warnings
+            + approval_result.warnings
+            + rollback_plan_result.warnings
+        )
+
         return ReleaseGovernanceState(
             intents=sorted(
-                self._read_json_dir(self.intents_dir, ReleaseIntent),
+                intent_result.artifacts,
                 key=lambda intent: intent.requested_at,
             ),
             approvals=sorted(
-                self._read_json_dir(self.approvals_dir, ReleaseApproval),
+                approval_result.artifacts,
                 key=lambda approval: approval.signed_at,
             ),
             rollback_plans=sorted(
-                self._read_json_dir(
-                    self.rollback_plans_dir,
-                    ReleaseRollbackPlan,
-                ),
+                rollback_plan_result.artifacts,
                 key=lambda plan: plan.created_at,
             ),
-            audit_events=list(audit_result.events),
-            integrity=self._verify_integrity(audit_result),
+            audit_events=[record.event for record in audit_result.records],
+            integrity=self._verify_integrity(
+                audit_result,
+                artifact_warnings=artifact_warnings,
+            ),
         )
 
     def write_intent(
@@ -94,11 +129,11 @@ class ReleaseGovernanceStore:
             timestamp=timestamp,
             payload=intent.to_dict(),
         )
-        self._write_json_once(
-            self._artifact_path(self.intents_dir, intent.intent_id),
-            intent.to_dict(),
+        self._write_artifact_and_append_event(
+            path=self._artifact_path(self.intents_dir, intent.intent_id),
+            payload=intent.to_dict(),
+            prepared_event=prepared_event,
         )
-        self._append_prepared_event(prepared_event)
 
     def write_approval(
         self,
@@ -115,11 +150,11 @@ class ReleaseGovernanceStore:
             timestamp=timestamp,
             payload=approval.to_dict(),
         )
-        self._write_json_once(
-            self._artifact_path(self.approvals_dir, approval.approval_id),
-            approval.to_dict(),
+        self._write_artifact_and_append_event(
+            path=self._artifact_path(self.approvals_dir, approval.approval_id),
+            payload=approval.to_dict(),
+            prepared_event=prepared_event,
         )
-        self._append_prepared_event(prepared_event)
 
     def write_rollback_plan(
         self,
@@ -136,11 +171,11 @@ class ReleaseGovernanceStore:
             timestamp=timestamp,
             payload=plan.to_dict(),
         )
-        self._write_json_once(
-            self._artifact_path(self.rollback_plans_dir, plan.rollback_plan_id),
-            plan.to_dict(),
+        self._write_artifact_and_append_event(
+            path=self._artifact_path(self.rollback_plans_dir, plan.rollback_plan_id),
+            payload=plan.to_dict(),
+            prepared_event=prepared_event,
         )
-        self._append_prepared_event(prepared_event)
 
     def append_cancel_event(
         self,
@@ -164,6 +199,20 @@ class ReleaseGovernanceStore:
         )
         self._append_prepared_event(prepared_event)
 
+    def _write_artifact_and_append_event(
+        self,
+        *,
+        path: Path,
+        payload: dict[str, Any],
+        prepared_event: _PreparedAuditEvent,
+    ) -> None:
+        self._write_json_once(path, payload)
+        try:
+            self._append_prepared_event(prepared_event)
+        except Exception:
+            self._remove_new_artifact(path)
+            raise
+
     def _write_json_once(self, path: Path, payload: dict[str, Any]) -> None:
         if path.exists():
             raise FileExistsError(path)
@@ -171,6 +220,12 @@ class ReleaseGovernanceStore:
         with path.open("x", encoding="utf-8") as handle:
             json.dump(payload, handle, sort_keys=True, indent=2)
             handle.write("\n")
+
+    def _remove_new_artifact(self, path: Path) -> None:
+        try:
+            path.unlink()
+        except OSError:
+            return
 
     def _prepare_event(
         self,
@@ -182,6 +237,16 @@ class ReleaseGovernanceStore:
         payload: dict[str, Any],
     ) -> _PreparedAuditEvent:
         audit_path = self.audit_dir / f"release_audit_{_audit_date(timestamp)}.jsonl"
+        last_record = self._last_event_record(intent_id)
+        if last_record is not None and audit_path.name < last_record.audit_path.name:
+            raise GovernanceIntegrityError(
+                "backdated audit event would be stored before existing audit chain"
+            )
+        previous_event_hash = (
+            last_record.event.event_hash
+            if last_record is not None
+            else GENESIS_EVENT_HASH
+        )
         event = build_audit_event(
             event_id=make_release_audit_event_id(
                 intent_id,
@@ -193,7 +258,7 @@ class ReleaseGovernanceStore:
             actor=actor,
             timestamp=timestamp,
             payload=payload,
-            previous_event_hash=self._last_event_hash(intent_id),
+            previous_event_hash=previous_event_hash,
         )
         return _PreparedAuditEvent(event=event, audit_path=audit_path)
 
@@ -205,55 +270,92 @@ class ReleaseGovernanceStore:
             handle.write("\n")
 
     def _last_event_hash(self, intent_id: str) -> str:
-        for event in reversed(self._read_audit_events()):
-            if event.intent_id == intent_id:
-                return event.event_hash
-        return GENESIS_EVENT_HASH
+        record = self._last_event_record(intent_id)
+        return record.event.event_hash if record is not None else GENESIS_EVENT_HASH
+
+    def _last_event_record(self, intent_id: str) -> _AuditEventRecord | None:
+        for record in reversed(self._read_audit_events_with_integrity().records):
+            if record.event.intent_id == intent_id:
+                return record
+        return None
 
     def _raise_if_integrity_failed(self, intent_id: str) -> None:
-        audit_result = self._read_audit_events_with_integrity()
-        integrity = self._verify_integrity(audit_result)
-        affected_intent_ids = set(integrity.get("affected_intent_ids", []))
-        if (
-            integrity["status"] == "failed"
-            and (
-                integrity.get("global_failure")
-                or intent_id in affected_intent_ids
-            )
-        ):
+        state = self.read_state()
+        if state.integrity["status"] == "failed":
             raise GovernanceIntegrityError(
-                f"release governance audit integrity failed for {intent_id}"
+                f"release governance integrity failed; refusing write for {intent_id}"
             )
 
     def _read_json_dir(
         self,
         directory: Path,
         factory: Callable[..., _Artifact],
-    ) -> list[_Artifact]:
+        *,
+        artifact_name: str,
+    ) -> _ArtifactReadResult:
         if not directory.exists():
-            return []
-        artifacts: list[_Artifact] = []
-        for path in sorted(directory.glob("*.json")):
-            with path.open(encoding="utf-8") as handle:
-                payload = json.load(handle)
+            return _ArtifactReadResult(artifacts=[], warnings=[])
+
+        artifacts: list[Any] = []
+        warnings: list[str] = []
+        try:
+            paths = sorted(directory.glob("*.json"))
+        except OSError as exc:
+            return _ArtifactReadResult(
+                artifacts=[],
+                warnings=[
+                    f"{directory} {artifact_name} files could not be listed: {exc}"
+                ],
+            )
+
+        for path in paths:
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except UnicodeDecodeError as exc:
+                warnings.append(
+                    f"{path} {artifact_name} artifact is not valid UTF-8: {exc}"
+                )
+                continue
+            except OSError as exc:
+                warnings.append(
+                    f"{path} {artifact_name} artifact could not be read: {exc}"
+                )
+                continue
+            except json.JSONDecodeError as exc:
+                warnings.append(
+                    f"{path} {artifact_name} artifact is not valid JSON: {exc.msg}"
+                )
+                continue
+
             if not isinstance(payload, dict):
-                raise TypeError(f"{path} must contain a JSON object")
-            artifacts.append(factory(**payload))
-        return artifacts
+                warnings.append(
+                    f"{path} {artifact_name} artifact must contain a JSON object"
+                )
+                continue
+
+            try:
+                artifacts.append(factory(**payload))
+            except (TypeError, ValueError) as exc:
+                warnings.append(f"{path} {artifact_name} artifact is invalid: {exc}")
+
+        return _ArtifactReadResult(artifacts=artifacts, warnings=warnings)
 
     def _read_audit_events(self) -> list[ReleaseAuditEvent]:
-        return self._read_audit_events_with_integrity().events
+        return [
+            record.event
+            for record in self._read_audit_events_with_integrity().records
+        ]
 
     def _read_audit_events_with_integrity(self) -> _AuditReadResult:
         if not self.audit_dir.exists():
             return _AuditReadResult(
-                events=[],
+                records=[],
                 warnings=[],
                 failed_intent_ids=frozenset(),
                 global_failure=False,
             )
 
-        events: list[ReleaseAuditEvent] = []
+        records: list[_AuditEventRecord] = []
         warnings: list[str] = []
         failed_intent_ids: set[str] = set()
         global_failure = False
@@ -262,7 +364,7 @@ class ReleaseGovernanceStore:
             audit_paths = sorted(self.audit_dir.glob("*.jsonl"))
         except OSError as exc:
             return _AuditReadResult(
-                events=[],
+                records=[],
                 warnings=[f"{self.audit_dir} audit files could not be listed: {exc}"],
                 failed_intent_ids=frozenset(),
                 global_failure=True,
@@ -301,7 +403,14 @@ class ReleaseGovernanceStore:
 
                 intent_id = payload.get("intent_id")
                 try:
-                    events.append(ReleaseAuditEvent(**payload))
+                    event = ReleaseAuditEvent(**payload)
+                    records.append(
+                        _AuditEventRecord(
+                            event=event,
+                            audit_path=path,
+                            line_number=line_number,
+                        )
+                    )
                 except (TypeError, ValueError) as exc:
                     warnings.append(
                         f"{path}:{line_number} audit event is invalid: {exc}"
@@ -312,7 +421,7 @@ class ReleaseGovernanceStore:
                         global_failure = True
 
         return _AuditReadResult(
-            events=events,
+            records=records,
             warnings=warnings,
             failed_intent_ids=frozenset(failed_intent_ids),
             global_failure=global_failure,
@@ -321,13 +430,16 @@ class ReleaseGovernanceStore:
     def _verify_integrity(
         self,
         audit_result: _AuditReadResult,
+        *,
+        artifact_warnings: list[str] | None = None,
     ) -> dict[str, Any]:
-        warnings = list(audit_result.warnings)
+        warnings = list(artifact_warnings or []) + list(audit_result.warnings)
         failed_intent_ids = set(audit_result.failed_intent_ids)
-        global_failure = audit_result.global_failure
+        global_failure = audit_result.global_failure or bool(artifact_warnings)
         previous_hash_by_intent: dict[str, str] = {}
 
-        for event in audit_result.events:
+        for record in audit_result.records:
+            event = record.event
             try:
                 validate_audit_event_hash(event)
             except (TypeError, ValueError) as exc:
@@ -378,6 +490,10 @@ def _audit_date(timestamp: str) -> str:
     date_prefix = timestamp[:10]
     if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date_prefix) is None:
         raise ValueError("timestamp must start with YYYY-MM-DD")
+    try:
+        date.fromisoformat(date_prefix)
+    except ValueError as exc:
+        raise ValueError("timestamp must start with a valid YYYY-MM-DD date") from exc
     return date_prefix.replace("-", "")
 
 
