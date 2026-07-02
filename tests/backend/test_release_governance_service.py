@@ -129,6 +129,50 @@ def test_hard_fail_blocks_pending_approval_intent(tmp_path: Path) -> None:
         )
 
 
+def test_invalid_release_safety_run_blocks_pending_approval_intent(
+    tmp_path: Path,
+) -> None:
+    payload = dashboard()
+    payload["runs"] = [
+        run
+        if run["kind"] != "release_safety"
+        else {**run, "status": "invalid"}
+        for run in payload["runs"]
+    ]
+
+    with pytest.raises(
+        GovernanceValidationError,
+        match="release_safety run must be pass",
+    ):
+        service(tmp_path, payload).create_intent(
+            requested_by="admin_operator",
+            target_scope="shadow",
+            status="pending_approval",
+            reason="Prepare audited governance.",
+        )
+
+
+def test_failed_p0_run_blocks_pending_approval_intent(tmp_path: Path) -> None:
+    payload = dashboard()
+    payload["runs"] = [
+        run
+        if run["kind"] != "p0_crc_harness"
+        else {**run, "status": "fail"}
+        for run in payload["runs"]
+    ]
+
+    with pytest.raises(
+        GovernanceValidationError,
+        match="p0_crc_harness run must be pass",
+    ):
+        service(tmp_path, payload).create_intent(
+            requested_by="admin_operator",
+            target_scope="shadow",
+            status="pending_approval",
+            reason="Prepare audited governance.",
+        )
+
+
 def test_duplicate_active_intent_is_rejected(tmp_path: Path) -> None:
     governance = service(tmp_path)
     governance.create_intent(

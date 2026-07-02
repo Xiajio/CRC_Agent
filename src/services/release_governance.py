@@ -94,6 +94,9 @@ class ReleaseGovernanceService:
         p0_runs = self._runs_by_kind(dashboard, "p0_crc_harness")
         if not p0_runs:
             raise GovernanceValidationError("p0_crc_harness run is required")
+        self._require_run_status(release_run, "release_safety")
+        for run in p0_runs:
+            self._require_run_status(run, "p0_crc_harness")
 
         source_release_report_id = self._required_string(
             release_run,
@@ -467,6 +470,15 @@ class ReleaseGovernanceService:
             for run in runs
             if isinstance(run, dict) and run.get("kind") == kind
         ]
+
+    def _require_run_status(
+        self,
+        run: dict[str, Any],
+        kind: str,
+        expected: str = "pass",
+    ) -> None:
+        if run.get("status") != expected:
+            raise GovernanceValidationError(f"{kind} run must be {expected}")
 
     def _summary(self, dashboard: dict[str, Any]) -> dict[str, Any]:
         summary = dashboard.get("summary")
