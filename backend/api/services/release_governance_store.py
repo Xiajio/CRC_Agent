@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 import json
 from pathlib import Path
 import re
@@ -87,6 +87,20 @@ class ReleaseGovernanceStore:
         self.audit_dir = self.root / "audit"
 
     def read_state(self) -> ReleaseGovernanceState:
+        root_warning = self._root_layout_warning()
+        if root_warning is not None:
+            return ReleaseGovernanceState(
+                intents=[],
+                approvals=[],
+                rollback_plans=[],
+                audit_events=[],
+                integrity={
+                    "status": "failed",
+                    "warnings": [root_warning],
+                    "global_failure": True,
+                },
+            )
+
         audit_result = self._read_audit_events_with_integrity()
         intent_result = self._read_json_dir(
             self.intents_dir,
@@ -280,7 +294,9 @@ class ReleaseGovernanceStore:
         timestamp: str,
         payload: dict[str, Any],
     ) -> _PreparedAuditEvent:
-        audit_path = self.audit_dir / f"release_audit_{_audit_date(timestamp)}.jsonl"
+        audit_date = _audit_date(timestamp)
+        timestamp_value = _audit_timestamp(timestamp)
+        audit_path = self.audit_dir / f"release_audit_{audit_date}.jsonl"
         latest_audit_file_name = self._latest_audit_file_name()
         if (
             latest_audit_file_name is not None
@@ -289,10 +305,25 @@ class ReleaseGovernanceStore:
             raise GovernanceIntegrityError(
                 "backdated audit event would be stored before existing audit log"
             )
+        last_audit_record = self._last_audit_record()
+        if (
+            last_audit_record is not None
+            and timestamp_value < _audit_timestamp(last_audit_record.event.timestamp)
+        ):
+            raise GovernanceIntegrityError(
+                "backdated audit event timestamp would be stored before existing audit log"
+            )
         last_record = self._last_event_record(intent_id)
         if last_record is not None and audit_path.name < last_record.audit_path.name:
             raise GovernanceIntegrityError(
                 "backdated audit event would be stored before existing audit chain"
+            )
+        if (
+            last_record is not None
+            and timestamp_value < _audit_timestamp(last_record.event.timestamp)
+        ):
+            raise GovernanceIntegrityError(
+                "backdated audit event timestamp would be stored before existing audit chain"
             )
         previous_event_hash = (
             last_record.event.event_hash
@@ -322,6 +353,10 @@ class ReleaseGovernanceStore:
         with audit_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(prepared_event.event.to_dict(), sort_keys=True))
             handle.write("\n")
+
+    def _last_audit_record(self) -> _AuditEventRecord | None:
+        records = self._read_audit_events_with_integrity().records
+        return records[-1] if records else None
 
     def _last_event_record(self, intent_id: str) -> _AuditEventRecord | None:
         for record in reversed(self._read_audit_events_with_integrity().records):
@@ -353,6 +388,24 @@ class ReleaseGovernanceStore:
         if not audit_file_names:
             return None
         return max(audit_file_names)
+
+    def _root_layout_warning(self) -> str | None:
+        try:
+            root_is_symlink = self.root.is_symlink()
+            root_exists = self.root.exists()
+        except OSError as exc:
+            return f"{self.root} governance root could not be inspected: {exc}"
+        if root_is_symlink:
+            return f"{self.root} governance root is a symlink"
+        if not root_exists:
+            return None
+        try:
+            root_is_dir = self.root.is_dir()
+        except OSError as exc:
+            return f"{self.root} governance root could not be inspected: {exc}"
+        if not root_is_dir:
+            return f"{self.root} governance root must be a directory"
+        return None
 
     def _raise_if_parent_outside_root(self, path: Path) -> None:
         resolved_root = self.root.resolve(strict=False)
@@ -863,9 +916,50 @@ class ReleaseGovernanceStore:
         failed_intent_ids.update(artifact_affected_intent_ids)
         global_failure = audit_result.global_failure or bool(artifact_warnings)
         previous_hash_by_intent: dict[str, str] = {}
+        previous_timestamp: datetime | None = None
+        previous_timestamp_by_intent: dict[str, datetime] = {}
 
         for record in audit_result.records:
             event = record.event
+            event_timestamp: datetime | None = None
+            try:
+                event_timestamp = _audit_timestamp(event.timestamp)
+            except ValueError as exc:
+                warnings.append(
+                    f"{event.event_id} timestamp validation failed: {exc}"
+                )
+                failed_intent_ids.add(event.intent_id)
+                global_failure = True
+
+            if event_timestamp is not None:
+                if (
+                    previous_timestamp is not None
+                    and event_timestamp < previous_timestamp
+                ):
+                    warnings.append(
+                        f"{event.event_id} timestamp is earlier than a previous audit event"
+                    )
+                    failed_intent_ids.add(event.intent_id)
+                    global_failure = True
+                previous_intent_timestamp = previous_timestamp_by_intent.get(
+                    event.intent_id
+                )
+                if (
+                    previous_intent_timestamp is not None
+                    and event_timestamp < previous_intent_timestamp
+                ):
+                    warnings.append(
+                        f"{event.event_id} timestamp is earlier than a previous event for intent {event.intent_id}"
+                    )
+                    failed_intent_ids.add(event.intent_id)
+                if previous_timestamp is None or event_timestamp > previous_timestamp:
+                    previous_timestamp = event_timestamp
+                if (
+                    previous_intent_timestamp is None
+                    or event_timestamp > previous_intent_timestamp
+                ):
+                    previous_timestamp_by_intent[event.intent_id] = event_timestamp
+
             try:
                 validate_audit_event_hash(event)
             except (TypeError, ValueError) as exc:
@@ -915,6 +1009,16 @@ def _audit_date(timestamp: str) -> str:
     except ValueError as exc:
         raise ValueError("timestamp must start with a valid YYYY-MM-DD date") from exc
     return date_prefix.replace("-", "")
+
+
+def _audit_timestamp(timestamp: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(timestamp)
+    except ValueError as exc:
+        raise ValueError("timestamp must be a valid ISO 8601 datetime") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError("timestamp must include a timezone offset")
+    return parsed
 
 
 def _audit_file_date(path: Path) -> str:

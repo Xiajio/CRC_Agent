@@ -380,6 +380,56 @@ def test_symlinked_intents_directory_cannot_escape_root(tmp_path: Path) -> None:
     assert not (escaped / f"{intent.intent_id}.json").exists()
 
 
+def test_root_symlink_check_fails_read_integrity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "release_governance"
+    root.mkdir()
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_symlink(path: Path) -> bool:
+        if path == root:
+            return True
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["global_failure"] is True
+    assert any("symlink" in warning for warning in state.integrity["warnings"])
+
+
+def test_root_symlink_check_blocks_writes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "release_governance"
+    root.mkdir()
+    original_is_symlink = Path.is_symlink
+
+    def fake_is_symlink(path: Path) -> bool:
+        if path == root:
+            return True
+        return original_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", fake_is_symlink)
+    store = ReleaseGovernanceStore(root)
+
+    with pytest.raises(GovernanceIntegrityError):
+        store.write_intent(
+            make_intent(),
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+
+    assert not (root / "intents").exists()
+    assert not (root / "audit").exists()
+
+
 def test_symlinked_audit_directory_cannot_escape_root(tmp_path: Path) -> None:
     root = tmp_path / "release_governance"
     escaped = tmp_path / "escaped_audit"
@@ -783,7 +833,7 @@ def test_append_cancel_event_adds_cancel_audit_event(tmp_path: Path) -> None:
     )
 
 
-def test_non_monotonic_timestamps_append_chain_in_physical_order(
+def test_same_day_backdated_append_is_rejected_without_audit_row(
     tmp_path: Path,
 ) -> None:
     store = ReleaseGovernanceStore(tmp_path / "release_governance")
@@ -793,31 +843,66 @@ def test_non_monotonic_timestamps_append_chain_in_physical_order(
         actor="admin_operator",
         timestamp="2026-07-02T00:10:00+08:00",
     )
-    store.append_cancel_event(
-        intent_id=intent.intent_id,
+
+    with pytest.raises(GovernanceIntegrityError, match="backdated"):
+        store.append_cancel_event(
+            intent_id=intent.intent_id,
+            actor="admin_operator",
+            reason="First cancellation note.",
+            timestamp="2026-07-02T00:05:00+08:00",
+        )
+
+    audit_file = (
+        tmp_path
+        / "release_governance"
+        / "audit"
+        / "release_audit_20260702.jsonl"
+    )
+    assert len(audit_file.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_same_day_backdated_existing_audit_fails_integrity(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    store.write_intent(
+        intent,
         actor="admin_operator",
-        reason="First cancellation note.",
+        timestamp="2026-07-02T00:10:00+08:00",
+    )
+    state = store.read_state()
+    backdated_event = build_audit_event(
+        event_id=make_release_audit_event_id(
+            intent.intent_id,
+            "intent_cancelled",
+            "2026-07-02T00:05:00+08:00",
+        ),
+        intent_id=intent.intent_id,
+        event_type="intent_cancelled",
+        actor="admin_operator",
         timestamp="2026-07-02T00:05:00+08:00",
+        payload={
+            "intent_id": intent.intent_id,
+            "actor": "admin_operator",
+            "reason": "Backdated cancellation.",
+        },
+        previous_event_hash=state.audit_events[-1].event_hash,
     )
-    store.append_cancel_event(
-        intent_id=intent.intent_id,
-        actor="admin_operator",
-        reason="Second cancellation note.",
-        timestamp="2026-07-02T00:07:00+08:00",
+    audit_file = (
+        tmp_path
+        / "release_governance"
+        / "audit"
+        / "release_audit_20260702.jsonl"
     )
+    with audit_file.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(backdated_event.to_dict(), sort_keys=True) + "\n")
 
     state = store.read_state()
 
-    assert state.integrity == {"status": "verified", "warnings": []}
-    assert [event.timestamp for event in state.audit_events] == [
-        "2026-07-02T00:10:00+08:00",
-        "2026-07-02T00:05:00+08:00",
-        "2026-07-02T00:07:00+08:00",
-    ]
-    assert (
-        state.audit_events[2].previous_event_hash
-        == state.audit_events[1].event_hash
-    )
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["global_failure"] is True
+    assert any("timestamp" in warning for warning in state.integrity["warnings"])
 
 
 def test_reordered_audit_lines_return_integrity_warning(
