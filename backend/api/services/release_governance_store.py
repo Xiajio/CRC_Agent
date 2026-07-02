@@ -70,6 +70,12 @@ class _PreparedAuditEvent:
 
 _Artifact = TypeVar("_Artifact")
 _AUDIT_FILE_NAME_RE = re.compile(r"^release_audit_(\d{8})\.jsonl$")
+_ARTIFACT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+_WINDOWS_RESERVED_DEVICE_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{index}" for index in range(1, 10)}
+    | {f"LPT{index}" for index in range(1, 10)}
+)
 
 
 class ReleaseGovernanceStore:
@@ -147,6 +153,7 @@ class ReleaseGovernanceStore:
         timestamp: str,
     ) -> None:
         self._raise_if_integrity_failed(intent.intent_id)
+        artifact_path = self._artifact_path(self.intents_dir, intent.intent_id)
         prepared_event = self._prepare_event(
             intent_id=intent.intent_id,
             event_type="intent_created",
@@ -155,7 +162,7 @@ class ReleaseGovernanceStore:
             payload=intent.to_dict(),
         )
         self._write_artifact_and_append_event(
-            path=self._artifact_path(self.intents_dir, intent.intent_id),
+            path=artifact_path,
             payload=intent.to_dict(),
             prepared_event=prepared_event,
         )
@@ -169,6 +176,7 @@ class ReleaseGovernanceStore:
     ) -> None:
         state = self._raise_if_integrity_failed(approval.intent_id)
         self._raise_if_intent_missing(approval.intent_id, state)
+        artifact_path = self._artifact_path(self.approvals_dir, approval.approval_id)
         prepared_event = self._prepare_event(
             intent_id=approval.intent_id,
             event_type="approval_recorded",
@@ -177,7 +185,7 @@ class ReleaseGovernanceStore:
             payload=approval.to_dict(),
         )
         self._write_artifact_and_append_event(
-            path=self._artifact_path(self.approvals_dir, approval.approval_id),
+            path=artifact_path,
             payload=approval.to_dict(),
             prepared_event=prepared_event,
         )
@@ -191,6 +199,10 @@ class ReleaseGovernanceStore:
     ) -> None:
         state = self._raise_if_integrity_failed(plan.intent_id)
         self._raise_if_intent_missing(plan.intent_id, state)
+        artifact_path = self._artifact_path(
+            self.rollback_plans_dir,
+            plan.rollback_plan_id,
+        )
         prepared_event = self._prepare_event(
             intent_id=plan.intent_id,
             event_type="rollback_plan_recorded",
@@ -199,7 +211,7 @@ class ReleaseGovernanceStore:
             payload=plan.to_dict(),
         )
         self._write_artifact_and_append_event(
-            path=self._artifact_path(self.rollback_plans_dir, plan.rollback_plan_id),
+            path=artifact_path,
             payload=plan.to_dict(),
             prepared_event=prepared_event,
         )
@@ -318,6 +330,9 @@ class ReleaseGovernanceStore:
         return None
 
     def _latest_audit_file_name(self) -> str | None:
+        layout_warning = self._directory_layout_warning(self.audit_dir, "audit")
+        if layout_warning is not None:
+            raise GovernanceIntegrityError(layout_warning)
         if not self.audit_dir.exists():
             return None
         try:
@@ -365,6 +380,36 @@ class ReleaseGovernanceStore:
                 f"{path} resolves outside governance root {self.root}"
             ) from exc
 
+    def _directory_layout_warning(self, path: Path, label: str) -> str | None:
+        try:
+            path_exists = path.exists()
+            path_is_symlink = path.is_symlink()
+        except OSError as exc:
+            return f"{path} {label} path could not be inspected: {exc}"
+
+        if not path_exists:
+            if path_is_symlink:
+                return f"{path} {label} path is a broken symlink"
+            return None
+
+        try:
+            path_is_directory = path.is_dir()
+        except OSError as exc:
+            return f"{path} {label} path could not be inspected: {exc}"
+        if not path_is_directory:
+            return f"{path} {label} path must be a directory"
+
+        try:
+            resolved_path = path.resolve(strict=True)
+        except OSError as exc:
+            return f"{path} {label} path could not be resolved: {exc}"
+        resolved_root = self.root.resolve(strict=False)
+        try:
+            resolved_path.relative_to(resolved_root)
+        except ValueError:
+            return f"{path} {label} path resolves outside governance root {self.root}"
+        return None
+
     def _raise_if_integrity_failed(self, intent_id: str) -> ReleaseGovernanceState:
         state = self.read_state()
         if state.integrity["status"] == "failed":
@@ -389,6 +434,13 @@ class ReleaseGovernanceStore:
         artifact_name: str,
         id_field: str,
     ) -> _ArtifactReadResult:
+        layout_warning = self._directory_layout_warning(directory, artifact_name)
+        if layout_warning is not None:
+            return _ArtifactReadResult(
+                artifacts=[],
+                warnings=[layout_warning],
+                affected_intent_ids=frozenset(),
+            )
         if not directory.exists():
             return _ArtifactReadResult(
                 artifacts=[],
@@ -473,6 +525,14 @@ class ReleaseGovernanceStore:
         ]
 
     def _read_audit_events_with_integrity(self) -> _AuditReadResult:
+        layout_warning = self._directory_layout_warning(self.audit_dir, "audit")
+        if layout_warning is not None:
+            return _AuditReadResult(
+                records=[],
+                warnings=[layout_warning],
+                failed_intent_ids=frozenset(),
+                global_failure=True,
+            )
         if not self.audit_dir.exists():
             return _AuditReadResult(
                 records=[],
@@ -799,13 +859,7 @@ class ReleaseGovernanceStore:
         return integrity
 
     def _artifact_path(self, directory: Path, artifact_id: str) -> Path:
-        if (
-            not artifact_id.strip()
-            or "/" in artifact_id
-            or "\\" in artifact_id
-            or artifact_id in {".", ".."}
-        ):
-            raise ValueError("artifact_id must be a file-safe identifier")
+        _validate_artifact_id(artifact_id)
         return directory / f"{artifact_id}.json"
 
 
@@ -831,6 +885,21 @@ def _audit_file_date(path: Path) -> str:
     except ValueError as exc:
         raise ValueError("audit filename must contain a valid YYYYMMDD date") from exc
     return audit_date
+
+
+def _validate_artifact_id(artifact_id: str) -> None:
+    if not isinstance(artifact_id, str):
+        raise TypeError("artifact_id must be a string")
+    if _ARTIFACT_ID_RE.fullmatch(artifact_id) is None:
+        raise ValueError(
+            "artifact_id must be a file-safe identifier matching "
+            "[A-Za-z0-9][A-Za-z0-9_.-]*"
+        )
+    if artifact_id.endswith(".") or artifact_id.endswith(" "):
+        raise ValueError("artifact_id must be a file-safe identifier")
+    reserved_check = artifact_id.split(".", 1)[0].upper()
+    if reserved_check in _WINDOWS_RESERVED_DEVICE_NAMES:
+        raise ValueError("artifact_id must be a file-safe identifier")
 
 
 __all__ = [

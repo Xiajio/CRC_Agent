@@ -156,6 +156,114 @@ def test_store_rejects_overwriting_existing_intent(tmp_path: Path) -> None:
         )
 
 
+def test_invalid_intent_id_with_colon_is_rejected_before_writes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    intent = ReleaseIntent(
+        **{
+            **make_intent().to_dict(),
+            "intent_id": "release_intent_bad:stream",
+        }
+    )
+
+    with pytest.raises(ValueError, match="file-safe"):
+        store.write_intent(
+            intent,
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+
+    assert not (root / "intents").exists()
+    assert not (root / "audit").exists()
+
+
+def test_reserved_windows_artifact_id_is_rejected_before_writes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    intent = ReleaseIntent(
+        **{
+            **make_intent().to_dict(),
+            "intent_id": "CON",
+        }
+    )
+
+    with pytest.raises(ValueError, match="file-safe"):
+        store.write_intent(
+            intent,
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+
+    assert not (root / "intents").exists()
+    assert not (root / "audit").exists()
+
+
+def test_invalid_approval_id_with_colon_is_rejected_before_writes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    approval = ReleaseApproval(
+        **{
+            **make_approval(intent.intent_id).to_dict(),
+            "approval_id": "release_approval_bad:stream",
+        }
+    )
+    audit_file = root / "audit" / "release_audit_20260702.jsonl"
+    original_audit_content = audit_file.read_bytes()
+
+    with pytest.raises(ValueError, match="file-safe"):
+        store.write_approval(
+            approval,
+            actor="release_admin",
+            timestamp=approval.signed_at,
+        )
+
+    assert not (root / "approvals").exists()
+    assert audit_file.read_bytes() == original_audit_content
+
+
+def test_invalid_rollback_plan_id_with_colon_is_rejected_before_writes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    store = ReleaseGovernanceStore(root)
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    rollback_plan = ReleaseRollbackPlan(
+        **{
+            **make_rollback_plan(intent.intent_id).to_dict(),
+            "rollback_plan_id": "rollback_plan_bad:stream",
+        }
+    )
+    audit_file = root / "audit" / "release_audit_20260702.jsonl"
+    original_audit_content = audit_file.read_bytes()
+
+    with pytest.raises(ValueError, match="file-safe"):
+        store.write_rollback_plan(
+            rollback_plan,
+            actor="release_manager",
+            timestamp=rollback_plan.created_at,
+        )
+
+    assert not (root / "rollback_plans").exists()
+    assert audit_file.read_bytes() == original_audit_content
+
+
 def test_write_approval_requires_existing_intent_and_creates_no_files(
     tmp_path: Path,
 ) -> None:
@@ -254,7 +362,7 @@ def test_symlinked_intents_directory_cannot_escape_root(tmp_path: Path) -> None:
     store = ReleaseGovernanceStore(root)
     intent = make_intent()
 
-    with pytest.raises(GovernanceIntegrityError, match="outside governance root"):
+    with pytest.raises(GovernanceIntegrityError):
         store.write_intent(
             intent,
             actor="admin_operator",
@@ -276,7 +384,7 @@ def test_symlinked_audit_directory_cannot_escape_root(tmp_path: Path) -> None:
     store = ReleaseGovernanceStore(root)
     intent = make_intent()
 
-    with pytest.raises(GovernanceIntegrityError, match="outside governance root"):
+    with pytest.raises(GovernanceIntegrityError):
         store.write_intent(
             intent,
             actor="admin_operator",
@@ -305,7 +413,7 @@ def test_symlinked_existing_audit_file_cannot_escape_root(
     store = ReleaseGovernanceStore(root)
     intent = make_intent()
 
-    with pytest.raises(GovernanceIntegrityError, match="outside governance root|symlink"):
+    with pytest.raises(GovernanceIntegrityError):
         store.write_intent(
             intent,
             actor="admin_operator",
@@ -316,6 +424,83 @@ def test_symlinked_existing_audit_file_cannot_escape_root(
     assert not (
         root / "intents" / f"{intent.intent_id}.json"
     ).exists()
+
+
+def test_audit_regular_file_fails_read_integrity_and_blocks_writes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    root.mkdir()
+    audit_file_path = root / "audit"
+    audit_file_path.write_text("not a directory\n", encoding="utf-8")
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["global_failure"] is True
+    assert any(
+        "audit" in warning and "directory" in warning
+        for warning in state.integrity["warnings"]
+    )
+    with pytest.raises(GovernanceIntegrityError):
+        store.write_intent(
+            make_intent(),
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+    assert audit_file_path.read_text(encoding="utf-8") == "not a directory\n"
+    assert not (root / "intents").exists()
+
+
+def test_intents_regular_file_fails_read_integrity_and_blocks_writes(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    root.mkdir()
+    intents_file_path = root / "intents"
+    intents_file_path.write_text("not a directory\n", encoding="utf-8")
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["global_failure"] is True
+    assert any(
+        "intent" in warning and "directory" in warning
+        for warning in state.integrity["warnings"]
+    )
+    with pytest.raises(GovernanceIntegrityError):
+        store.write_intent(
+            make_intent(),
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+    assert intents_file_path.read_text(encoding="utf-8") == "not a directory\n"
+    assert not (root / "audit").exists()
+
+
+def test_symlinked_audit_directory_escape_fails_read_integrity(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "release_governance"
+    escaped = tmp_path / "escaped_audit_read"
+    escaped.mkdir()
+    root.mkdir()
+    try:
+        (root / "audit").symlink_to(escaped, target_is_directory=True)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"directory symlink unsupported: {exc}")
+    store = ReleaseGovernanceStore(root)
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["global_failure"] is True
+    assert any(
+        "outside governance root" in warning
+        for warning in state.integrity["warnings"]
+    )
 
 
 def test_write_approval_and_rollback_plan_append_to_audit_chain(
