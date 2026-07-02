@@ -101,6 +101,160 @@ describe("createApiClient", () => {
     );
   });
 
+  it("loads admin release governance with configured Authorization headers", async () => {
+    const payload = {
+      dashboard_snapshot: {
+        release_decision: "feature_flag_or_pass",
+        rollback_target: "agent_policy_20260624_0",
+        hard_fail_count: 0,
+        literature_status: "shadow_only",
+      },
+      intents: [],
+      active_intent: null,
+      approvals: [],
+      required_approvals: [
+        {
+          role: "release_manager",
+          status: "missing",
+          latest_decision: null,
+        },
+      ],
+      rollback_plan: null,
+      audit_events: [],
+      integrity: { status: "verified", warnings: [] },
+      disabled_execution_actions: [
+        {
+          id: "execute_release",
+          label: "Execute release",
+          disabled: true,
+          reason: "Step 12 records governance only.",
+        },
+      ],
+      runtime: {
+        auth: "admin",
+        source: "reports/release_governance",
+        mode: "audit_only",
+      },
+    };
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    const fetchImpl = vi.fn(async () => response);
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+
+    await expect(client.getAdminReleaseGovernance()).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/release-governance",
+      { headers: { Authorization: "Bearer dev-token" } },
+    );
+  });
+
+  it("records admin release governance actions with JSON request bodies", async () => {
+    const payload = {
+      dashboard_snapshot: { release_decision: "feature_flag_or_pass" },
+      intents: [],
+      active_intent: null,
+      approvals: [],
+      required_approvals: [],
+      rollback_plan: null,
+      audit_events: [],
+      integrity: { status: "verified", warnings: [] },
+      disabled_execution_actions: [],
+      runtime: {
+        auth: "admin",
+        source: "reports/release_governance",
+        mode: "audit_only",
+      },
+    };
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push([input, init]);
+      return response;
+    });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+    const intentPayload = {
+      requested_by: "admin_operator",
+      target_scope: "shadow" as const,
+      status: "pending_approval" as const,
+      reason: "Prepare audited governance.",
+    };
+    const approvalPayload = {
+      approver_role: "release_manager" as const,
+      decision: "approve" as const,
+      reason: "Release dashboard gates are clear.",
+      signed_by: "release_admin",
+    };
+    const rollbackPayload = {
+      owner: "release_manager",
+      status: "accepted" as const,
+      verification_steps: [
+        "Confirm the active release report id.",
+        "Run P0 harness before rollback execution.",
+      ],
+    };
+    const cancelPayload = {
+      actor: "release_manager",
+      reason: "Release window closed.",
+    };
+
+    await expect(client.createAdminReleaseIntent(intentPayload)).resolves.toEqual(payload);
+    await expect(client.recordAdminReleaseApproval("intent-1", approvalPayload)).resolves.toEqual(payload);
+    await expect(client.recordAdminReleaseRollbackPlan("intent-1", rollbackPayload)).resolves.toEqual(payload);
+    await expect(client.cancelAdminReleaseIntent("intent-1", cancelPayload)).resolves.toEqual(payload);
+
+    expect(calls).toHaveLength(4);
+    expect(calls[0]).toEqual([
+      "http://127.0.0.1:8000/api/admin/release-governance/intents",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify(intentPayload),
+      },
+    ]);
+    expect(calls[1]).toEqual([
+      "http://127.0.0.1:8000/api/admin/release-governance/intents/intent-1/approvals",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify(approvalPayload),
+      },
+    ]);
+    expect(calls[2]).toEqual([
+      "http://127.0.0.1:8000/api/admin/release-governance/intents/intent-1/rollback-plan",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify(rollbackPayload),
+      },
+    ]);
+    expect(calls[3]).toEqual([
+      "http://127.0.0.1:8000/api/admin/release-governance/intents/intent-1/cancel",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify(cancelPayload),
+      },
+    ]);
+    for (const [, init] of calls) {
+      const headers = init?.headers as Headers;
+      expect(headers.get("Authorization")).toBe("Bearer dev-token");
+      expect(headers.get("Content-Type")).toBe("application/json");
+    }
+  });
+
   it("downloads session assets through fetch with configured Authorization headers", async () => {
     const body = new Blob(["asset-content"], { type: "text/plain" });
     const response = {

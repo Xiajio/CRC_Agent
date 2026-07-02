@@ -1,6 +1,11 @@
 import { streamJsonEvents, type FetchLike, type StreamTraceTap } from "./stream";
 import type {
+  AdminCancelReleaseIntentRequest,
+  AdminCreateReleaseIntentRequest,
   AdminReleaseDashboardResponse,
+  AdminReleaseGovernanceResponse,
+  AdminRecordReleaseApprovalRequest,
+  AdminRecordReleaseRollbackPlanRequest,
   AdminToolManifestResponse,
   ChatTurnRequest,
   DatabaseCaseDetailResponse,
@@ -91,6 +96,20 @@ function buildJsonHeaders(defaultHeaders?: HeadersInit): Headers {
 export interface ApiClient {
   getAdminTools(): Promise<AdminToolManifestResponse>;
   getAdminReleaseDashboard(): Promise<AdminReleaseDashboardResponse>;
+  getAdminReleaseGovernance(): Promise<AdminReleaseGovernanceResponse>;
+  createAdminReleaseIntent(request: AdminCreateReleaseIntentRequest): Promise<AdminReleaseGovernanceResponse>;
+  recordAdminReleaseApproval(
+    intentId: string,
+    request: AdminRecordReleaseApprovalRequest,
+  ): Promise<AdminReleaseGovernanceResponse>;
+  recordAdminReleaseRollbackPlan(
+    intentId: string,
+    request: AdminRecordReleaseRollbackPlanRequest,
+  ): Promise<AdminReleaseGovernanceResponse>;
+  cancelAdminReleaseIntent(
+    intentId: string,
+    request: AdminCancelReleaseIntentRequest,
+  ): Promise<AdminReleaseGovernanceResponse>;
   createSession(scene: Scene): Promise<SessionResponse>;
   getSession(sessionId: string, messageLimit?: number): Promise<SessionResponse>;
   getMessages(sessionId: string, before?: string | number | null, limit?: number): Promise<MessageHistoryResponse>;
@@ -153,6 +172,61 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         headers: defaultHeaders,
       });
       return parseJsonResponse<AdminReleaseDashboardResponse>(response);
+    },
+
+    async getAdminReleaseGovernance() {
+      const response = await fetchImpl(buildUrl("/api/admin/release-governance", baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
+    },
+
+    async createAdminReleaseIntent(request) {
+      const response = await fetchImpl(buildUrl("/api/admin/release-governance/intents", baseUrl), {
+        method: "POST",
+        headers: buildJsonHeaders(defaultHeaders),
+        body: JSON.stringify(request),
+      });
+      return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
+    },
+
+    async recordAdminReleaseApproval(intentId, request) {
+      const encodedIntentId = encodeURIComponent(intentId);
+      const response = await fetchImpl(
+        buildUrl(`/api/admin/release-governance/intents/${encodedIntentId}/approvals`, baseUrl),
+        {
+          method: "POST",
+          headers: buildJsonHeaders(defaultHeaders),
+          body: JSON.stringify(request),
+        },
+      );
+      return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
+    },
+
+    async recordAdminReleaseRollbackPlan(intentId, request) {
+      const encodedIntentId = encodeURIComponent(intentId);
+      const response = await fetchImpl(
+        buildUrl(`/api/admin/release-governance/intents/${encodedIntentId}/rollback-plan`, baseUrl),
+        {
+          method: "POST",
+          headers: buildJsonHeaders(defaultHeaders),
+          body: JSON.stringify(request),
+        },
+      );
+      return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
+    },
+
+    async cancelAdminReleaseIntent(intentId, request) {
+      const encodedIntentId = encodeURIComponent(intentId);
+      const response = await fetchImpl(
+        buildUrl(`/api/admin/release-governance/intents/${encodedIntentId}/cancel`, baseUrl),
+        {
+          method: "POST",
+          headers: buildJsonHeaders(defaultHeaders),
+          body: JSON.stringify(request),
+        },
+      );
+      return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
     },
 
     async createSession(scene) {

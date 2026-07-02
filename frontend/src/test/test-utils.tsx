@@ -7,6 +7,7 @@ import type { ApiClient } from "../app/api/client";
 import { ApiClientError } from "../app/api/client";
 import type {
   AdminReleaseDashboardResponse,
+  AdminReleaseGovernanceResponse,
   AdminToolManifestResponse,
   DatabaseCaseDetailResponse,
   DatabaseSearchResponse,
@@ -353,6 +354,58 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
       mode: "read_only",
     },
   }));
+  const getAdminReleaseGovernance = vi.fn(async (): Promise<AdminReleaseGovernanceResponse> => ({
+    dashboard_snapshot: {
+      release_decision: "feature_flag_or_pass",
+      rollback_target: "agent_policy_20260624_0",
+      hard_fail_count: 0,
+      literature_status: "shadow_only",
+    },
+    intents: [],
+    active_intent: null,
+    approvals: [],
+    required_approvals: [
+      {
+        role: "release_manager",
+        status: "missing",
+        latest_decision: null,
+      },
+      {
+        role: "clinical_safety_reviewer",
+        status: "missing",
+        latest_decision: null,
+      },
+    ],
+    rollback_plan: null,
+    audit_events: [],
+    integrity: {
+      status: "verified",
+      warnings: [],
+    },
+    disabled_execution_actions: [
+      {
+        id: "execute_release",
+        label: "Execute release",
+        disabled: true,
+        reason: "Step 12 records governance only.",
+      },
+      {
+        id: "execute_rollback",
+        label: "Execute rollback",
+        disabled: true,
+        reason: "Rollback execution requires a later execution-path design.",
+      },
+    ],
+    runtime: {
+      auth: "admin",
+      source: "reports/release_governance",
+      mode: "audit_only",
+    },
+  }));
+  const createAdminReleaseIntent = vi.fn(async () => getAdminReleaseGovernance());
+  const recordAdminReleaseApproval = vi.fn(async () => getAdminReleaseGovernance());
+  const recordAdminReleaseRollbackPlan = vi.fn(async () => getAdminReleaseGovernance());
+  const cancelAdminReleaseIntent = vi.fn(async () => getAdminReleaseGovernance());
   const deletePatientRegistryPatient = vi.fn(async () => ({
     patient_id: 33,
     deleted_records: 1,
@@ -371,6 +424,11 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
   return {
     getAdminTools,
     getAdminReleaseDashboard,
+    getAdminReleaseGovernance,
+    createAdminReleaseIntent,
+    recordAdminReleaseApproval,
+    recordAdminReleaseRollbackPlan,
+    cancelAdminReleaseIntent,
     createSession,
     getSession,
     getMessages,

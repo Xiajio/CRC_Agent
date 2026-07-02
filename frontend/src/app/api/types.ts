@@ -137,6 +137,139 @@ export interface AdminReleaseDashboardResponse {
   };
 }
 
+export type AdminReleaseTargetScope = "shadow" | "feature_flag_candidate";
+export type AdminReleaseIntentStatus = "draft" | "pending_approval" | "approved" | "rejected" | "cancelled";
+export type AdminReleaseCreateIntentStatus = "draft" | "pending_approval";
+export type AdminReleaseApproverRole = "release_manager" | "clinical_safety_reviewer" | "evidence_reviewer";
+export type AdminReleaseApprovalDecision = "approve" | "reject" | "request_changes";
+export type AdminReleaseApprovalStatus = "missing" | "approved" | "rejected" | "changes_requested";
+export type AdminReleaseRollbackPlanStatus = "proposed" | "accepted";
+export type AdminReleaseIntegrityStatus = "verified" | "failed";
+
+export interface AdminReleaseGovernanceDashboardSnapshot {
+  version_chain?: Partial<AdminReleaseDashboardVersionChain>;
+  release_decision?: string | null;
+  rollback_target?: string | null;
+  hard_fail_count?: number | null;
+  literature_isolation_violations?: number | null;
+  clinical_rag_ingest_enabled?: boolean | null;
+  literature_status?: AdminReleaseRunStatus | string | null;
+}
+
+export interface AdminReleaseIntent {
+  intent_id: string;
+  source_release_report_id: string;
+  source_report_path: string;
+  harness_run_ids: string[];
+  literature_run_id: string | null;
+  version_chain: Record<string, JsonValue | unknown>;
+  release_decision_snapshot: string;
+  rollback_target: string;
+  requested_by: string;
+  requested_at: string;
+  target_scope: AdminReleaseTargetScope;
+  status: AdminReleaseIntentStatus;
+  derived_status: AdminReleaseIntentStatus;
+  blocking_summary: Record<string, JsonValue | unknown>;
+}
+
+export interface AdminReleaseApproval {
+  approval_id: string;
+  intent_id: string;
+  approver_role: AdminReleaseApproverRole;
+  decision: AdminReleaseApprovalDecision;
+  reason: string;
+  signed_by: string;
+  signed_at: string;
+  required: boolean;
+}
+
+export interface AdminReleaseRequiredApproval {
+  role: AdminReleaseApproverRole;
+  status: AdminReleaseApprovalStatus;
+  latest_decision: AdminReleaseApprovalDecision | null;
+  approval_id?: string;
+  signed_by?: string;
+  signed_at?: string;
+}
+
+export interface AdminReleaseRollbackPlan {
+  rollback_plan_id: string;
+  intent_id: string;
+  rollback_target: string;
+  owner: string;
+  status: AdminReleaseRollbackPlanStatus;
+  verification_steps: string[];
+  created_at: string;
+}
+
+export interface AdminReleaseAuditEvent {
+  event_id: string;
+  intent_id: string;
+  event_type: "intent_created" | "approval_recorded" | "rollback_plan_recorded" | "intent_cancelled" | "governance_read";
+  actor: string;
+  timestamp: string;
+  payload_hash: string;
+  previous_event_hash: string;
+  event_hash: string;
+}
+
+export interface AdminReleaseGovernanceIntegrity {
+  status: AdminReleaseIntegrityStatus;
+  warnings: string[];
+  affected_intent_ids?: string[];
+  global_failure?: boolean;
+}
+
+export interface AdminReleaseGovernanceDisabledAction {
+  id: "execute_release" | "execute_rollback";
+  label: string;
+  disabled: true;
+  reason: string;
+}
+
+export interface AdminReleaseGovernanceResponse {
+  dashboard_snapshot: AdminReleaseGovernanceDashboardSnapshot;
+  intents: AdminReleaseIntent[];
+  active_intent: AdminReleaseIntent | null;
+  approvals: AdminReleaseApproval[];
+  required_approvals: AdminReleaseRequiredApproval[];
+  rollback_plan: AdminReleaseRollbackPlan | null;
+  audit_events: AdminReleaseAuditEvent[];
+  integrity: AdminReleaseGovernanceIntegrity;
+  disabled_execution_actions: AdminReleaseGovernanceDisabledAction[];
+  runtime: {
+    auth: "admin";
+    source: "reports/release_governance";
+    mode: "audit_only";
+  };
+}
+
+export interface AdminCreateReleaseIntentRequest {
+  requested_by: string;
+  target_scope: AdminReleaseTargetScope;
+  status: AdminReleaseCreateIntentStatus;
+  reason: string;
+}
+
+export interface AdminRecordReleaseApprovalRequest {
+  approver_role: AdminReleaseApproverRole;
+  decision: AdminReleaseApprovalDecision;
+  reason: string;
+  signed_by: string;
+}
+
+export interface AdminRecordReleaseRollbackPlanRequest {
+  owner: string;
+  status: AdminReleaseRollbackPlanStatus;
+  verification_steps: string[];
+}
+
+export interface AdminCancelReleaseIntentRequest {
+  actor: string;
+  reason: string;
+}
+
 export type Scene = "patient" | "doctor";
 
 export interface AssetRef {
