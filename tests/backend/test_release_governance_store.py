@@ -400,6 +400,110 @@ def test_malformed_intent_artifact_returns_integrity_warning_and_blocks_writes(
         )
 
 
+def test_schema_valid_approval_artifact_tampering_fails_integrity(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    approval = ReleaseApproval(
+        **{
+            **make_approval(intent.intent_id).to_dict(),
+            "decision": "request_changes",
+            "reason": "Need one more release note.",
+        }
+    )
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    store.write_approval(
+        approval,
+        actor="release_admin",
+        timestamp=approval.signed_at,
+    )
+    approval_file = (
+        tmp_path
+        / "release_governance"
+        / "approvals"
+        / f"{approval.approval_id}.json"
+    )
+    tampered = approval.to_dict()
+    tampered["decision"] = "approve"
+    tampered["reason"] = "P0 hard fails are zero."
+    approval_file.write_text(
+        json.dumps(tampered, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["affected_intent_ids"] == [intent.intent_id]
+    assert any("approval artifact" in warning for warning in state.integrity["warnings"])
+
+
+def test_audited_rollback_plan_deletion_fails_integrity(tmp_path: Path) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    rollback_plan = make_rollback_plan(intent.intent_id)
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    store.write_rollback_plan(
+        rollback_plan,
+        actor="release_manager",
+        timestamp=rollback_plan.created_at,
+    )
+    (
+        tmp_path
+        / "release_governance"
+        / "rollback_plans"
+        / f"{rollback_plan.rollback_plan_id}.json"
+    ).unlink()
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["affected_intent_ids"] == [intent.intent_id]
+    assert any(
+        "rollback plan artifact" in warning
+        for warning in state.integrity["warnings"]
+    )
+
+
+def test_schema_valid_intent_artifact_tampering_fails_integrity(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    intent_file = (
+        tmp_path
+        / "release_governance"
+        / "intents"
+        / f"{intent.intent_id}.json"
+    )
+    tampered = intent.to_dict()
+    tampered["rollback_target"] = "agent_policy_20260620_0"
+    intent_file.write_text(
+        json.dumps(tampered, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["affected_intent_ids"] == [intent.intent_id]
+    assert any("intent artifact" in warning for warning in state.integrity["warnings"])
+
+
 def test_failed_audit_append_removes_newly_created_intent_artifact(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -425,6 +529,37 @@ def test_failed_audit_append_removes_newly_created_intent_artifact(
         / "intents"
         / f"{intent.intent_id}.json"
     ).exists()
+
+
+def test_failed_append_cleanup_error_is_surfaced_and_orphan_fails_integrity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+
+    def fail_append(_prepared_event: object) -> None:
+        raise OSError("disk full")
+
+    def fail_cleanup(_path: Path) -> None:
+        raise GovernanceIntegrityError("artifact cleanup failed")
+
+    monkeypatch.setattr(store, "_append_prepared_event", fail_append)
+    monkeypatch.setattr(store, "_remove_new_artifact", fail_cleanup)
+
+    with pytest.raises(GovernanceIntegrityError, match="cleanup failed"):
+        store.write_intent(
+            intent,
+            actor="admin_operator",
+            timestamp="2026-07-02T00:00:00+08:00",
+        )
+
+    monkeypatch.undo()
+    state = ReleaseGovernanceStore(tmp_path / "release_governance").read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["affected_intent_ids"] == [intent.intent_id]
+    assert any("intent artifact" in warning for warning in state.integrity["warnings"])
 
 
 def test_chain_mismatch_returns_integrity_warning_and_rejects_write(

@@ -15,6 +15,7 @@ from src.contracts.release_governance import (
     ReleaseIntent,
     ReleaseRollbackPlan,
     build_audit_event,
+    canonical_payload_hash,
     make_release_audit_event_id,
     validate_audit_event_hash,
 )
@@ -52,6 +53,12 @@ class _AuditReadResult:
 class _ArtifactReadResult:
     artifacts: list[Any]
     warnings: list[str]
+
+
+@dataclass(frozen=True)
+class _ArtifactConsistencyResult:
+    warnings: list[str]
+    affected_intent_ids: frozenset[str]
 
 
 @dataclass(frozen=True)
@@ -93,6 +100,12 @@ class ReleaseGovernanceStore:
             + approval_result.warnings
             + rollback_plan_result.warnings
         )
+        consistency_result = self._verify_artifact_audit_consistency(
+            intents=intent_result.artifacts,
+            approvals=approval_result.artifacts,
+            rollback_plans=rollback_plan_result.artifacts,
+            audit_result=audit_result,
+        )
 
         return ReleaseGovernanceState(
             intents=sorted(
@@ -111,6 +124,10 @@ class ReleaseGovernanceStore:
             integrity=self._verify_integrity(
                 audit_result,
                 artifact_warnings=artifact_warnings,
+                consistency_warnings=consistency_result.warnings,
+                artifact_affected_intent_ids=(
+                    consistency_result.affected_intent_ids
+                ),
             ),
         )
 
@@ -210,7 +227,12 @@ class ReleaseGovernanceStore:
         try:
             self._append_prepared_event(prepared_event)
         except Exception:
-            self._remove_new_artifact(path)
+            try:
+                self._remove_new_artifact(path)
+            except Exception as cleanup_error:
+                raise GovernanceIntegrityError(
+                    f"artifact cleanup failed after audit append failure: {path}"
+                ) from cleanup_error
             raise
 
     def _write_json_once(self, path: Path, payload: dict[str, Any]) -> None:
@@ -222,10 +244,7 @@ class ReleaseGovernanceStore:
             handle.write("\n")
 
     def _remove_new_artifact(self, path: Path) -> None:
-        try:
-            path.unlink()
-        except OSError:
-            return
+        path.unlink()
 
     def _prepare_event(
         self,
@@ -427,14 +446,117 @@ class ReleaseGovernanceStore:
             global_failure=global_failure,
         )
 
+    def _verify_artifact_audit_consistency(
+        self,
+        *,
+        intents: list[ReleaseIntent],
+        approvals: list[ReleaseApproval],
+        rollback_plans: list[ReleaseRollbackPlan],
+        audit_result: _AuditReadResult,
+    ) -> _ArtifactConsistencyResult:
+        warnings: list[str] = []
+        affected_intent_ids: set[str] = set()
+
+        intent_hashes = {
+            (intent.intent_id, canonical_payload_hash(intent.to_dict()))
+            for intent in intents
+        }
+        approval_hashes = {
+            (approval.intent_id, canonical_payload_hash(approval.to_dict()))
+            for approval in approvals
+        }
+        rollback_plan_hashes = {
+            (plan.intent_id, canonical_payload_hash(plan.to_dict()))
+            for plan in rollback_plans
+        }
+
+        audit_hashes_by_type = {
+            "intent_created": set(),
+            "approval_recorded": set(),
+            "rollback_plan_recorded": set(),
+        }
+        for record in audit_result.records:
+            event = record.event
+            if event.event_type in audit_hashes_by_type:
+                audit_hashes_by_type[event.event_type].add(
+                    (event.intent_id, event.payload_hash)
+                )
+
+        for intent_id, payload_hash in intent_hashes:
+            if (
+                intent_id,
+                payload_hash,
+            ) not in audit_hashes_by_type["intent_created"]:
+                warnings.append(
+                    f"intent artifact {intent_id} does not match an audit payload hash"
+                )
+                affected_intent_ids.add(intent_id)
+
+        for intent_id, payload_hash in approval_hashes:
+            if (
+                intent_id,
+                payload_hash,
+            ) not in audit_hashes_by_type["approval_recorded"]:
+                warnings.append(
+                    f"approval artifact for {intent_id} does not match an audit payload hash"
+                )
+                affected_intent_ids.add(intent_id)
+
+        for intent_id, payload_hash in rollback_plan_hashes:
+            if (
+                intent_id,
+                payload_hash,
+            ) not in audit_hashes_by_type["rollback_plan_recorded"]:
+                warnings.append(
+                    f"rollback plan artifact for {intent_id} does not match an audit payload hash"
+                )
+                affected_intent_ids.add(intent_id)
+
+        for record in audit_result.records:
+            event = record.event
+            audit_key = (event.intent_id, event.payload_hash)
+            if event.event_type == "intent_created" and audit_key not in intent_hashes:
+                warnings.append(
+                    f"intent_created audit event {event.event_id} has no matching intent artifact"
+                )
+                affected_intent_ids.add(event.intent_id)
+            elif (
+                event.event_type == "approval_recorded"
+                and audit_key not in approval_hashes
+            ):
+                warnings.append(
+                    f"approval_recorded audit event {event.event_id} has no matching approval artifact"
+                )
+                affected_intent_ids.add(event.intent_id)
+            elif (
+                event.event_type == "rollback_plan_recorded"
+                and audit_key not in rollback_plan_hashes
+            ):
+                warnings.append(
+                    f"rollback_plan_recorded audit event {event.event_id} has no matching rollback plan artifact"
+                )
+                affected_intent_ids.add(event.intent_id)
+
+        return _ArtifactConsistencyResult(
+            warnings=warnings,
+            affected_intent_ids=frozenset(affected_intent_ids),
+        )
+
     def _verify_integrity(
         self,
         audit_result: _AuditReadResult,
         *,
         artifact_warnings: list[str] | None = None,
+        consistency_warnings: list[str] | None = None,
+        artifact_affected_intent_ids: frozenset[str] = frozenset(),
     ) -> dict[str, Any]:
-        warnings = list(artifact_warnings or []) + list(audit_result.warnings)
+        warnings = (
+            list(artifact_warnings or [])
+            + list(consistency_warnings or [])
+            + list(audit_result.warnings)
+        )
         failed_intent_ids = set(audit_result.failed_intent_ids)
+        failed_intent_ids.update(artifact_affected_intent_ids)
         global_failure = audit_result.global_failure or bool(artifact_warnings)
         previous_hash_by_intent: dict[str, str] = {}
 
