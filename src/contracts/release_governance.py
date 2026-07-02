@@ -123,6 +123,7 @@ _SENSITIVE_PAYLOAD_TOKENS = frozenset(
         "credential",
         "credentials",
         "password",
+        "prompt",
         "secret",
         "token",
         "tokens",
