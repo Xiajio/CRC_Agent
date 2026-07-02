@@ -43,6 +43,34 @@ def make_intent() -> ReleaseIntent:
     )
 
 
+def make_approval(intent_id: str) -> ReleaseApproval:
+    return ReleaseApproval(
+        approval_id="release_approval_release_intent_release_manager_d79a98c1",
+        intent_id=intent_id,
+        approver_role="release_manager",
+        decision="approve",
+        reason="P0 hard fails are zero.",
+        signed_by="release_admin",
+        signed_at="2026-07-02T00:10:00+08:00",
+        required=True,
+    )
+
+
+def make_rollback_plan(intent_id: str) -> ReleaseRollbackPlan:
+    return ReleaseRollbackPlan(
+        rollback_plan_id="rollback_plan_release_intent_1c338f15",
+        intent_id=intent_id,
+        rollback_target="agent_policy_20260624_0",
+        owner="release_manager",
+        status="accepted",
+        verification_steps=[
+            "Confirm the active release report id.",
+            "Run P0 harness before any future rollback execution.",
+        ],
+        created_at="2026-07-02T00:15:00+08:00",
+    )
+
+
 def test_empty_store_reads_without_creating_files(tmp_path: Path) -> None:
     store = ReleaseGovernanceStore(tmp_path / "release_governance")
 
@@ -114,28 +142,8 @@ def test_write_approval_and_rollback_plan_append_to_audit_chain(
         actor="admin_operator",
         timestamp="2026-07-02T00:00:00+08:00",
     )
-    approval = ReleaseApproval(
-        approval_id="release_approval_release_intent_release_manager_d79a98c1",
-        intent_id=intent.intent_id,
-        approver_role="release_manager",
-        decision="approve",
-        reason="P0 hard fails are zero.",
-        signed_by="release_admin",
-        signed_at="2026-07-02T00:10:00+08:00",
-        required=True,
-    )
-    rollback_plan = ReleaseRollbackPlan(
-        rollback_plan_id="rollback_plan_release_intent_1c338f15",
-        intent_id=intent.intent_id,
-        rollback_target="agent_policy_20260624_0",
-        owner="release_manager",
-        status="accepted",
-        verification_steps=[
-            "Confirm the active release report id.",
-            "Run P0 harness before any future rollback execution.",
-        ],
-        created_at="2026-07-02T00:15:00+08:00",
-    )
+    approval = make_approval(intent.intent_id)
+    rollback_plan = make_rollback_plan(intent.intent_id)
 
     store.write_approval(approval, actor="release_admin", timestamp=approval.signed_at)
     store.write_rollback_plan(
@@ -160,6 +168,69 @@ def test_write_approval_and_rollback_plan_append_to_audit_chain(
         state.audit_events[2].previous_event_hash
         == state.audit_events[1].event_hash
     )
+
+
+def test_invalid_intent_audit_timestamp_does_not_leave_artifact(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+
+    with pytest.raises(ValueError, match="timestamp must start"):
+        store.write_intent(
+            intent,
+            actor="admin_operator",
+            timestamp="not-a-date",
+        )
+
+    assert not (
+        tmp_path
+        / "release_governance"
+        / "intents"
+        / f"{intent.intent_id}.json"
+    ).exists()
+
+
+def test_invalid_approval_audit_timestamp_does_not_leave_artifact(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    approval = make_approval(make_intent().intent_id)
+
+    with pytest.raises(ValueError, match="timestamp must start"):
+        store.write_approval(
+            approval,
+            actor="release_admin",
+            timestamp="not-a-date",
+        )
+
+    assert not (
+        tmp_path
+        / "release_governance"
+        / "approvals"
+        / f"{approval.approval_id}.json"
+    ).exists()
+
+
+def test_invalid_rollback_plan_audit_timestamp_does_not_leave_artifact(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    rollback_plan = make_rollback_plan(make_intent().intent_id)
+
+    with pytest.raises(ValueError, match="timestamp must start"):
+        store.write_rollback_plan(
+            rollback_plan,
+            actor="release_manager",
+            timestamp="not-a-date",
+        )
+
+    assert not (
+        tmp_path
+        / "release_governance"
+        / "rollback_plans"
+        / f"{rollback_plan.rollback_plan_id}.json"
+    ).exists()
 
 
 def test_append_cancel_event_adds_cancel_audit_event(tmp_path: Path) -> None:
@@ -187,6 +258,91 @@ def test_append_cancel_event_adds_cancel_audit_event(tmp_path: Path) -> None:
         state.audit_events[1].previous_event_hash
         == state.audit_events[0].event_hash
     )
+
+
+def test_non_monotonic_timestamps_append_chain_in_physical_order(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:10:00+08:00",
+    )
+    store.append_cancel_event(
+        intent_id=intent.intent_id,
+        actor="admin_operator",
+        reason="First cancellation note.",
+        timestamp="2026-07-02T00:05:00+08:00",
+    )
+    store.append_cancel_event(
+        intent_id=intent.intent_id,
+        actor="admin_operator",
+        reason="Second cancellation note.",
+        timestamp="2026-07-02T00:07:00+08:00",
+    )
+
+    state = store.read_state()
+
+    assert state.integrity == {"status": "verified", "warnings": []}
+    assert [event.timestamp for event in state.audit_events] == [
+        "2026-07-02T00:10:00+08:00",
+        "2026-07-02T00:05:00+08:00",
+        "2026-07-02T00:07:00+08:00",
+    ]
+    assert (
+        state.audit_events[2].previous_event_hash
+        == state.audit_events[1].event_hash
+    )
+
+
+def test_reordered_audit_lines_return_integrity_warning(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    store.append_cancel_event(
+        intent_id=intent.intent_id,
+        actor="admin_operator",
+        reason="Release window closed.",
+        timestamp="2026-07-02T00:20:00+08:00",
+    )
+    audit_file = (
+        tmp_path
+        / "release_governance"
+        / "audit"
+        / "release_audit_20260702.jsonl"
+    )
+    lines = audit_file.read_text(encoding="utf-8").splitlines()
+    audit_file.write_text("\n".join(reversed(lines)) + "\n", encoding="utf-8")
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert any(
+        "previous_event_hash mismatch" in warning
+        for warning in state.integrity["warnings"]
+    )
+
+
+def test_invalid_utf8_audit_file_returns_integrity_warning(
+    tmp_path: Path,
+) -> None:
+    audit_dir = tmp_path / "release_governance" / "audit"
+    audit_dir.mkdir(parents=True)
+    (audit_dir / "release_audit_20260702.jsonl").write_bytes(b"\xff\xfe\xfa")
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert state.integrity["warnings"]
 
 
 def test_chain_mismatch_returns_integrity_warning_and_rejects_write(
