@@ -105,6 +105,29 @@ FORBIDDEN_PAYLOAD_KEYS = frozenset(
         "token",
     }
 )
+_PATIENT_IDENTIFIER_TOKENS = frozenset(
+    {
+        "id",
+        "ids",
+        "identifier",
+        "identifiers",
+        "mrn",
+        "name",
+        "number",
+    }
+)
+_SENSITIVE_PAYLOAD_TOKENS = frozenset(
+    {
+        "authorization",
+        "bearer",
+        "credential",
+        "credentials",
+        "password",
+        "secret",
+        "token",
+        "tokens",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -491,17 +514,55 @@ def _require_hash(
         raise ValueError(f"{field_name} must be a sha256 hash")
 
 
-def _reject_forbidden_payload_keys(value: JsonValue) -> None:
+def _reject_forbidden_payload_keys(
+    value: JsonValue,
+    *,
+    ancestor_key_tokens: tuple[tuple[str, ...], ...] = (),
+) -> None:
     if isinstance(value, list):
         for item in value:
-            _reject_forbidden_payload_keys(item)
+            _reject_forbidden_payload_keys(
+                item, ancestor_key_tokens=ancestor_key_tokens
+            )
         return
     if isinstance(value, dict):
         for key, item in value.items():
             normalized_key = _normalize_payload_key(key)
-            if normalized_key in FORBIDDEN_PAYLOAD_KEYS:
+            key_tokens = tuple(normalized_key.split("_")) if normalized_key else ()
+            if _is_forbidden_payload_key(
+                normalized_key,
+                key_tokens,
+                ancestor_key_tokens=ancestor_key_tokens,
+            ):
                 raise ValueError(f"payload contains forbidden key: {key}")
-            _reject_forbidden_payload_keys(item)
+            _reject_forbidden_payload_keys(
+                item, ancestor_key_tokens=ancestor_key_tokens + (key_tokens,)
+            )
+
+
+def _is_forbidden_payload_key(
+    normalized_key: str,
+    key_tokens: tuple[str, ...],
+    *,
+    ancestor_key_tokens: tuple[tuple[str, ...], ...],
+) -> bool:
+    token_set = set(key_tokens)
+    if normalized_key in FORBIDDEN_PAYLOAD_KEYS:
+        return True
+    if "api" in token_set and "key" in token_set:
+        return True
+    if "private" in token_set and "key" in token_set:
+        return True
+    if token_set & _SENSITIVE_PAYLOAD_TOKENS:
+        return True
+    if "patient" in token_set and token_set & _PATIENT_IDENTIFIER_TOKENS:
+        return True
+    if any(tokens == ("patient",) for tokens in ancestor_key_tokens):
+        if token_set & _PATIENT_IDENTIFIER_TOKENS:
+            return True
+        if normalized_key == "medical_record_number":
+            return True
+    return False
 
 
 def _normalize_payload_key(key: str) -> str:
