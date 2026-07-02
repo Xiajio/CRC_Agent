@@ -164,6 +164,68 @@ def test_store_rejects_overwriting_existing_intent(tmp_path: Path) -> None:
         )
 
 
+def test_store_rejects_overwriting_existing_approval_without_audit_row(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    approval = make_approval(intent.intent_id)
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    store.write_approval(
+        approval,
+        actor="release_admin",
+        timestamp=approval.signed_at,
+    )
+
+    with pytest.raises(FileExistsError):
+        store.write_approval(
+            approval,
+            actor="release_admin",
+            timestamp="2026-07-02T00:20:00+08:00",
+        )
+
+    state = store.read_state()
+    assert [event.event_type for event in state.audit_events] == [
+        "intent_created",
+        "approval_recorded",
+    ]
+
+
+def test_store_rejects_overwriting_existing_rollback_plan_without_audit_row(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseGovernanceStore(tmp_path / "release_governance")
+    intent = make_intent()
+    rollback_plan = make_rollback_plan(intent.intent_id)
+    store.write_intent(
+        intent,
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+    )
+    store.write_rollback_plan(
+        rollback_plan,
+        actor="release_manager",
+        timestamp=rollback_plan.created_at,
+    )
+
+    with pytest.raises(FileExistsError):
+        store.write_rollback_plan(
+            rollback_plan,
+            actor="release_manager",
+            timestamp="2026-07-02T00:25:00+08:00",
+        )
+
+    state = store.read_state()
+    assert [event.event_type for event in state.audit_events] == [
+        "intent_created",
+        "rollback_plan_recorded",
+    ]
+
+
 def test_invalid_intent_id_with_colon_is_rejected_before_writes(
     tmp_path: Path,
 ) -> None:
