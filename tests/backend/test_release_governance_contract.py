@@ -293,8 +293,12 @@ def test_audit_event_rejects_secret_like_payload() -> None:
         {"nested": {"prompt": "system prompt"}},
         {"nested": {"hiddenReasoning": "private reasoning"}},
         {"nested": {"chainOfThought": "private reasoning"}},
+        {"nested": {"patientId": "MRN-123"}},
+        {"nested": {"patient_identifier": "MRN-123"}},
         {"nested": {"patientName": "Example Patient"}},
         {"nested": {"patient-number": "MRN-123"}},
+        {"nested": {"mrn": "MRN-123"}},
+        {"nested": {"medicalRecordNumber": "MRN-123"}},
         {"nested": {"clientSecret": "secret"}},
         {"nested": {"refreshToken": "secret"}},
         {"nested": {"sessionToken": "secret"}},
@@ -314,6 +318,20 @@ def test_audit_event_rejects_nested_secret_prompt_and_phi_payload_keys(
             payload=payload,
             previous_event_hash="sha256:GENESIS",
         )
+
+
+def test_audit_event_allows_aggregate_patient_counts() -> None:
+    event = build_audit_event(
+        event_id="release_audit_aggregate_counts",
+        intent_id="release_intent_1",
+        event_type="intent_created",
+        actor="admin_operator",
+        timestamp="2026-07-02T00:00:00+08:00",
+        payload={"nested": {"patient_count": 12}},
+        previous_event_hash="sha256:GENESIS",
+    )
+
+    assert event.payload_hash.startswith("sha256:")
 
 
 def test_audit_event_reconstruction_rejects_hash_tampering() -> None:
