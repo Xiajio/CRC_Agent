@@ -180,6 +180,76 @@ def test_rollback_plan_requires_two_verification_steps() -> None:
         )
 
 
+def test_release_intent_defensively_copies_mutable_inputs() -> None:
+    harness_run_ids = ["harness_20260629_001"]
+    version_chain = {
+        "agent_policy_version": "agent_policy_20260629_0",
+        "clinical_safety_policy_version": "crc_safety_policy_v0",
+        "evidence_index_version": "rag_crc_guideline_20260620",
+        "judge_rubric_version": "crc_rubric_v0",
+        "review": {"state": "ready"},
+    }
+    blocking_summary = {
+        "hard_fail_count": 0,
+        "literature_isolation_violations": 0,
+        "clinical_rag_ingest_enabled": False,
+        "review": {"state": "ready"},
+    }
+    intent = ReleaseIntent(
+        intent_id="release_intent_release_safety_20260629_001_6da729a0",
+        source_release_report_id="release_safety_20260629_001",
+        source_report_path="reports/release_safety/release_safety_20260629_001.json",
+        harness_run_ids=harness_run_ids,
+        literature_run_id="literature_harness_20260630_001",
+        version_chain=version_chain,
+        release_decision_snapshot="feature_flag_or_pass",
+        rollback_target="agent_policy_20260624_0",
+        requested_by="admin_operator",
+        requested_at="2026-07-02T00:00:00+08:00",
+        target_scope="shadow",
+        status="pending_approval",
+        blocking_summary=blocking_summary,
+    )
+    intent_dict = intent.to_dict()
+
+    harness_run_ids.append("harness_20260629_999")
+    version_chain["agent_policy_version"] = "tampered"
+    version_chain["review"]["state"] = "tampered"
+    blocking_summary["hard_fail_count"] = 99
+    blocking_summary["review"]["state"] = "tampered"
+
+    assert intent.to_dict() == intent_dict
+    with pytest.raises(AttributeError):
+        intent.harness_run_ids.append("harness_20260629_999")
+    with pytest.raises(TypeError):
+        intent.version_chain["agent_policy_version"] = "tampered"
+    with pytest.raises(TypeError):
+        intent.blocking_summary["hard_fail_count"] = 99
+
+
+def test_rollback_plan_defensively_copies_verification_steps() -> None:
+    verification_steps = [
+        "Confirm the active release report id.",
+        "Run P0 harness before any future rollback execution.",
+    ]
+    rollback_plan = ReleaseRollbackPlan(
+        rollback_plan_id="rollback_plan_release_intent_1c338f15",
+        intent_id="release_intent_release_safety_20260629_001_6da729a0",
+        rollback_target="agent_policy_20260624_0",
+        owner="release_manager",
+        status="accepted",
+        verification_steps=verification_steps,
+        created_at="2026-07-02T00:15:00+08:00",
+    )
+    rollback_plan_dict = rollback_plan.to_dict()
+
+    verification_steps.append("Tamper with the caller-owned list.")
+
+    assert rollback_plan.to_dict() == rollback_plan_dict
+    with pytest.raises(AttributeError):
+        rollback_plan.verification_steps.append("Tamper through the instance.")
+
+
 def test_payload_hash_is_canonical_and_audit_chain_uses_previous_hash() -> None:
     left = canonical_payload_hash({"b": 2, "a": 1})
     right = canonical_payload_hash({"a": 1, "b": 2})
@@ -293,6 +363,9 @@ def test_audit_event_rejects_secret_like_payload() -> None:
         {"nested": {"deployment credentials": "secret"}},
         {"nested": {"x-api-key": "secret"}},
         {"nested": {"openaiApiKey": "secret"}},
+        {"nested": {"xAPIKey": "secret"}},
+        {"nested": {"openAIAPIKey": "secret"}},
+        {"nested": {"openAIKey": "secret"}},
         {"private": {"key": "secret"}},
         {"nested": {"prompt": "system prompt"}},
         {"nested": {"systemPrompt": "system prompt"}},

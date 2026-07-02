@@ -6,6 +6,7 @@ import json
 import math
 from pathlib import PurePosixPath, PureWindowsPath
 import re
+from types import MappingProxyType
 from typing import Any, Literal, TypeAlias
 
 
@@ -119,6 +120,22 @@ _PATIENT_IDENTIFIER_TOKENS = frozenset(
         "numbers",
     }
 )
+_PATIENT_IDENTIFIER_COMPACT_SUFFIXES = frozenset(
+    {
+        "id",
+        "ids",
+        "identifier",
+        "identifiers",
+        "medicalrecordnumber",
+        "medicalrecordnumbers",
+        "mrn",
+        "mrns",
+        "name",
+        "names",
+        "number",
+        "numbers",
+    }
+)
 _PATIENT_CONTEXT_TOKENS = frozenset({"patient", "patients"})
 _SENSITIVE_PAYLOAD_TOKENS = frozenset(
     {
@@ -175,6 +192,21 @@ class ReleaseIntent:
         if type(self.blocking_summary) is not dict:
             raise TypeError("blocking_summary must be a dictionary")
         validate_json_safe(self.blocking_summary, path="blocking_summary")
+        object.__setattr__(
+            self, "harness_run_ids", tuple(self.harness_run_ids)
+        )
+        object.__setattr__(
+            self,
+            "version_chain",
+            _freeze_json_safe(self.version_chain, path="version_chain"),
+        )
+        object.__setattr__(
+            self,
+            "blocking_summary",
+            _freeze_json_safe(
+                self.blocking_summary, path="blocking_summary"
+            ),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -183,7 +215,7 @@ class ReleaseIntent:
             "source_report_path": self.source_report_path,
             "harness_run_ids": list(self.harness_run_ids),
             "literature_run_id": self.literature_run_id,
-            "version_chain": _copy_json_safe(
+            "version_chain": _copy_frozen_json_safe(
                 self.version_chain, path="version_chain"
             ),
             "release_decision_snapshot": self.release_decision_snapshot,
@@ -192,7 +224,7 @@ class ReleaseIntent:
             "requested_at": self.requested_at,
             "target_scope": self.target_scope,
             "status": self.status,
-            "blocking_summary": _copy_json_safe(
+            "blocking_summary": _copy_frozen_json_safe(
                 self.blocking_summary, path="blocking_summary"
             ),
         }
@@ -253,6 +285,9 @@ class ReleaseRollbackPlan:
             "verification_steps", self.verification_steps, min_items=2
         )
         _require_non_empty("created_at", self.created_at)
+        object.__setattr__(
+            self, "verification_steps", tuple(self.verification_steps)
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -439,6 +474,41 @@ def _copy_json_safe(value: JsonValue, *, path: str) -> JsonValue:
     return value
 
 
+def _freeze_json_safe(value: JsonValue, *, path: str) -> object:
+    validate_json_safe(value, path=path)
+    if isinstance(value, list):
+        return tuple(
+            _freeze_json_safe(item, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        )
+    if isinstance(value, dict):
+        return MappingProxyType(
+            {
+                key: _freeze_json_safe(item, path=f"{path}.{key}")
+                for key, item in value.items()
+            }
+        )
+    return value
+
+
+def _copy_frozen_json_safe(value: object, *, path: str) -> JsonValue:
+    if isinstance(value, float) and not math.isfinite(value):
+        raise TypeError(f"{path} must be JSON-safe")
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, tuple):
+        return [
+            _copy_frozen_json_safe(item, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, MappingProxyType):
+        return {
+            key: _copy_frozen_json_safe(item, path=f"{path}.{key}")
+            for key, item in value.items()
+        }
+    raise TypeError(f"{path} must be JSON-safe")
+
+
 def _stable_hash(payload: dict[str, JsonValue]) -> str:
     validate_json_safe(payload)
     stable_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
@@ -555,9 +625,16 @@ def _is_forbidden_payload_key(
     path_token_set = set(key_tokens)
     for ancestor_tokens in ancestor_key_tokens:
         path_token_set.update(ancestor_tokens)
+    compact_key = normalized_key.replace("_", "")
     if normalized_key in FORBIDDEN_PAYLOAD_KEYS:
         return True
+    if _is_patient_identifier_compound(compact_key):
+        return True
+    if "apikey" in compact_key:
+        return True
     if "api" in path_token_set and "key" in path_token_set:
+        return True
+    if "ai" in path_token_set and "key" in path_token_set:
         return True
     if "private" in path_token_set and "key" in path_token_set:
         return True
@@ -582,9 +659,20 @@ def _is_forbidden_payload_key(
     return False
 
 
+def _is_patient_identifier_compound(compact_key: str) -> bool:
+    for patient_prefix in ("patients", "patient"):
+        if compact_key.startswith(patient_prefix):
+            suffix = compact_key.removeprefix(patient_prefix)
+            return suffix in _PATIENT_IDENTIFIER_COMPACT_SUFFIXES
+    return False
+
+
 def _normalize_payload_key(key: str) -> str:
     key_with_word_boundaries = re.sub(
-        r"(?<=[a-z0-9])(?=[A-Z])", "_", key.strip()
+        r"(?<=[A-Z])(?=[A-Z][a-z])", "_", key.strip()
+    )
+    key_with_word_boundaries = re.sub(
+        r"(?<=[a-z0-9])(?=[A-Z])", "_", key_with_word_boundaries
     )
     return (
         re.sub(r"[^a-zA-Z0-9]+", "_", key_with_word_boundaries)
