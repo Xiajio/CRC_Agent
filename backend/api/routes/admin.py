@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from backend.api.schemas.release_execution import ReleaseExecutionRequestPayload
 from backend.api.schemas.release_governance import (
     ReleaseGovernanceApprovalRequest,
     ReleaseGovernanceCancelRequest,
@@ -12,6 +13,10 @@ from backend.api.schemas.release_governance import (
     ReleaseGovernanceRollbackPlanRequest,
 )
 from backend.api.services.admin_release_dashboard import REPO_ROOT, build_release_dashboard
+from backend.api.services.release_execution_store import (
+    ReleaseExecutionIntegrityError,
+    ReleaseExecutionStore,
+)
 from backend.api.services.release_governance_store import (
     GovernanceIntegrityError,
     ReleaseGovernanceStore,
@@ -22,10 +27,16 @@ from src.services.release_governance import (
     GovernanceValidationError,
     ReleaseGovernanceService,
 )
+from src.services.release_execution import (
+    ReleaseExecutionConflictError,
+    ReleaseExecutionPreflightError,
+    ReleaseExecutionService,
+)
 from src.tools.manifest import build_tool_manifest_response
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 _GOVERNANCE_STORE_ROOT = REPO_ROOT / "reports" / "release_governance"
+_EXECUTION_STORE_ROOT = REPO_ROOT / "reports" / "release_execution"
 
 
 def _web_search_enabled_from_request(request: Request) -> bool:
@@ -51,6 +62,15 @@ def _release_governance_service() -> ReleaseGovernanceService:
     )
 
 
+def _release_execution_service() -> ReleaseExecutionService:
+    return ReleaseExecutionService(
+        store=ReleaseExecutionStore(_EXECUTION_STORE_ROOT),
+        governance_loader=_release_governance_service().read_governance,
+        dashboard_loader=build_release_dashboard,
+        now=_governance_timestamp,
+    )
+
+
 def _raise_governance_http_error(exc: Exception) -> None:
     if isinstance(exc, GovernanceConflictError):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -59,6 +79,22 @@ def _raise_governance_http_error(exc: Exception) -> None:
     if isinstance(exc, FileExistsError):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if isinstance(exc, (GovernanceValidationError, TypeError, ValueError)):
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if isinstance(exc, OSError):
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    raise exc
+
+
+def _raise_execution_http_error(exc: Exception) -> None:
+    if isinstance(exc, ReleaseExecutionConflictError):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, ReleaseExecutionPreflightError):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, ReleaseExecutionIntegrityError):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, FileExistsError):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, (TypeError, ValueError)):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if isinstance(exc, OSError):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -84,6 +120,31 @@ async def get_admin_release_dashboard() -> dict[str, Any]:
 @router.get("/release-governance")
 async def get_admin_release_governance() -> dict[str, Any]:
     return _release_governance_service().read_governance()
+
+
+@router.get("/release-execution")
+async def get_admin_release_execution() -> dict[str, Any]:
+    return _release_execution_service().read_execution()
+
+
+@router.post("/release-execution/release")
+async def execute_admin_release(
+    payload: ReleaseExecutionRequestPayload,
+) -> dict[str, Any]:
+    try:
+        return _release_execution_service().execute_release(**_model_dump(payload))
+    except Exception as exc:
+        _raise_execution_http_error(exc)
+
+
+@router.post("/release-execution/rollback")
+async def execute_admin_release_rollback(
+    payload: ReleaseExecutionRequestPayload,
+) -> dict[str, Any]:
+    try:
+        return _release_execution_service().execute_rollback(**_model_dump(payload))
+    except Exception as exc:
+        _raise_execution_http_error(exc)
 
 
 @router.post("/release-governance/intents")

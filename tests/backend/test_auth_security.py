@@ -77,6 +77,18 @@ def _auth_client(*, user_token: str = "user-token", admin_token: str | None = "a
     async def cancel_release_intent(intent_id: str) -> dict[str, bool | str]:
         return {"ok": True, "intent_id": intent_id}
 
+    @app.get("/api/admin/release-execution")
+    async def admin_release_execution() -> dict[str, object]:
+        return {"runtime": {"auth": "admin", "mode": "controlled_local_execution"}}
+
+    @app.post("/api/admin/release-execution/release")
+    async def execute_release() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.post("/api/admin/release-execution/rollback")
+    async def execute_rollback() -> dict[str, bool]:
+        return {"ok": True}
+
     app.add_middleware(
         BearerAuthMiddleware,
         settings=RuntimeSettings(
@@ -111,6 +123,9 @@ def test_bearer_auth_required_for_api_routes() -> None:
         ("post", "/api/admin/release-governance/intents/intent-1/approvals"),
         ("post", "/api/admin/release-governance/intents/intent-1/rollback-plan"),
         ("post", "/api/admin/release-governance/intents/intent-1/cancel"),
+        ("get", "/api/admin/release-execution"),
+        ("post", "/api/admin/release-execution/release"),
+        ("post", "/api/admin/release-execution/rollback"),
     ],
 )
 def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: str, path: str) -> None:
@@ -138,6 +153,9 @@ def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: 
         ("post", "/api/admin/release-governance/intents/intent-1/approvals"),
         ("post", "/api/admin/release-governance/intents/intent-1/rollback-plan"),
         ("post", "/api/admin/release-governance/intents/intent-1/cancel"),
+        ("get", "/api/admin/release-execution"),
+        ("post", "/api/admin/release-execution/release"),
+        ("post", "/api/admin/release-execution/rollback"),
     ],
 )
 def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
@@ -164,6 +182,9 @@ def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
         ("post", "/api/admin/release-governance/intents/intent-1/approvals"),
         ("post", "/api/admin/release-governance/intents/intent-1/rollback-plan"),
         ("post", "/api/admin/release-governance/intents/intent-1/cancel"),
+        ("get", "/api/admin/release-execution"),
+        ("post", "/api/admin/release-execution/release"),
+        ("post", "/api/admin/release-execution/rollback"),
     ],
 )
 def test_admin_endpoints_use_user_token_when_no_separate_admin_token(method: str, path: str) -> None:
