@@ -557,6 +557,30 @@ def _build_crc_triage_question_card(current_question: dict[str, Any]) -> dict[st
     }
 
 
+def _resolve_crc_triage_answer_question_id(
+    crc_context: dict[str, Any],
+    existing_crc_state: Any,
+) -> str:
+    question_id = str(crc_context.get("question_id") or "").strip()
+    if question_id:
+        return question_id
+
+    triage_interaction = crc_context.get("triage_interaction")
+    if isinstance(triage_interaction, dict):
+        nested_question_id = str(triage_interaction.get("question_id") or "").strip()
+        if nested_question_id:
+            return nested_question_id
+
+    if isinstance(existing_crc_state, dict):
+        current_question = existing_crc_state.get("current_question")
+        if isinstance(current_question, dict):
+            current_question_id = str(current_question.get("id") or "").strip()
+            if current_question_id:
+                return current_question_id
+
+    return ""
+
+
 def _run_crc_triage_protocol_turn(
     state: CRCAgentState,
     previous_findings: dict[str, Any],
@@ -574,10 +598,13 @@ def _run_crc_triage_protocol_turn(
     if crc_context.get("action") == "start" or not isinstance(existing_crc_state, dict):
         crc_triage_state = start_crc_triage_state(getattr(state, "registry_patient_id", None))
     else:
+        answer_question_id = _resolve_crc_triage_answer_question_id(crc_context, existing_crc_state)
+        if answer_question_id:
+            crc_context["question_id"] = answer_question_id
         crc_triage_state = advance_crc_triage(
             dict(existing_crc_state),
             CrcTriageAnswer(
-                question_id=str(crc_context.get("question_id") or ""),
+                question_id=answer_question_id,
                 answer_text=user_text,
             ),
         )

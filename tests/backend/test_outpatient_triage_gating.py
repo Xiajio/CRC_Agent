@@ -292,6 +292,72 @@ def test_crc_subflow_answer_uses_top_level_question_context_when_findings_contex
     assert findings["crc_triage_state"]["qa_summary"][0]["answer"] == "没有"
 
 
+def _crc_triage_answer_state(*, user_text: str, crc_triage: dict[str, object]) -> CRCAgentState:
+    return CRCAgentState(
+        messages=[HumanMessage(content=user_text)],
+        source_subflow="crc_triage",
+        crc_triage=crc_triage,
+        findings={
+            "patient_subflow": "crc_triage",
+            "source_subflow": "crc_triage",
+            "crc_triage": crc_triage,
+            "crc_triage_state": {
+                "stage": "vitals",
+                "identity": {"source": "langg_registry", "registry_patient_id": 7, "crc_client_local_id": None},
+                "current_question": {
+                    "id": "vitals_shock_or_consciousness",
+                    "stage": "vitals",
+                    "text": "最近有没有出现头晕、眼前发黑、意识模糊，或者突然出冷汗、面色苍白的情况？",
+                    "options": ("没有", "有", "不清楚"),
+                    "askable": True,
+                    "terminal": False,
+                },
+                "active_inquiry": True,
+                "qa_summary": [],
+                "node_results": [],
+                "miss_count": 0,
+            },
+        },
+        registry_patient_id=7,
+    )
+
+
+def test_crc_subflow_answer_uses_nested_triage_interaction_question_id() -> None:
+    state = _crc_triage_answer_state(
+        user_text="没有",
+        crc_triage={
+            "action": "answer",
+            "triage_interaction": {
+                "question_id": "vitals_shock_or_consciousness",
+                "field_key": "vitals_shock_or_consciousness",
+                "selection_mode": "single",
+                "selected_option_ids": ["option_0"],
+                "other_text": None,
+            },
+        },
+    )
+
+    result = node_outpatient_triage(show_thinking=False)(state)
+
+    findings = result["findings"]
+    assert findings["crc_triage_state"]["current_question"]["id"] == "vitals_heart_or_breathing"
+    assert findings["crc_triage"]["question_id"] == "vitals_shock_or_consciousness"
+
+
+def test_crc_subflow_answer_falls_back_to_current_question_when_question_id_missing() -> None:
+    state = _crc_triage_answer_state(
+        user_text="没有",
+        crc_triage={"action": "answer"},
+    )
+
+    result = node_outpatient_triage(show_thinking=False)(state)
+
+    findings = result["findings"]
+    assert findings["crc_triage_state"]["current_question"]["id"] == "vitals_heart_or_breathing"
+    assert findings["crc_triage"]["question_id"] == "vitals_shock_or_consciousness"
+    assert findings["crc_triage_state"]["qa_summary"][0]["answer"] == "没有"
+
+
 def test_completed_crc_subflow_marks_findings_source_subflow() -> None:
     triage = node_outpatient_triage(show_thinking=False)
     state = CRCAgentState(

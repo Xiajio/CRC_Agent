@@ -3,6 +3,7 @@ import {
   CRC_TRIAGE_START_PROMPT,
   CRC_TRIAGE_SUBFLOW,
   buildCrcTriageAssessmentDraft,
+  buildCrcTriageAnswerContext,
   buildCrcTriageContext,
   hasCompletedCrcTriage,
 } from "./crc-triage-context";
@@ -51,6 +52,40 @@ describe("crc triage context helpers", () => {
       crc_triage: {
         action: "start",
         interaction_source: "patient_crc_triage_tab",
+      },
+    });
+  });
+
+  it("promotes triage card question_id into crc triage answer context", () => {
+    expect(
+      buildCrcTriageAnswerContext({
+        triage_interaction: {
+          question_id: "vitals_shock_or_consciousness",
+          field_key: "vitals_shock_or_consciousness",
+          selection_mode: "single",
+          selected_option_ids: ["option_0"],
+          other_text: null,
+        },
+      }),
+    ).toEqual({
+      patient_subflow: "crc_triage",
+      crc_triage: {
+        action: "answer",
+        interaction_source: "patient_crc_triage_tab",
+        question_id: "vitals_shock_or_consciousness",
+      },
+    });
+  });
+
+  it("uses fallback question id when answer context omits question_id", () => {
+    expect(
+      buildCrcTriageAnswerContext({}, "vitals_heart_or_breathing"),
+    ).toEqual({
+      patient_subflow: "crc_triage",
+      crc_triage: {
+        action: "answer",
+        interaction_source: "patient_crc_triage_tab",
+        question_id: "vitals_heart_or_breathing",
       },
     });
   });

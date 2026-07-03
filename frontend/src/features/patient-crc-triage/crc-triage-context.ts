@@ -25,6 +25,24 @@ export function buildCrcTriageContext(
   };
 }
 
+export function buildCrcTriageAnswerContext(
+  extra: Record<string, unknown> = {},
+  fallbackQuestionId?: string | null,
+): Record<string, unknown> {
+  const triageInteraction = objectRecord(extra.triage_interaction);
+  const questionId =
+    requiredString(extra.question_id)
+    ?? requiredString(triageInteraction.question_id)
+    ?? requiredString(fallbackQuestionId);
+
+  const { triage_interaction: _triageInteraction, question_id: _questionId, ...rest } = extra;
+
+  return buildCrcTriageContext("answer", {
+    ...rest,
+    ...(questionId ? { question_id: questionId } : {}),
+  });
+}
+
 export function hasCompletedCrcTriage(state: SessionState): boolean {
   const findings = state.findings;
 

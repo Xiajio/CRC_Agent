@@ -34,7 +34,10 @@ import {
   PatientCrcTriagePanel,
   type CrcTriageSaveStatus,
 } from "../features/patient-crc-triage/patient-crc-triage-panel";
-import { buildCrcTriageContext } from "../features/patient-crc-triage/crc-triage-context";
+import {
+  buildCrcTriageAnswerContext,
+  buildCrcTriageContext,
+} from "../features/patient-crc-triage/crc-triage-context";
 import { PatientCareCards } from "../features/patient-records/patient-care-cards";
 import { PatientRecordsPanel } from "../features/patient-records/patient-records-panel";
 import { useSceneSessions } from "../features/workspace/use-scene-sessions";
@@ -565,7 +568,10 @@ export function WorkspacePage() {
     }
 
     updateDraft("patient", "");
-    await submitCrcTriagePrompt(prompt, buildCrcTriageContext("answer"));
+    await submitCrcTriagePrompt(
+      prompt,
+      buildCrcTriageAnswerContext({}, workspaceCards.activePatientTriageQuestionId),
+    );
   }
 
   async function refreshPatientRecordsAndCareCards(sessionId: string) {
@@ -895,7 +901,10 @@ export function WorkspacePage() {
       onSubmit={() => void submitCrcTriageDraft()}
       patientContext={patientPatientContext}
       onCardPromptRequest={(prompt: string, context?: Record<string, unknown>) =>
-        void submitCrcTriagePrompt(prompt, buildCrcTriageContext("answer", context ?? {}))
+        void submitCrcTriagePrompt(
+          prompt,
+          buildCrcTriageAnswerContext(context ?? {}, workspaceCards.activePatientTriageQuestionId),
+        )
       }
     />
   );
