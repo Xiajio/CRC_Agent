@@ -39,6 +39,11 @@ tests/backend/*
 !tests/backend/test_auth_security.py
 !tests/backend/test_release_governance_api.py
 !tests/backend/test_release_governance_non_mutation.py
+!tests/backend/test_release_execution_contract.py
+!tests/backend/test_release_execution_store.py
+!tests/backend/test_release_execution_service.py
+!tests/backend/test_release_execution_api.py
+!tests/backend/test_release_execution_non_mutation.py
 !tests/backend/test_context_maintenance.py
 !tests/backend/test_crc_triage_patient_commands.py
 !tests/backend/test_crc_triage_flow.py
@@ -174,6 +179,9 @@ docs/safety/*
 !docs/safety/*.md
 !docs/superpowers/
 docs/superpowers/*
+!docs/superpowers/plans/
+docs/superpowers/plans/*
+!docs/superpowers/plans/2026-07-03-controlled-release-execution.md
 !docs/superpowers/specs/
 !docs/demo/
 docs/demo/*
