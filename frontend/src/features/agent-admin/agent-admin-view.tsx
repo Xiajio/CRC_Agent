@@ -4,9 +4,11 @@ import { ApiClientError, type ApiClient } from "../../app/api/client";
 import type {
   AdminCancelReleaseIntentRequest,
   AdminCreateReleaseIntentRequest,
+  AdminExecuteReleaseRequest,
   AdminRecordReleaseApprovalRequest,
   AdminRecordReleaseRollbackPlanRequest,
   AdminReleaseDashboardResponse,
+  AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
   AdminToolManifestResponse,
 } from "../../app/api/types";
@@ -35,10 +37,13 @@ type AgentAdminViewProps = {
       | "getAdminTools"
       | "getAdminReleaseDashboard"
       | "getAdminReleaseGovernance"
+      | "getAdminReleaseExecution"
       | "createAdminReleaseIntent"
       | "recordAdminReleaseApproval"
       | "recordAdminReleaseRollbackPlan"
       | "cancelAdminReleaseIntent"
+      | "executeAdminRelease"
+      | "executeAdminReleaseRollback"
     >
   >;
 };
@@ -61,7 +66,18 @@ export type AgentAdminReleaseGovernanceResource =
   | { status: "success"; data: AdminReleaseGovernanceResponse }
   | { status: "error"; error: { status?: number; message: string } };
 
+export type AgentAdminReleaseExecutionResource =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: AdminReleaseExecutionResponse }
+  | { status: "error"; error: { status?: number; message: string } };
+
 export type AgentAdminReleaseGovernanceActionState =
+  | { status: "idle" }
+  | { status: "running"; label: string }
+  | { status: "error"; message: string };
+
+export type AgentAdminReleaseExecutionActionState =
   | { status: "idle" }
   | { status: "running"; label: string }
   | { status: "error"; message: string };
@@ -71,6 +87,11 @@ export type AgentAdminReleaseGovernanceActions = {
   recordApproval: (intentId: string, request: AdminRecordReleaseApprovalRequest) => Promise<void>;
   recordRollbackPlan: (intentId: string, request: AdminRecordReleaseRollbackPlanRequest) => Promise<void>;
   cancelIntent: (intentId: string, request: AdminCancelReleaseIntentRequest) => Promise<void>;
+};
+
+export type AgentAdminReleaseExecutionActions = {
+  executeRelease: (request: AdminExecuteReleaseRequest) => Promise<void>;
+  executeRollback: (request: AdminExecuteReleaseRequest) => Promise<void>;
 };
 
 function apiErrorDetails(error: unknown, fallbackMessage: string): { status?: number; message: string } {
@@ -94,7 +115,9 @@ export function AgentAdminView({
   const [toolsResource, setToolsResource] = useState<AgentAdminToolsResource>({ status: "idle" });
   const [releaseDashboardResource, setReleaseDashboardResource] = useState<AgentAdminReleaseDashboardResource>({ status: "idle" });
   const [releaseGovernanceResource, setReleaseGovernanceResource] = useState<AgentAdminReleaseGovernanceResource>({ status: "idle" });
+  const [releaseExecutionResource, setReleaseExecutionResource] = useState<AgentAdminReleaseExecutionResource>({ status: "idle" });
   const [releaseGovernanceActionState, setReleaseGovernanceActionState] = useState<AgentAdminReleaseGovernanceActionState>({ status: "idle" });
+  const [releaseExecutionActionState, setReleaseExecutionActionState] = useState<AgentAdminReleaseExecutionActionState>({ status: "idle" });
   const watchedState = activeScene === "doctor" ? doctor : patient;
   const watchedSceneLabel = activeScene === "doctor" ? "医生会话" : "患者会话";
 
@@ -226,6 +249,42 @@ export function AgentAdminView({
     };
   }, [activeTaskId, apiClient]);
 
+  useEffect(() => {
+    if (activeTaskId !== "release") {
+      return;
+    }
+
+    if (!apiClient || typeof apiClient.getAdminReleaseExecution !== "function") {
+      setReleaseExecutionResource({ status: "idle" });
+      return;
+    }
+
+    let cancelled = false;
+    setReleaseExecutionResource({ status: "loading" });
+
+    void apiClient.getAdminReleaseExecution().then(
+      (data) => {
+        if (!cancelled) {
+          setReleaseExecutionResource({ status: "success", data });
+        }
+      },
+      (error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setReleaseExecutionResource({
+          status: "error",
+          error: apiErrorDetails(error, "Unknown admin release execution error"),
+        });
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTaskId, apiClient]);
+
   const releaseGovernanceActions: AgentAdminReleaseGovernanceActions = {
     async createIntent(request) {
       if (!apiClient || typeof apiClient.createAdminReleaseIntent !== "function") {
@@ -304,6 +363,46 @@ export function AgentAdminView({
     },
   };
 
+  const releaseExecutionActions: AgentAdminReleaseExecutionActions = {
+    async executeRelease(request) {
+      if (!apiClient || typeof apiClient.executeAdminRelease !== "function") {
+        setReleaseExecutionActionState({ status: "error", message: "Release execution API is unavailable" });
+        return;
+      }
+
+      setReleaseExecutionActionState({ status: "running", label: "Execute release" });
+      try {
+        const data = await apiClient.executeAdminRelease(request);
+        setReleaseExecutionResource({ status: "success", data });
+        setReleaseExecutionActionState({ status: "idle" });
+      } catch (error) {
+        setReleaseExecutionActionState({
+          status: "error",
+          message: apiErrorDetails(error, "Unknown release execution error").message,
+        });
+      }
+    },
+
+    async executeRollback(request) {
+      if (!apiClient || typeof apiClient.executeAdminReleaseRollback !== "function") {
+        setReleaseExecutionActionState({ status: "error", message: "Release rollback API is unavailable" });
+        return;
+      }
+
+      setReleaseExecutionActionState({ status: "running", label: "Execute rollback" });
+      try {
+        const data = await apiClient.executeAdminReleaseRollback(request);
+        setReleaseExecutionResource({ status: "success", data });
+        setReleaseExecutionActionState({ status: "idle" });
+      } catch (error) {
+        setReleaseExecutionActionState({
+          status: "error",
+          message: apiErrorDetails(error, "Unknown release rollback error").message,
+        });
+      }
+    },
+  };
+
   function navigateTask(taskId: AgentAdminTaskId) {
     if (taskId === "tools" && activeTaskId !== "tools" && apiClient && typeof apiClient.getAdminTools === "function") {
       setToolsResource({ status: "loading" });
@@ -313,6 +412,9 @@ export function AgentAdminView({
     }
     if (taskId === "release" && activeTaskId !== "release" && apiClient && typeof apiClient.getAdminReleaseGovernance === "function") {
       setReleaseGovernanceResource({ status: "loading" });
+    }
+    if (taskId === "release" && activeTaskId !== "release" && apiClient && typeof apiClient.getAdminReleaseExecution === "function") {
+      setReleaseExecutionResource({ status: "loading" });
     }
     setActiveTaskId(taskId);
   }
@@ -405,8 +507,11 @@ export function AgentAdminView({
           toolsResource={toolsResource}
           releaseDashboardResource={releaseDashboardResource}
           releaseGovernanceResource={releaseGovernanceResource}
+          releaseExecutionResource={releaseExecutionResource}
           releaseGovernanceActionState={releaseGovernanceActionState}
+          releaseExecutionActionState={releaseExecutionActionState}
           releaseGovernanceActions={releaseGovernanceActions}
+          releaseExecutionActions={releaseExecutionActions}
         />
       </div>
     </main>
