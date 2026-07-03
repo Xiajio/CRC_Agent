@@ -11,10 +11,16 @@ __pycache__/
 *.egg-info/
 .venv/
 venv/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.hypothesis/
 
 # Frontend dependencies and build output
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
 
 # Test and browser artifacts
 .playwright-cli/
@@ -130,12 +136,27 @@ codex-runlogs/
 /_garbled_analysis.txt
 /_recovery_test_output.txt
 
+# PDF render scratch (scripts/generate_*_pdf.py)
+/_report_render_*/
+
+# Root build output
+/build/
+/dist/
+
 # Local indexes and data kept out of version control
 chroma_db/
 bm25_index/
 data/
 data_temp.csv
 CRC-client/
+
+# AI assistant / IDE local state
+.codex/
+.agents/
+.cursor/
+
+# Streamlit local secrets
+.streamlit/secrets.toml
 
 # Editor and OS files
 .idea/
