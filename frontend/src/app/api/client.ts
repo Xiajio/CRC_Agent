@@ -2,7 +2,9 @@ import { streamJsonEvents, type FetchLike, type StreamTraceTap } from "./stream"
 import type {
   AdminCancelReleaseIntentRequest,
   AdminCreateReleaseIntentRequest,
+  AdminExecuteReleaseRequest,
   AdminReleaseDashboardResponse,
+  AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
   AdminRecordReleaseApprovalRequest,
   AdminRecordReleaseRollbackPlanRequest,
@@ -97,6 +99,7 @@ export interface ApiClient {
   getAdminTools(): Promise<AdminToolManifestResponse>;
   getAdminReleaseDashboard(): Promise<AdminReleaseDashboardResponse>;
   getAdminReleaseGovernance(): Promise<AdminReleaseGovernanceResponse>;
+  getAdminReleaseExecution(): Promise<AdminReleaseExecutionResponse>;
   createAdminReleaseIntent(request: AdminCreateReleaseIntentRequest): Promise<AdminReleaseGovernanceResponse>;
   recordAdminReleaseApproval(
     intentId: string,
@@ -110,6 +113,8 @@ export interface ApiClient {
     intentId: string,
     request: AdminCancelReleaseIntentRequest,
   ): Promise<AdminReleaseGovernanceResponse>;
+  executeAdminRelease(request: AdminExecuteReleaseRequest): Promise<AdminReleaseExecutionResponse>;
+  executeAdminReleaseRollback(request: AdminExecuteReleaseRequest): Promise<AdminReleaseExecutionResponse>;
   createSession(scene: Scene): Promise<SessionResponse>;
   getSession(sessionId: string, messageLimit?: number): Promise<SessionResponse>;
   getMessages(sessionId: string, before?: string | number | null, limit?: number): Promise<MessageHistoryResponse>;
@@ -181,6 +186,13 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
     },
 
+    async getAdminReleaseExecution() {
+      const response = await fetchImpl(buildUrl("/api/admin/release-execution", baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<AdminReleaseExecutionResponse>(response);
+    },
+
     async createAdminReleaseIntent(request) {
       const response = await fetchImpl(buildUrl("/api/admin/release-governance/intents", baseUrl), {
         method: "POST",
@@ -227,6 +239,24 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         },
       );
       return parseJsonResponse<AdminReleaseGovernanceResponse>(response);
+    },
+
+    async executeAdminRelease(request) {
+      const response = await fetchImpl(buildUrl("/api/admin/release-execution/release", baseUrl), {
+        method: "POST",
+        headers: buildJsonHeaders(defaultHeaders),
+        body: JSON.stringify(request),
+      });
+      return parseJsonResponse<AdminReleaseExecutionResponse>(response);
+    },
+
+    async executeAdminReleaseRollback(request) {
+      const response = await fetchImpl(buildUrl("/api/admin/release-execution/rollback", baseUrl), {
+        method: "POST",
+        headers: buildJsonHeaders(defaultHeaders),
+        body: JSON.stringify(request),
+      });
+      return parseJsonResponse<AdminReleaseExecutionResponse>(response);
     },
 
     async createSession(scene) {

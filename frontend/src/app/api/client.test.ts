@@ -255,6 +255,135 @@ describe("createApiClient", () => {
     }
   });
 
+  it("loads admin release execution with configured Authorization headers", async () => {
+    const payload = {
+      governance: {
+        active_intent_id: "intent-1",
+        derived_status: "approved",
+        required_approvals_complete: true,
+        rollback_plan_id: "rollback-1",
+      },
+      preflight: {
+        release: { allowed: true, reasons: [] },
+        rollback: { allowed: false, reasons: ["no successful release execution exists"] },
+      },
+      feature_flag_state: null,
+      requests: [],
+      results: [],
+      audit_events: [],
+      integrity: { status: "verified", warnings: [] },
+      runtime: {
+        auth: "admin",
+        source: "reports/release_execution",
+        mode: "controlled_local_execution",
+      },
+    };
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    const fetchImpl = vi.fn(async () => response);
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+
+    await expect(client.getAdminReleaseExecution()).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/release-execution",
+      { headers: { Authorization: "Bearer dev-token" } },
+    );
+  });
+
+  it("executes admin release and rollback with JSON request bodies", async () => {
+    const payload = {
+      governance: {
+        active_intent_id: "intent-1",
+        derived_status: "approved",
+        required_approvals_complete: true,
+        rollback_plan_id: "rollback-1",
+      },
+      preflight: {
+        release: { allowed: false, reasons: ["feature flag is already enabled"] },
+        rollback: { allowed: true, reasons: [] },
+      },
+      feature_flag_state: {
+        flag_name: "doctor_review_cockpit_v0",
+        enabled: true,
+        scope: "feature_flag_candidate",
+        source_intent_id: "intent-1",
+        source_execution_id: "release_exec_1",
+        rollback_target: "agent_policy_20260624_0",
+        updated_by: "release_manager",
+        updated_at: "2026-07-03T09:00:00+08:00",
+      },
+      requests: [],
+      results: [],
+      audit_events: [],
+      integrity: { status: "verified", warnings: [] },
+      runtime: {
+        auth: "admin",
+        source: "reports/release_execution",
+        mode: "controlled_local_execution",
+      },
+    };
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push([input, init]);
+      return response;
+    });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+    const releaseRequest = {
+      intent_id: "intent-1",
+      requested_by: "release_manager",
+      idempotency_key: "release-1",
+      reason: "Approved release.",
+      expected_rollback_plan_id: "rollback-1",
+    };
+    const rollbackRequest = {
+      intent_id: "intent-1",
+      requested_by: "release_manager",
+      idempotency_key: "rollback-1",
+      reason: "Rollback to the accepted target.",
+      expected_rollback_plan_id: "rollback-1",
+    };
+
+    await expect(client.executeAdminRelease(releaseRequest)).resolves.toEqual(payload);
+    await expect(client.executeAdminReleaseRollback(rollbackRequest)).resolves.toEqual(payload);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toEqual([
+      "http://127.0.0.1:8000/api/admin/release-execution/release",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify(releaseRequest),
+      },
+    ]);
+    expect(calls[1]).toEqual([
+      "http://127.0.0.1:8000/api/admin/release-execution/rollback",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify(rollbackRequest),
+      },
+    ]);
+    for (const [, init] of calls) {
+      const headers = init?.headers as Headers;
+      expect(headers.get("Authorization")).toBe("Bearer dev-token");
+      expect(headers.get("Content-Type")).toBe("application/json");
+    }
+  });
+
   it("downloads session assets through fetch with configured Authorization headers", async () => {
     const body = new Blob(["asset-content"], { type: "text/plain" });
     const response = {

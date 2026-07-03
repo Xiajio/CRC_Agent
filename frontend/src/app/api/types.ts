@@ -245,6 +245,102 @@ export interface AdminReleaseGovernanceResponse {
   };
 }
 
+export interface AdminReleaseExecutionPreflightAction {
+  allowed: boolean;
+  reasons: string[];
+}
+
+export interface AdminReleaseExecutionGovernanceSummary {
+  active_intent_id: string | null;
+  derived_status: AdminReleaseIntentStatus | null;
+  required_approvals_complete: boolean;
+  rollback_plan_id: string | null;
+}
+
+export interface AdminFeatureFlagState {
+  flag_name: "doctor_review_cockpit_v0";
+  enabled: boolean;
+  scope: "feature_flag_candidate";
+  source_intent_id: string;
+  source_execution_id: string;
+  rollback_target: string;
+  updated_by: string;
+  updated_at: string;
+}
+
+export interface AdminReleaseExecutionRequestRecord {
+  execution_id: string;
+  intent_id: string;
+  action: "release" | "rollback";
+  requested_by: string;
+  requested_at: string;
+  idempotency_key: string;
+  reason: string;
+  expected_governance_hash: string;
+  expected_rollback_plan_id: string;
+  target_flag_state: Record<string, JsonValue | unknown>;
+  rollback_target: string | null;
+}
+
+export interface AdminReleaseExecutionResultRecord {
+  result_id: string;
+  execution_id: string;
+  intent_id: string;
+  action: "release" | "rollback";
+  status: "succeeded" | "failed";
+  started_at: string;
+  finished_at: string;
+  actor: string;
+  previous_flag_state: AdminFeatureFlagState | null;
+  new_flag_state: AdminFeatureFlagState | null;
+  failure_reason: string | null;
+}
+
+export interface AdminReleaseExecutionAuditEvent {
+  event_id: string;
+  execution_id: string;
+  intent_id: string;
+  event_type:
+    | "release_requested"
+    | "release_succeeded"
+    | "release_failed"
+    | "rollback_requested"
+    | "rollback_succeeded"
+    | "rollback_failed"
+    | "execution_read";
+  actor: string;
+  timestamp: string;
+  payload_hash: string;
+  previous_event_hash: string;
+  event_hash: string;
+}
+
+export interface AdminReleaseExecutionResponse {
+  governance: AdminReleaseExecutionGovernanceSummary;
+  preflight: {
+    release: AdminReleaseExecutionPreflightAction;
+    rollback: AdminReleaseExecutionPreflightAction;
+  };
+  feature_flag_state: AdminFeatureFlagState | null;
+  requests: AdminReleaseExecutionRequestRecord[];
+  results: AdminReleaseExecutionResultRecord[];
+  audit_events: AdminReleaseExecutionAuditEvent[];
+  integrity: AdminReleaseGovernanceIntegrity;
+  runtime: {
+    auth: "admin";
+    source: "reports/release_execution";
+    mode: "controlled_local_execution";
+  };
+}
+
+export interface AdminExecuteReleaseRequest {
+  intent_id: string;
+  requested_by: string;
+  idempotency_key: string;
+  reason: string;
+  expected_rollback_plan_id: string;
+}
+
 export interface AdminCreateReleaseIntentRequest {
   requested_by: string;
   target_scope: AdminReleaseTargetScope;
