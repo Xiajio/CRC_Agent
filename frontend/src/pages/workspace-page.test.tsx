@@ -1028,6 +1028,7 @@ describe("WorkspacePage patient triage submission wiring", () => {
           crc_triage: {
             action: "answer",
             interaction_source: "patient_crc_triage_tab",
+            question_id: "triage-q-fever-1",
           },
         },
         trace_id: "trace-123",
