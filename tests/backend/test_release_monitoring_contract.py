@@ -4,6 +4,9 @@ import pytest
 
 from src.contracts.release_monitoring import (
     GENESIS_MONITORING_EVENT_HASH,
+    MONITORING_ACKNOWLEDGEMENT_DISPOSITIONS,
+    MONITORING_ALERT_CATEGORIES,
+    MONITORING_RECOMMENDED_ACTIONS,
     ReleaseMonitoringAcknowledgement,
     ReleaseMonitoringAlert,
     ReleaseMonitoringCheck,
@@ -24,6 +27,28 @@ EXECUTION_ID = "release_exec_release_intent_release_safety_20260629_001_6da729a0
 ROLLBACK_PLAN_ID = "rollback_plan_release_intent_release_safety_20260629_001_1b00f364"
 
 
+SPEC_ALERT_CATEGORIES = (
+    "missing_required_check",
+    "post_release_check_failed",
+    "execution_integrity_failed",
+    "governance_drift",
+    "feature_flag_state_mismatch",
+    "rollback_ready",
+)
+SPEC_RECOMMENDED_ACTIONS = (
+    "observe",
+    "prepare_rollback",
+    "investigate",
+    "execute_step13_rollback",
+)
+SPEC_ACKNOWLEDGEMENT_DISPOSITIONS = (
+    "investigating",
+    "false_positive",
+    "accepted_risk",
+    "rollback_started_elsewhere",
+)
+
+
 def make_check(status: str = "pass") -> ReleaseMonitoringCheck:
     return ReleaseMonitoringCheck(
         check_id=make_monitoring_check_id(EXECUTION_ID, "p0_harness_replay", "idem-1"),
@@ -38,6 +63,31 @@ def make_check(status: str = "pass") -> ReleaseMonitoringCheck:
         metrics={"passed": 5, "failed": 0, "hard_fail_count": 0},
         idempotency_key="idem-1",
     )
+
+
+def make_candidate(action: str = "execute_step13_rollback") -> ReleaseRollbackTriggerCandidate:
+    alert_id = make_monitoring_alert_id(
+        EXECUTION_ID,
+        "post_release_check_failed",
+        "p0_harness_replay",
+    )
+    return ReleaseRollbackTriggerCandidate(
+        candidate_id=make_rollback_trigger_candidate_id(EXECUTION_ID, [alert_id]),
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        source_alert_ids=[alert_id],
+        recommended_action=action,
+        rollback_plan_id=ROLLBACK_PLAN_ID,
+        rollback_target="agent_policy_20260624_0",
+        reason="A critical post-release check failed while the local feature flag remains enabled.",
+        created_at="2026-07-03T11:00:00+08:00",
+    )
+
+
+def test_monitoring_enum_contracts_match_step14_spec() -> None:
+    assert MONITORING_ALERT_CATEGORIES == SPEC_ALERT_CATEGORIES
+    assert MONITORING_RECOMMENDED_ACTIONS == SPEC_RECOMMENDED_ACTIONS
+    assert MONITORING_ACKNOWLEDGEMENT_DISPOSITIONS == SPEC_ACKNOWLEDGEMENT_DISPOSITIONS
 
 
 def test_monitoring_contracts_round_trip_to_dict() -> None:
@@ -99,6 +149,18 @@ def test_monitoring_contracts_round_trip_to_dict() -> None:
     assert ReleaseMonitoringAuditEvent(**event.to_dict()).to_dict() == event.to_dict()
 
 
+@pytest.mark.parametrize("action", ["observe", "investigate", "prepare_rollback"])
+def test_rollback_trigger_candidate_requires_step13_rollback_action(action: str) -> None:
+    payload = make_candidate().to_dict()
+    payload["recommended_action"] = action
+
+    with pytest.raises(
+        ValueError,
+        match="recommended_action must be execute_step13_rollback",
+    ):
+        ReleaseRollbackTriggerCandidate(**payload)
+
+
 @pytest.mark.parametrize("check_type", ["runtime_patient_scan", "scheduler_probe", ""])
 def test_check_rejects_unknown_check_type(check_type: str) -> None:
     payload = make_check().to_dict()
@@ -117,9 +179,21 @@ def test_check_rejects_unknown_status(status: str) -> None:
         ReleaseMonitoringCheck(**payload)
 
 
-def test_evidence_refs_must_not_be_absolute_paths() -> None:
+@pytest.mark.parametrize(
+    "evidence_ref",
+    [
+        "D:/YiZhu_Agnet/LangG/reports/harness/harness_20260629_001.json",
+        "D:foo",
+        "/reports/harness/x.json",
+        "reports/../secrets.json",
+        "reports/./x.json",
+        "reports//x.json",
+        "https://example.com/x",
+    ],
+)
+def test_evidence_refs_must_be_repo_relative_paths(evidence_ref: str) -> None:
     payload = make_check().to_dict()
-    payload["evidence_refs"] = ["D:/YiZhu_Agnet/LangG/reports/harness/harness_20260629_001.json"]
+    payload["evidence_refs"] = [evidence_ref]
 
     with pytest.raises(ValueError, match="evidence_refs must be repo-relative"):
         ReleaseMonitoringCheck(**payload)

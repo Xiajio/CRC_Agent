@@ -37,13 +37,13 @@ MonitoringAlertCategory = Literal[
     "post_release_check_failed",
     "execution_integrity_failed",
     "governance_drift",
-    "dashboard_drift",
+    "feature_flag_state_mismatch",
     "rollback_ready",
 ]
 MonitoringAlertStatus = Literal["active", "acknowledged", "resolved"]
 MonitoringRecommendedAction = Literal[
     "observe",
-    "record_required_check",
+    "prepare_rollback",
     "investigate",
     "execute_step13_rollback",
 ]
@@ -51,8 +51,7 @@ MonitoringAcknowledgementDisposition = Literal[
     "investigating",
     "false_positive",
     "accepted_risk",
-    "rollback_planned",
-    "resolved",
+    "rollback_started_elsewhere",
 ]
 MonitoringAuditEventType = Literal[
     "check_recorded",
@@ -84,7 +83,7 @@ MONITORING_ALERT_CATEGORIES: tuple[MonitoringAlertCategory, ...] = (
     "post_release_check_failed",
     "execution_integrity_failed",
     "governance_drift",
-    "dashboard_drift",
+    "feature_flag_state_mismatch",
     "rollback_ready",
 )
 MONITORING_ALERT_STATUSES: tuple[MonitoringAlertStatus, ...] = (
@@ -94,7 +93,7 @@ MONITORING_ALERT_STATUSES: tuple[MonitoringAlertStatus, ...] = (
 )
 MONITORING_RECOMMENDED_ACTIONS: tuple[MonitoringRecommendedAction, ...] = (
     "observe",
-    "record_required_check",
+    "prepare_rollback",
     "investigate",
     "execute_step13_rollback",
 )
@@ -104,8 +103,7 @@ MONITORING_ACKNOWLEDGEMENT_DISPOSITIONS: tuple[
     "investigating",
     "false_positive",
     "accepted_risk",
-    "rollback_planned",
-    "resolved",
+    "rollback_started_elsewhere",
 )
 MONITORING_EVENT_TYPES: tuple[MonitoringAuditEventType, ...] = (
     "check_recorded",
@@ -320,11 +318,8 @@ class ReleaseRollbackTriggerCandidate:
             "source_alert_ids",
             tuple(_require_string_list("source_alert_ids", self.source_alert_ids)),
         )
-        _validate_choice(
-            "recommended_action",
-            self.recommended_action,
-            MONITORING_RECOMMENDED_ACTIONS,
-        )
+        if self.recommended_action != "execute_step13_rollback":
+            raise ValueError("recommended_action must be execute_step13_rollback")
         _require_non_empty("rollback_plan_id", self.rollback_plan_id)
         _require_non_empty("rollback_target", self.rollback_target)
         _require_non_empty("reason", self.reason)
@@ -626,11 +621,14 @@ def _validate_evidence_refs(evidence_refs: list[str]) -> list[str]:
     refs = _require_string_list("evidence_refs", evidence_refs)
     for ref in refs:
         normalized_ref = ref.replace("\\", "/")
-        if re.match(r"^[a-zA-Z]:/", normalized_ref) is not None:
+        if re.match(r"^[a-zA-Z]:", normalized_ref) is not None:
             raise ValueError("evidence_refs must be repo-relative")
         if normalized_ref.startswith("/"):
             raise ValueError("evidence_refs must be repo-relative")
-        if any(part == ".." for part in normalized_ref.split("/")):
+        if "://" in normalized_ref:
+            raise ValueError("evidence_refs must be repo-relative")
+        parts = normalized_ref.split("/")
+        if any(part in {"", ".", ".."} for part in parts):
             raise ValueError("evidence_refs must be repo-relative")
     return refs
 
