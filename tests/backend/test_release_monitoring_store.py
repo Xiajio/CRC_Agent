@@ -12,6 +12,7 @@ from backend.api.services.release_monitoring_store import (
 from src.contracts.release_monitoring import (
     ReleaseMonitoringAcknowledgement,
     ReleaseMonitoringCheck,
+    canonical_monitoring_payload_hash,
     make_monitoring_acknowledgement_id,
     make_monitoring_alert_id,
     make_monitoring_check_id,
@@ -124,6 +125,101 @@ def test_tampered_check_blocks_writes(tmp_path: Path) -> None:
 
     with pytest.raises(ReleaseMonitoringIntegrityError, match="release monitoring integrity failed"):
         store.write_check(make_check("idem-2"), timestamp="2026-07-03T11:10:00+08:00")
+
+
+def test_deleted_check_artifact_fails_integrity_and_blocks_writes(tmp_path: Path) -> None:
+    root = tmp_path / "reports" / "release_monitoring"
+    store = ReleaseMonitoringStore(root)
+    check = make_check()
+    store.write_check(check, timestamp=check.observed_at)
+    (root / "checks" / f"{check.check_id}.json").unlink()
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert any("check artifact" in warning for warning in state.integrity["warnings"])
+    with pytest.raises(ReleaseMonitoringIntegrityError, match="release monitoring integrity failed"):
+        store.write_check(make_check("idem-2"), timestamp="2026-07-03T11:10:00+08:00")
+
+
+def test_deleted_acknowledgement_artifact_fails_integrity(tmp_path: Path) -> None:
+    root = tmp_path / "reports" / "release_monitoring"
+    store = ReleaseMonitoringStore(root)
+    alert_id = make_monitoring_alert_id(EXECUTION_ID, "post_release_check_failed", "p0_harness_replay")
+    acknowledgement = make_ack(alert_id)
+    store.write_acknowledgement(acknowledgement, timestamp=acknowledgement.acknowledged_at)
+    (root / "acknowledgements" / f"{acknowledgement.acknowledgement_id}.json").unlink()
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert any(
+        "acknowledgement artifact" in warning
+        for warning in state.integrity["warnings"]
+    )
+
+
+def test_write_check_with_invalid_timestamp_does_not_leave_artifact(tmp_path: Path) -> None:
+    root = tmp_path / "reports" / "release_monitoring"
+    store = ReleaseMonitoringStore(root)
+    check = make_check()
+
+    with pytest.raises((ValueError, ReleaseMonitoringIntegrityError)):
+        store.write_check(check, timestamp="not-a-date")
+
+    assert not (root / "checks" / f"{check.check_id}.json").exists()
+
+
+def test_write_acknowledgement_with_invalid_timestamp_does_not_leave_artifact(tmp_path: Path) -> None:
+    root = tmp_path / "reports" / "release_monitoring"
+    store = ReleaseMonitoringStore(root)
+    alert_id = make_monitoring_alert_id(EXECUTION_ID, "post_release_check_failed", "p0_harness_replay")
+    acknowledgement = make_ack(alert_id)
+
+    with pytest.raises((ValueError, ReleaseMonitoringIntegrityError)):
+        store.write_acknowledgement(acknowledgement, timestamp="not-a-date")
+
+    assert not (root / "acknowledgements" / f"{acknowledgement.acknowledgement_id}.json").exists()
+
+
+def test_same_timestamp_check_writes_have_unique_audit_event_ids(tmp_path: Path) -> None:
+    store = ReleaseMonitoringStore(tmp_path / "reports" / "release_monitoring")
+    first = make_check("idem-1")
+    second = make_check("idem-2")
+
+    store.write_check(first, timestamp=first.observed_at)
+    store.write_check(second, timestamp=first.observed_at)
+
+    state = store.read_state()
+    event_ids = [event.event_id for event in state.audit_events]
+    assert len(event_ids) == len(set(event_ids))
+    assert state.integrity == {"status": "verified", "warnings": []}
+
+
+def test_duplicate_audit_event_id_fails_integrity(tmp_path: Path) -> None:
+    root = tmp_path / "reports" / "release_monitoring"
+    store = ReleaseMonitoringStore(root)
+    first = make_check("idem-1")
+    second = make_check("idem-2")
+    store.write_check(first, timestamp=first.observed_at)
+    store.write_check(second, timestamp="2026-07-03T11:01:00+08:00")
+    audit_path = root / "audit" / "release_monitoring_20260703.jsonl"
+    records = [
+        json.loads(line)
+        for line in audit_path.read_text(encoding="utf-8").splitlines()
+    ]
+    records[1]["event_id"] = records[0]["event_id"]
+    event_hash_payload = {key: value for key, value in records[1].items() if key != "event_hash"}
+    records[1]["event_hash"] = canonical_monitoring_payload_hash(event_hash_payload)
+    audit_path.write_text(
+        "".join(json.dumps(record, sort_keys=True) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert any("duplicate audit event id" in warning for warning in state.integrity["warnings"])
 
 
 def test_symlink_root_fails_integrity(tmp_path: Path) -> None:

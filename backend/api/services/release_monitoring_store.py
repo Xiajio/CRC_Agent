@@ -9,7 +9,6 @@ from typing import Any, Callable, TypeVar
 
 from src.contracts.release_monitoring import (
     GENESIS_MONITORING_EVENT_HASH,
-    MonitoringAuditEventType,
     ReleaseMonitoringAcknowledgement,
     ReleaseMonitoringAuditEvent,
     ReleaseMonitoringCheck,
@@ -116,11 +115,12 @@ class ReleaseMonitoringStore:
         self._raise_if_integrity_failed()
         self.assert_idempotent_check_matches(check)
         check_path = self._artifact_path(self.checks_dir, check.check_id)
+        self._audit_path(timestamp)
         event = build_monitoring_audit_event(
             event_id=make_monitoring_event_id(
                 check.execution_id,
                 "check_recorded",
-                timestamp,
+                f"{timestamp}#{check.check_id}",
             ),
             intent_id=check.intent_id,
             execution_id=check.execution_id,
@@ -132,7 +132,11 @@ class ReleaseMonitoringStore:
         )
 
         self._write_json_once(check_path, check.to_dict())
-        self._append_event(event, timestamp=timestamp)
+        try:
+            self._append_event(event, timestamp=timestamp)
+        except Exception:
+            check_path.unlink(missing_ok=True)
+            raise
 
     def write_acknowledgement(
         self,
@@ -145,11 +149,12 @@ class ReleaseMonitoringStore:
             self.acknowledgements_dir,
             acknowledgement.acknowledgement_id,
         )
+        self._audit_path(timestamp)
         event = build_monitoring_audit_event(
             event_id=make_monitoring_event_id(
                 acknowledgement.execution_id,
                 "alert_acknowledged",
-                timestamp,
+                f"{timestamp}#{acknowledgement.acknowledgement_id}",
             ),
             intent_id=acknowledgement.intent_id,
             execution_id=acknowledgement.execution_id,
@@ -161,7 +166,11 @@ class ReleaseMonitoringStore:
         )
 
         self._write_json_once(acknowledgement_path, acknowledgement.to_dict())
-        self._append_event(event, timestamp=timestamp)
+        try:
+            self._append_event(event, timestamp=timestamp)
+        except Exception:
+            acknowledgement_path.unlink(missing_ok=True)
+            raise
 
     def _read_state_with_integrity(self) -> ReleaseMonitoringState:
         root_warning = self._root_layout_warning()
@@ -242,13 +251,17 @@ class ReleaseMonitoringStore:
         *,
         timestamp: str,
     ) -> None:
-        audit_path = self.audit_dir / f"release_monitoring_{_audit_date(timestamp)}.jsonl"
-        self._raise_if_parent_outside_root(audit_path)
-        self._raise_if_existing_write_target_outside_root(audit_path)
+        audit_path = self._audit_path(timestamp)
         audit_path.parent.mkdir(parents=True, exist_ok=True)
         with audit_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(event.to_dict(), sort_keys=True))
             handle.write("\n")
+
+    def _audit_path(self, timestamp: str) -> Path:
+        audit_path = self.audit_dir / f"release_monitoring_{_audit_date(timestamp)}.jsonl"
+        self._raise_if_parent_outside_root(audit_path)
+        self._raise_if_existing_write_target_outside_root(audit_path)
+        return audit_path
 
     def _read_json_dir(
         self,
@@ -347,6 +360,7 @@ class ReleaseMonitoringStore:
 
         records: list[_AuditEventRecord] = []
         warnings: list[str] = []
+        seen_event_ids: set[str] = set()
         for path in audit_paths:
             try:
                 _audit_file_date(path)
@@ -389,6 +403,11 @@ class ReleaseMonitoringStore:
                         f"{path}:{line_number} audit event is invalid: {exc}"
                     )
                     continue
+                if event.event_id in seen_event_ids:
+                    warnings.append(
+                        f"{path}:{line_number} duplicate audit event id: {event.event_id}"
+                    )
+                seen_event_ids.add(event.event_id)
                 records.append(
                     _AuditEventRecord(
                         event=event,
@@ -450,10 +469,24 @@ class ReleaseMonitoringStore:
                 warnings.append(
                     f"check artifact {execution_id} does not match an audit payload hash"
                 )
+        for event in audit_events:
+            if event.event_type != "check_recorded":
+                continue
+            if (event.execution_id, event.payload_hash) not in check_hashes:
+                warnings.append(
+                    f"audit check_recorded event {event.event_id} references missing check artifact"
+                )
         for execution_id, payload_hash in acknowledgement_hashes:
             if (execution_id, payload_hash) not in audit_acknowledgement_hashes:
                 warnings.append(
                     f"acknowledgement artifact {execution_id} does not match an audit payload hash"
+                )
+        for event in audit_events:
+            if event.event_type != "alert_acknowledged":
+                continue
+            if (event.execution_id, event.payload_hash) not in acknowledgement_hashes:
+                warnings.append(
+                    f"audit alert_acknowledged event {event.event_id} references missing acknowledgement artifact"
                 )
         return warnings
 
