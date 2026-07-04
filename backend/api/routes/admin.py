@@ -127,8 +127,14 @@ def _raise_execution_http_error(exc: Exception) -> None:
 
 def _raise_monitoring_http_error(exc: Exception) -> None:
     if (
-        isinstance(exc, ReleaseMonitoringValidationError)
-        and "alert_id does not reference" in str(exc)
+        (
+            isinstance(exc, ReleaseMonitoringValidationError)
+            and "alert_id does not reference" in str(exc)
+        )
+        or (
+            isinstance(exc, ReleaseMonitoringConflictError)
+            and "alert does not exist in current monitoring model" in str(exc)
+        )
     ):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if isinstance(
