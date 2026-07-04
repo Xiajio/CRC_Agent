@@ -1566,7 +1566,6 @@ function ReleaseMonitoringForms({
               id="release-monitoring-metrics-json"
               value={metricsText}
               onChange={(event) => setMetricsText(event.target.value)}
-              required
             />
           </label>
           <button type="submit" disabled={!canRecordCheck}>Record monitoring check</button>

@@ -1322,6 +1322,50 @@ describe("AgentAdminView", () => {
     expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("check-recorded");
   });
 
+  it("records monitoring checks with blank metrics as an empty object", async () => {
+    const recordAdminReleaseMonitoringCheck = vi.fn(async () => makeAdminReleaseMonitoring());
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      recordAdminReleaseMonitoringCheck,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-blank-metrics" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-blank-metrics" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Record monitoring check"));
+    fireEvent.change(screen.getByLabelText("Monitoring actor"), { target: { value: "monitor-admin" } });
+    fireEvent.change(screen.getByLabelText("Monitoring check type"), { target: { value: "agent_admin_smoke" } });
+    fireEvent.change(screen.getByLabelText("Monitoring check status"), { target: { value: "pass" } });
+    fireEvent.change(screen.getByLabelText("Monitoring summary"), { target: { value: "blank metrics smoke passed" } });
+    fireEvent.change(screen.getByLabelText("Monitoring idempotency key"), { target: { value: "monitoring-blank-metrics" } });
+    fireEvent.change(screen.getByLabelText("Evidence refs"), { target: { value: "reports/a.json" } });
+    fireEvent.change(screen.getByLabelText("Metrics JSON"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Record monitoring check" }));
+
+    await waitFor(() => expect(recordAdminReleaseMonitoringCheck).toHaveBeenCalledTimes(1));
+    expect(recordAdminReleaseMonitoringCheck).toHaveBeenCalledWith({
+      intent_id: "intent-1",
+      execution_id: "release_exec_1",
+      check_type: "agent_admin_smoke",
+      status: "pass",
+      observed_by: "monitor-admin",
+      summary: "blank metrics smoke passed",
+      evidence_refs: ["reports/a.json"],
+      metrics: {},
+      idempotency_key: "monitoring-blank-metrics",
+    });
+  });
+
   it("acknowledges monitoring alerts", async () => {
     const updatedMonitoring = makeAdminReleaseMonitoring({
       alerts: [],
