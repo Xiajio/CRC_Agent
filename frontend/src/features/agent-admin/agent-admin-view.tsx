@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { ApiClientError, type ApiClient } from "../../app/api/client";
 import type {
@@ -142,18 +142,31 @@ export function AgentAdminView({
   const [releaseGovernanceActionState, setReleaseGovernanceActionState] = useState<AgentAdminReleaseGovernanceActionState>({ status: "idle" });
   const [releaseExecutionActionState, setReleaseExecutionActionState] = useState<AgentAdminReleaseExecutionActionState>({ status: "idle" });
   const [releaseMonitoringActionState, setReleaseMonitoringActionState] = useState<AgentAdminReleaseMonitoringActionState>({ status: "idle" });
+  const releaseMonitoringRequestSeq = useRef(0);
   const watchedState = activeScene === "doctor" ? doctor : patient;
   const watchedSceneLabel = activeScene === "doctor" ? "医生会话" : "患者会话";
 
-  async function refreshReleaseMonitoringResource() {
+  async function refreshReleaseMonitoringResource(options: { setLoading?: boolean } = {}) {
     if (!apiClient || typeof apiClient.getAdminReleaseMonitoring !== "function") {
       return;
     }
 
+    const requestSeq = releaseMonitoringRequestSeq.current + 1;
+    releaseMonitoringRequestSeq.current = requestSeq;
+    if (options.setLoading) {
+      setReleaseMonitoringResource({ status: "loading" });
+    }
+
     try {
       const data = await apiClient.getAdminReleaseMonitoring();
+      if (releaseMonitoringRequestSeq.current !== requestSeq) {
+        return;
+      }
       setReleaseMonitoringResource({ status: "success", data });
     } catch (error) {
+      if (releaseMonitoringRequestSeq.current !== requestSeq) {
+        return;
+      }
       setReleaseMonitoringResource({
         status: "error",
         error: apiErrorDetails(error, "Unknown admin release monitoring error"),
@@ -263,29 +276,10 @@ export function AgentAdminView({
       return;
     }
 
-    let cancelled = false;
-    setReleaseMonitoringResource({ status: "loading" });
-
-    void apiClient.getAdminReleaseMonitoring().then(
-      (data) => {
-        if (!cancelled) {
-          setReleaseMonitoringResource({ status: "success", data });
-        }
-      },
-      (error) => {
-        if (cancelled) {
-          return;
-        }
-
-        setReleaseMonitoringResource({
-          status: "error",
-          error: apiErrorDetails(error, "Unknown admin release monitoring error"),
-        });
-      },
-    );
+    void refreshReleaseMonitoringResource({ setLoading: true });
 
     return () => {
-      cancelled = true;
+      releaseMonitoringRequestSeq.current += 1;
     };
   }, [activeTaskId, apiClient]);
 
