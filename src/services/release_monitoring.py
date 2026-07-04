@@ -76,6 +76,10 @@ class ReleaseMonitoringService:
 
         execution = self._execution_loader()
         latest_release = self._latest_successful_release(execution)
+        idempotent_match = self._store.find_check_by_idempotency_key(
+            check_type,
+            idempotency_key,
+        )
         if latest_release is None:
             raise ReleaseMonitoringConflictError(
                 "no successful release execution exists"
@@ -88,17 +92,14 @@ class ReleaseMonitoringService:
                 "check must reference the latest successful release execution"
             )
         if (
-            check_type != "manual_operator_note"
+            idempotent_match is None
+            and check_type != "manual_operator_note"
             and self._successful_rollback_exists(execution, intent_id)
         ):
             raise ReleaseMonitoringConflictError(
                 "non-manual checks cannot be recorded after rollback"
             )
 
-        idempotent_match = self._store.find_check_by_idempotency_key(
-            check_type,
-            idempotency_key,
-        )
         timestamp = (
             idempotent_match.check.observed_at
             if idempotent_match is not None
@@ -222,7 +223,7 @@ class ReleaseMonitoringService:
         )
         return {
             "status": status,
-            "latest_release": deepcopy(latest_release),
+            "latest_release": self._release_summary(latest_release, governance),
             "required_checks": required_checks,
             "checks": checks,
             "alerts": alerts,
@@ -260,6 +261,43 @@ class ReleaseMonitoringService:
                 ),
             )
         )
+
+    def _release_summary(
+        self,
+        latest_release: dict[str, Any] | None,
+        governance: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if latest_release is None:
+            return None
+        rollback_plan = self._rollback_plan(governance)
+        new_flag_state = latest_release.get("new_flag_state")
+        return {
+            "intent_id": latest_release.get("intent_id"),
+            "execution_id": latest_release.get("execution_id"),
+            "released_at": self._release_timestamp(latest_release),
+            "flag_enabled": (
+                new_flag_state.get("enabled")
+                if isinstance(new_flag_state, dict)
+                else None
+            ),
+            "rollback_plan_id": (
+                rollback_plan.get("rollback_plan_id")
+                if rollback_plan is not None
+                else None
+            ),
+        }
+
+    def _release_timestamp(self, release: dict[str, Any]) -> str:
+        for key in ("released_at", "finished_at", "started_at", "updated_at"):
+            value = release.get(key)
+            if isinstance(value, str) and value.strip():
+                return value
+        flag_state = release.get("new_flag_state")
+        if isinstance(flag_state, dict):
+            value = flag_state.get("updated_at")
+            if isinstance(value, str) and value.strip():
+                return value
+        return "release_monitoring_source_state"
 
     def _successful_rollback_exists(
         self,
@@ -306,15 +344,15 @@ class ReleaseMonitoringService:
                         if latest_check is not None
                         else "missing"
                     ),
-                    "check_id": (
+                    "latest_check_id": (
                         latest_check.get("check_id")
                         if latest_check is not None
                         else None
                     ),
-                    "observed_at": (
-                        latest_check.get("observed_at")
+                    "reason": (
+                        None
                         if latest_check is not None
-                        else None
+                        else "required post-release check has not been recorded"
                     ),
                 }
             )
@@ -453,7 +491,10 @@ class ReleaseMonitoringService:
                 source_check_ids=[str(check.get("check_id"))],
                 recommended_action="execute_step13_rollback",
                 acknowledgements=acknowledgements,
-                created_at=str(check.get("observed_at") or self._now()),
+                created_at=str(
+                    check.get("observed_at")
+                    or self._release_timestamp(latest_release)
+                ),
             )
         if check_type == "governance_drift":
             return self._alert(
@@ -465,7 +506,10 @@ class ReleaseMonitoringService:
                 source_check_ids=[str(check.get("check_id"))],
                 recommended_action="investigate",
                 acknowledgements=acknowledgements,
-                created_at=str(check.get("observed_at") or self._now()),
+                created_at=str(
+                    check.get("observed_at")
+                    or self._release_timestamp(latest_release)
+                ),
             )
         if check_type in {"p0_harness_replay", "literature_isolation"}:
             recommended_action = "execute_step13_rollback"
@@ -488,7 +532,10 @@ class ReleaseMonitoringService:
             source_check_ids=[str(check.get("check_id"))],
             recommended_action=recommended_action,
             acknowledgements=acknowledgements,
-            created_at=str(check.get("observed_at") or self._now()),
+            created_at=str(
+                check.get("observed_at")
+                or self._release_timestamp(latest_release)
+            ),
         )
 
     def _derive_rollback_candidate(
@@ -532,7 +579,7 @@ class ReleaseMonitoringService:
                 "A critical post-release alert requires Step13 rollback while "
                 "the release remains active."
             ),
-            created_at=self._now(),
+            created_at=self._release_timestamp(latest_release),
         )
         return candidate.to_dict()
 
@@ -586,6 +633,11 @@ class ReleaseMonitoringService:
         drift_reasons: list[str] = []
         if active_intent.get("intent_id") != latest_release.get("intent_id"):
             drift_reasons.append("active intent does not match latest release")
+        release_run = self._first_run(dashboard, "release_safety")
+        if release_run is None or release_run.get("run_id") != active_intent.get(
+            "source_release_report_id"
+        ):
+            drift_reasons.append("dashboard release report drifted")
         if dashboard.get("release_decision") != active_intent.get(
             "release_decision_snapshot"
         ):
@@ -605,10 +657,15 @@ class ReleaseMonitoringService:
             drift_reasons.append("governance integrity is not verified")
         if not drift_reasons:
             return []
+        severity = (
+            "critical"
+            if "governance integrity is not verified" in drift_reasons
+            else "warning"
+        )
         return [
             self._alert(
                 latest_release,
-                severity="warning",
+                severity=severity,
                 category="governance_drift",
                 discriminator=";".join(sorted(drift_reasons)),
                 message="; ".join(drift_reasons),
@@ -646,7 +703,7 @@ class ReleaseMonitoringService:
             message=message,
             source_check_ids=source_check_ids,
             recommended_action=recommended_action,
-            created_at=created_at or self._now(),
+            created_at=created_at or self._release_timestamp(latest_release),
         )
         return alert.to_dict()
 

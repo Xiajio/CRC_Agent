@@ -46,7 +46,10 @@ def dashboard() -> dict[str, Any]:
         "release_decision": "feature_flag_or_pass",
         "rollback_target": "agent_policy_20260624_0",
         "summary": {"hard_fail_count": 0},
-        "runs": [{"kind": "literature_shadow_harness", "status": "shadow_only"}],
+        "runs": [
+            {"kind": "release_safety", "run_id": "release_safety_20260629_001"},
+            {"kind": "literature_shadow_harness", "status": "shadow_only"},
+        ],
     }
 
 
@@ -137,10 +140,23 @@ def test_missing_required_checks_create_warning_alerts(tmp_path: Path) -> None:
     model = service(tmp_path).read_monitoring()
 
     assert model["status"] == "monitoring"
+    assert model["latest_release"] == {
+        "intent_id": INTENT_ID,
+        "execution_id": EXECUTION_ID,
+        "released_at": "2026-07-03T09:00:00+08:00",
+        "flag_enabled": True,
+        "rollback_plan_id": ROLLBACK_PLAN_ID,
+    }
     assert any(
         item["check_type"] == "p0_harness_replay" and item["status"] == "missing"
         for item in model["required_checks"]
     )
+    assert set(model["required_checks"][0]) == {
+        "check_type",
+        "status",
+        "latest_check_id",
+        "reason",
+    }
     assert any(alert["category"] == "missing_required_check" for alert in model["alerts"])
     assert model["rollback_trigger_candidate"] is None
 
@@ -294,3 +310,123 @@ def test_enabled_flag_without_release_source_ids_creates_mismatch_alert(
         for alert in model["alerts"]
     )
     assert model["rollback_trigger_candidate"] is None
+
+
+def test_read_monitoring_payload_is_stable_when_now_advances(tmp_path: Path) -> None:
+    current_time = ["2026-07-03T11:00:00+08:00"]
+    monitor = service(tmp_path, now=lambda: current_time[0])
+
+    first = monitor.read_monitoring()
+    current_time[0] = "2026-07-03T11:30:00+08:00"
+    second = monitor.read_monitoring()
+
+    assert second == first
+
+
+def test_governance_integrity_failure_creates_critical_drift_alert(
+    tmp_path: Path,
+) -> None:
+    gov_state = governance()
+    gov_state["integrity"] = {"status": "failed", "warnings": ["tampered"]}
+
+    model = service(tmp_path, gov_state=gov_state).read_monitoring()
+
+    assert any(
+        alert["category"] == "governance_drift"
+        and alert["severity"] == "critical"
+        and "governance integrity" in alert["message"]
+        for alert in model["alerts"]
+    )
+
+
+def test_dashboard_release_report_drift_creates_governance_drift_alert(
+    tmp_path: Path,
+) -> None:
+    dash_state = dashboard()
+    dash_state["runs"] = [
+        {"kind": "release_safety", "run_id": "release_safety_20260628_999"},
+        {"kind": "literature_shadow_harness", "status": "shadow_only"},
+    ]
+
+    model = service(tmp_path, dash_state=dash_state).read_monitoring()
+
+    assert any(
+        alert["category"] == "governance_drift"
+        and "release report" in alert["message"]
+        for alert in model["alerts"]
+    )
+
+
+def test_idempotent_record_check_replay_after_rollback_returns_existing_model(
+    tmp_path: Path,
+) -> None:
+    exec_state = execution()
+    monitor = service(tmp_path, exec_state=exec_state)
+    monitor.record_check(
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        check_type="agent_admin_smoke",
+        status="pass",
+        observed_by="release_manager",
+        summary="Agent admin smoke passed after release.",
+        evidence_refs=["reports/smoke/agent_admin.json"],
+        metrics={"passed": 1},
+        idempotency_key="agent-admin-smoke-rollback-replay",
+    )
+    exec_state["results"].append(execution(rolled_back=True)["results"][-1])
+    exec_state["feature_flag_state"] = exec_state["results"][-1]["new_flag_state"]
+
+    model = monitor.record_check(
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        check_type="agent_admin_smoke",
+        status="pass",
+        observed_by="release_manager",
+        summary="Agent admin smoke passed after release.",
+        evidence_refs=["reports/smoke/agent_admin.json"],
+        metrics={"passed": 1},
+        idempotency_key="agent-admin-smoke-rollback-replay",
+    )
+
+    assert model["status"] == "rolled_back"
+    assert [
+        check["idempotency_key"]
+        for check in model["checks"]
+        if check["idempotency_key"] == "agent-admin-smoke-rollback-replay"
+    ] == ["agent-admin-smoke-rollback-replay"]
+
+
+def test_idempotent_record_check_replay_after_rollback_rejects_changed_fields(
+    tmp_path: Path,
+) -> None:
+    exec_state = execution()
+    monitor = service(tmp_path, exec_state=exec_state)
+    monitor.record_check(
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        check_type="agent_admin_smoke",
+        status="pass",
+        observed_by="release_manager",
+        summary="Agent admin smoke passed after release.",
+        evidence_refs=["reports/smoke/agent_admin.json"],
+        metrics={"passed": 1},
+        idempotency_key="agent-admin-smoke-rollback-mismatch",
+    )
+    exec_state["results"].append(execution(rolled_back=True)["results"][-1])
+    exec_state["feature_flag_state"] = exec_state["results"][-1]["new_flag_state"]
+
+    with pytest.raises(
+        ReleaseMonitoringIntegrityError,
+        match="idempotency key payload mismatch",
+    ):
+        monitor.record_check(
+            intent_id=INTENT_ID,
+            execution_id=EXECUTION_ID,
+            check_type="agent_admin_smoke",
+            status="pass",
+            observed_by="release_manager",
+            summary="Changed after rollback.",
+            evidence_refs=["reports/smoke/agent_admin.json"],
+            metrics={"passed": 1},
+            idempotency_key="agent-admin-smoke-rollback-mismatch",
+        )
