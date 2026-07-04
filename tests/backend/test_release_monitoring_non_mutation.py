@@ -112,14 +112,13 @@ def snapshot_protected_files(root: Path) -> dict[str, str]:
         if not path.is_file():
             continue
         relative = path.relative_to(root)
+        relative_path = relative.as_posix()
         parts = set(relative.parts)
-        if (
-            "release_monitoring" in parts
-            or ".git" in parts
-            or "__pycache__" in parts
-        ):
+        if relative_path.startswith("reports/release_monitoring/"):
             continue
-        snapshot[relative.as_posix()] = path.read_text(encoding="utf-8")
+        if ".git" in parts or "__pycache__" in parts:
+            continue
+        snapshot[relative_path] = path.read_text(encoding="utf-8")
     return snapshot
 
 
@@ -131,6 +130,9 @@ def test_monitoring_writes_only_to_monitoring_root(tmp_path: Path) -> None:
         "release": tmp_path / "reports" / "release_safety" / "sentinel.json",
         "literature": tmp_path / "reports" / "literature" / "sentinel.json",
         "safety": tmp_path / "config" / "safety_policy.yaml",
+        "monitoring_config": (
+            tmp_path / "config" / "release_monitoring" / "sentinel.txt"
+        ),
         "prompt": tmp_path / "src" / "prompts" / "decision_prompts.py",
         "other": tmp_path / "reports" / "other" / "sentinel.json",
     }
@@ -138,6 +140,7 @@ def test_monitoring_writes_only_to_monitoring_root(tmp_path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"{label}: original\n", encoding="utf-8")
     before = snapshot_protected_files(tmp_path)
+    assert "config/release_monitoring/sentinel.txt" in before
     monitor = ReleaseMonitoringService(
         store=ReleaseMonitoringStore(tmp_path / "reports" / "release_monitoring"),
         execution_loader=execution,
