@@ -12,6 +12,10 @@ from backend.api.schemas.release_governance import (
     ReleaseGovernanceCreateIntentRequest,
     ReleaseGovernanceRollbackPlanRequest,
 )
+from backend.api.schemas.release_monitoring import (
+    ReleaseMonitoringAcknowledgeAlertRequest,
+    ReleaseMonitoringCheckRequest,
+)
 from backend.api.services.admin_release_dashboard import REPO_ROOT, build_release_dashboard
 from backend.api.services.release_execution_store import (
     ReleaseExecutionIntegrityError,
@@ -21,22 +25,32 @@ from backend.api.services.release_governance_store import (
     GovernanceIntegrityError,
     ReleaseGovernanceStore,
 )
+from backend.api.services.release_monitoring_store import (
+    ReleaseMonitoringIntegrityError,
+    ReleaseMonitoringStore,
+)
 from src.config import load_settings
+from src.services.release_execution import (
+    ReleaseExecutionConflictError,
+    ReleaseExecutionPreflightError,
+    ReleaseExecutionService,
+)
 from src.services.release_governance import (
     GovernanceConflictError,
     GovernanceValidationError,
     ReleaseGovernanceService,
 )
-from src.services.release_execution import (
-    ReleaseExecutionConflictError,
-    ReleaseExecutionPreflightError,
-    ReleaseExecutionService,
+from src.services.release_monitoring import (
+    ReleaseMonitoringConflictError,
+    ReleaseMonitoringService,
+    ReleaseMonitoringValidationError,
 )
 from src.tools.manifest import build_tool_manifest_response
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 _GOVERNANCE_STORE_ROOT = REPO_ROOT / "reports" / "release_governance"
 _EXECUTION_STORE_ROOT = REPO_ROOT / "reports" / "release_execution"
+_MONITORING_STORE_ROOT = REPO_ROOT / "reports" / "release_monitoring"
 
 
 def _web_search_enabled_from_request(request: Request) -> bool:
@@ -65,6 +79,16 @@ def _release_governance_service() -> ReleaseGovernanceService:
 def _release_execution_service() -> ReleaseExecutionService:
     return ReleaseExecutionService(
         store=ReleaseExecutionStore(_EXECUTION_STORE_ROOT),
+        governance_loader=_release_governance_service().read_governance,
+        dashboard_loader=build_release_dashboard,
+        now=_governance_timestamp,
+    )
+
+
+def _release_monitoring_service() -> ReleaseMonitoringService:
+    return ReleaseMonitoringService(
+        store=ReleaseMonitoringStore(_MONITORING_STORE_ROOT),
+        execution_loader=_release_execution_service().read_execution,
         governance_loader=_release_governance_service().read_governance,
         dashboard_loader=build_release_dashboard,
         now=_governance_timestamp,
@@ -101,6 +125,29 @@ def _raise_execution_http_error(exc: Exception) -> None:
     raise exc
 
 
+def _raise_monitoring_http_error(exc: Exception) -> None:
+    if (
+        isinstance(exc, ReleaseMonitoringValidationError)
+        and "alert_id does not reference" in str(exc)
+    ):
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if isinstance(
+        exc,
+        (
+            ReleaseMonitoringConflictError,
+            ReleaseMonitoringIntegrityError,
+            ReleaseMonitoringValidationError,
+            FileExistsError,
+        ),
+    ):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, (TypeError, ValueError)):
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if isinstance(exc, OSError):
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    raise exc
+
+
 def _model_dump(model: Any) -> dict[str, Any]:
     return model.model_dump()
 
@@ -127,6 +174,11 @@ async def get_admin_release_execution() -> dict[str, Any]:
     return _release_execution_service().read_execution()
 
 
+@router.get("/release-monitoring")
+async def get_admin_release_monitoring() -> dict[str, Any]:
+    return _release_monitoring_service().read_monitoring()
+
+
 @router.post("/release-execution/release")
 async def execute_admin_release(
     payload: ReleaseExecutionRequestPayload,
@@ -145,6 +197,30 @@ async def execute_admin_release_rollback(
         return _release_execution_service().execute_rollback(**_model_dump(payload))
     except Exception as exc:
         _raise_execution_http_error(exc)
+
+
+@router.post("/release-monitoring/checks")
+async def record_admin_release_monitoring_check(
+    payload: ReleaseMonitoringCheckRequest,
+) -> dict[str, Any]:
+    try:
+        return _release_monitoring_service().record_check(**_model_dump(payload))
+    except Exception as exc:
+        _raise_monitoring_http_error(exc)
+
+
+@router.post("/release-monitoring/alerts/{alert_id}/acknowledge")
+async def acknowledge_admin_release_monitoring_alert(
+    alert_id: str,
+    payload: ReleaseMonitoringAcknowledgeAlertRequest,
+) -> dict[str, Any]:
+    try:
+        return _release_monitoring_service().acknowledge_alert(
+            alert_id=alert_id,
+            **_model_dump(payload),
+        )
+    except Exception as exc:
+        _raise_monitoring_http_error(exc)
 
 
 @router.post("/release-governance/intents")
