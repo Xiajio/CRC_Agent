@@ -145,6 +145,22 @@ export function AgentAdminView({
   const watchedState = activeScene === "doctor" ? doctor : patient;
   const watchedSceneLabel = activeScene === "doctor" ? "医生会话" : "患者会话";
 
+  async function refreshReleaseMonitoringResource() {
+    if (!apiClient || typeof apiClient.getAdminReleaseMonitoring !== "function") {
+      return;
+    }
+
+    try {
+      const data = await apiClient.getAdminReleaseMonitoring();
+      setReleaseMonitoringResource({ status: "success", data });
+    } catch (error) {
+      setReleaseMonitoringResource({
+        status: "error",
+        error: apiErrorDetails(error, "Unknown admin release monitoring error"),
+      });
+    }
+  }
+
   useEffect(() => {
     if (activeTaskId !== "tools") {
       return;
@@ -435,6 +451,7 @@ export function AgentAdminView({
         const data = await apiClient.executeAdminRelease(request);
         setReleaseExecutionResource({ status: "success", data });
         setReleaseExecutionActionState({ status: "idle" });
+        await refreshReleaseMonitoringResource();
       } catch (error) {
         setReleaseExecutionActionState({
           status: "error",
@@ -454,6 +471,7 @@ export function AgentAdminView({
         const data = await apiClient.executeAdminReleaseRollback(request);
         setReleaseExecutionResource({ status: "success", data });
         setReleaseExecutionActionState({ status: "idle" });
+        await refreshReleaseMonitoringResource();
       } catch (error) {
         setReleaseExecutionActionState({
           status: "error",

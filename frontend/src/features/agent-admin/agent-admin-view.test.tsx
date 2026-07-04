@@ -1061,6 +1061,163 @@ describe("AgentAdminView", () => {
     expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("rollback / succeeded");
   });
 
+  it("refreshes release monitoring after successful release execution", async () => {
+    const executeAdminRelease = vi.fn(async () =>
+      makeAdminReleaseExecution({
+        preflight: {
+          release: { allowed: false, reasons: ["feature flag is already enabled"] },
+          rollback: { allowed: true, reasons: [] },
+        },
+        feature_flag_state: {
+          flag_name: "doctor_review_cockpit_v0",
+          enabled: true,
+          scope: "feature_flag_candidate",
+          source_intent_id: "intent-1",
+          source_execution_id: "release_exec_1",
+          rollback_target: "agent_policy_20260624_0",
+          updated_by: "release_manager",
+          updated_at: "2026-07-03T09:00:00+08:00",
+        },
+      }),
+    );
+    const getAdminReleaseMonitoring = vi
+      .fn()
+      .mockResolvedValueOnce(makeAdminReleaseMonitoring({
+        status: "idle",
+        latest_release: null,
+        required_checks: [],
+        checks: [],
+      }))
+      .mockResolvedValueOnce(makeAdminReleaseMonitoring({
+        status: "monitoring",
+        latest_release: {
+          intent_id: "intent-1",
+          execution_id: "release_exec_1",
+          released_at: "2026-07-03T09:00:00+08:00",
+          flag_enabled: true,
+          rollback_plan_id: "rollback-1",
+        },
+      }));
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () =>
+        makeAdminReleaseExecution({
+          preflight: {
+            release: { allowed: true, reasons: [] },
+            rollback: { allowed: false, reasons: ["no successful release execution exists"] },
+          },
+        }),
+      ),
+      getAdminReleaseMonitoring,
+      executeAdminRelease,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-execute-release-monitoring" })}
+        doctor={makeState({ sessionId: "doctor-execute-release-monitoring" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("monitoring status / idle"));
+    fireEvent.change(screen.getByLabelText("Execution actor"), { target: { value: "release_manager" } });
+    fireEvent.change(screen.getByLabelText("Execution reason"), { target: { value: "Approved release." } });
+    fireEvent.change(screen.getByLabelText("Idempotency key"), { target: { value: "release-refresh-1" } });
+    fireEvent.change(screen.getByLabelText("Expected rollback plan"), { target: { value: "rollback-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Execute release" }));
+
+    await waitFor(() => expect(getAdminReleaseMonitoring).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("monitoring status / monitoring");
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("latest release / intent-1 / release_exec_1");
+  });
+
+  it("refreshes release monitoring after successful rollback execution", async () => {
+    const executeAdminReleaseRollback = vi.fn(async () =>
+      makeAdminReleaseExecution({
+        preflight: {
+          release: { allowed: true, reasons: [] },
+          rollback: { allowed: false, reasons: ["feature flag is already disabled"] },
+        },
+        feature_flag_state: {
+          flag_name: "doctor_review_cockpit_v0",
+          enabled: false,
+          scope: "feature_flag_candidate",
+          source_intent_id: "intent-1",
+          source_execution_id: "release_exec_rollback_1",
+          rollback_target: "agent_policy_20260624_0",
+          updated_by: "release_manager",
+          updated_at: "2026-07-03T09:05:00+08:00",
+        },
+      }),
+    );
+    const getAdminReleaseMonitoring = vi
+      .fn()
+      .mockResolvedValueOnce(makeAdminReleaseMonitoring({ status: "monitoring" }))
+      .mockResolvedValueOnce(makeAdminReleaseMonitoring({
+        status: "rolled_back",
+        latest_release: {
+          intent_id: "intent-1",
+          execution_id: "release_exec_rollback_1",
+          released_at: "2026-07-03T09:05:00+08:00",
+          flag_enabled: false,
+          rollback_plan_id: "rollback-1",
+        },
+      }));
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () =>
+        makeAdminReleaseExecution({
+          preflight: {
+            release: { allowed: false, reasons: ["feature flag is already enabled"] },
+            rollback: { allowed: true, reasons: [] },
+          },
+          feature_flag_state: {
+            flag_name: "doctor_review_cockpit_v0",
+            enabled: true,
+            scope: "feature_flag_candidate",
+            source_intent_id: "intent-1",
+            source_execution_id: "release_exec_1",
+            rollback_target: "agent_policy_20260624_0",
+            updated_by: "release_manager",
+            updated_at: "2026-07-03T09:00:00+08:00",
+          },
+        }),
+      ),
+      getAdminReleaseMonitoring,
+      executeAdminReleaseRollback,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-execute-rollback-monitoring" })}
+        doctor={makeState({ sessionId: "doctor-execute-rollback-monitoring" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("monitoring status / monitoring"));
+    fireEvent.change(screen.getByLabelText("Execution actor"), { target: { value: "release_manager" } });
+    fireEvent.change(screen.getByLabelText("Execution reason"), { target: { value: "Rollback to accepted target." } });
+    fireEvent.change(screen.getByLabelText("Idempotency key"), { target: { value: "rollback-refresh-1" } });
+    fireEvent.change(screen.getByLabelText("Expected rollback plan"), { target: { value: "rollback-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Execute rollback" }));
+
+    await waitFor(() => expect(getAdminReleaseMonitoring).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("monitoring status / rolled_back");
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("latest release / intent-1 / release_exec_rollback_1");
+  });
+
   it("shows release execution action errors without replacing the read model", async () => {
     const apiClient = {
       getAdminTools: vi.fn(async () => makeAdminToolsManifest()),

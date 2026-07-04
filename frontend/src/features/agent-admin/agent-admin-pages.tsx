@@ -1255,34 +1255,36 @@ function ReleaseMonitoringPanel({
   const integrityWarnings = monitoring.integrity.warnings.length > 0 ? monitoring.integrity.warnings : ["no integrity warnings"];
 
   return (
-    <AgentAdminPanel eyebrow="post-release monitoring" title="Post-release monitoring" icon={Activity}>
-      {actionState.status === "running" ? (
-        <span className="agent-admin-action-status">{actionState.label} in progress</span>
-      ) : null}
-      {actionState.status === "error" ? (
-        <span className="agent-admin-action-status agent-admin-action-status-error">{actionState.message}</span>
-      ) : null}
+    <>
+      <AgentAdminPanel eyebrow="post-release monitoring" title="Post-release monitoring" icon={Activity}>
+        {actionState.status === "running" ? (
+          <span className="agent-admin-action-status">{actionState.label} in progress</span>
+        ) : null}
+        {actionState.status === "error" ? (
+          <span className="agent-admin-action-status agent-admin-action-status-error">{actionState.message}</span>
+        ) : null}
 
-      <AgentAdminSplitWorkbench
-        primary={
-          <div className="agent-admin-detail-list">
-            <span>monitoring status / {monitoring.status}</span>
-            <span>latest release / {latestRelease ? `${latestRelease.intent_id} / ${latestRelease.execution_id}` : "none"}</span>
-            <span>released at / {latestRelease?.released_at ?? "not released"}</span>
-            <span>flag enabled / {latestRelease ? String(latestRelease.flag_enabled) : "not set"}</span>
-            <span>rollback plan / {latestRelease?.rollback_plan_id ?? "none"}</span>
-            <span>runtime / {monitoring.runtime.auth} / {monitoring.runtime.source} / {monitoring.runtime.mode}</span>
-          </div>
-        }
-        secondary={
-          <div className="agent-admin-detail-list">
-            <span>integrity status / {monitoring.integrity.status}</span>
-            {integrityWarnings.map((warning) => (
-              <span key={warning}>integrity warning / {warning}</span>
-            ))}
-          </div>
-        }
-      />
+        <AgentAdminSplitWorkbench
+          primary={
+            <div className="agent-admin-detail-list">
+              <span>monitoring status / {monitoring.status}</span>
+              <span>latest release / {latestRelease ? `${latestRelease.intent_id} / ${latestRelease.execution_id}` : "none"}</span>
+              <span>released at / {latestRelease?.released_at ?? "not released"}</span>
+              <span>flag enabled / {latestRelease ? String(latestRelease.flag_enabled) : "not set"}</span>
+              <span>rollback plan / {latestRelease?.rollback_plan_id ?? "none"}</span>
+              <span>runtime / {monitoring.runtime.auth} / {monitoring.runtime.source} / {monitoring.runtime.mode}</span>
+            </div>
+          }
+          secondary={
+            <div className="agent-admin-detail-list">
+              <span>integrity status / {monitoring.integrity.status}</span>
+              {integrityWarnings.map((warning) => (
+                <span key={warning}>integrity warning / {warning}</span>
+              ))}
+            </div>
+          }
+        />
+      </AgentAdminPanel>
 
       <AgentAdminSplitWorkbench
         primary={
@@ -1351,7 +1353,7 @@ function ReleaseMonitoringPanel({
           />
         }
       />
-    </AgentAdminPanel>
+    </>
   );
 }
 
@@ -1480,6 +1482,7 @@ function ReleaseMonitoringForms({
 
   async function handleAcknowledgeAlert(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setFormError("");
     if (!canAcknowledge) {
       return;
     }
