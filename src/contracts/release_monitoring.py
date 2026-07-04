@@ -40,7 +40,7 @@ MonitoringAlertCategory = Literal[
     "feature_flag_state_mismatch",
     "rollback_ready",
 ]
-MonitoringAlertStatus = Literal["active", "acknowledged", "resolved"]
+MonitoringAlertStatus = Literal["active", "acknowledged"]
 MonitoringRecommendedAction = Literal[
     "observe",
     "prepare_rollback",
@@ -89,7 +89,6 @@ MONITORING_ALERT_CATEGORIES: tuple[MonitoringAlertCategory, ...] = (
 MONITORING_ALERT_STATUSES: tuple[MonitoringAlertStatus, ...] = (
     "active",
     "acknowledged",
-    "resolved",
 )
 MONITORING_RECOMMENDED_ACTIONS: tuple[MonitoringRecommendedAction, ...] = (
     "observe",

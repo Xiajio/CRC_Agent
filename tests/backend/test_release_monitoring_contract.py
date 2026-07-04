@@ -6,6 +6,7 @@ from src.contracts.release_monitoring import (
     GENESIS_MONITORING_EVENT_HASH,
     MONITORING_ACKNOWLEDGEMENT_DISPOSITIONS,
     MONITORING_ALERT_CATEGORIES,
+    MONITORING_ALERT_STATUSES,
     MONITORING_RECOMMENDED_ACTIONS,
     ReleaseMonitoringAcknowledgement,
     ReleaseMonitoringAlert,
@@ -41,6 +42,7 @@ SPEC_RECOMMENDED_ACTIONS = (
     "investigate",
     "execute_step13_rollback",
 )
+SPEC_ALERT_STATUSES = ("active", "acknowledged")
 SPEC_ACKNOWLEDGEMENT_DISPOSITIONS = (
     "investigating",
     "false_positive",
@@ -87,6 +89,7 @@ def make_candidate(action: str = "execute_step13_rollback") -> ReleaseRollbackTr
 def test_monitoring_enum_contracts_match_step14_spec() -> None:
     assert MONITORING_ALERT_CATEGORIES == SPEC_ALERT_CATEGORIES
     assert MONITORING_RECOMMENDED_ACTIONS == SPEC_RECOMMENDED_ACTIONS
+    assert MONITORING_ALERT_STATUSES == SPEC_ALERT_STATUSES
     assert MONITORING_ACKNOWLEDGEMENT_DISPOSITIONS == SPEC_ACKNOWLEDGEMENT_DISPOSITIONS
 
 
@@ -159,6 +162,30 @@ def test_rollback_trigger_candidate_requires_step13_rollback_action(action: str)
         match="recommended_action must be execute_step13_rollback",
     ):
         ReleaseRollbackTriggerCandidate(**payload)
+
+
+def test_alert_rejects_resolved_status() -> None:
+    check = make_check()
+    alert = ReleaseMonitoringAlert(
+        alert_id=make_monitoring_alert_id(
+            EXECUTION_ID,
+            "post_release_check_failed",
+            "p0_harness_replay",
+        ),
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        severity="critical",
+        category="post_release_check_failed",
+        status="active",
+        message="P0 harness replay reported a hard fail after release execution.",
+        source_check_ids=[check.check_id],
+        recommended_action="execute_step13_rollback",
+        created_at="2026-07-03T11:00:00+08:00",
+    ).to_dict()
+    alert["status"] = "resolved"
+
+    with pytest.raises(ValueError, match="status must be one of"):
+        ReleaseMonitoringAlert(**alert)
 
 
 @pytest.mark.parametrize("check_type", ["runtime_patient_scan", "scheduler_probe", ""])
