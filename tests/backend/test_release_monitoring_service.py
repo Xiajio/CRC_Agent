@@ -182,6 +182,42 @@ def test_failed_p0_check_creates_rollback_trigger_candidate(tmp_path: Path) -> N
     )
 
 
+def test_rollback_candidate_requires_matching_rollback_plan_intent(
+    tmp_path: Path,
+) -> None:
+    gov_state = governance()
+    gov_state["rollback_plan"] = {
+        "rollback_plan_id": "rollback_plan_other_intent_1",
+        "intent_id": "release_intent_other_20260629_001",
+        "rollback_target": "agent_policy_20260624_0",
+        "status": "accepted",
+    }
+    monitor = service(tmp_path, gov_state=gov_state)
+
+    model = monitor.record_check(
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        check_type="p0_harness_replay",
+        status="fail",
+        observed_by="release_manager",
+        summary="P0 hard fail after release.",
+        evidence_refs=["reports/harness/harness_20260629_001.json"],
+        metrics={"hard_fail_count": 1},
+        idempotency_key="p0-fail-mismatched-rollback-plan",
+    )
+
+    assert any(
+        alert["category"] == "post_release_check_failed"
+        for alert in model["alerts"]
+    )
+    assert any(
+        alert["category"] == "governance_drift"
+        and "rollback plan intent" in alert["message"]
+        for alert in model["alerts"]
+    )
+    assert model["rollback_trigger_candidate"] is None
+
+
 def test_false_positive_acknowledgement_removes_rollback_candidate(
     tmp_path: Path,
 ) -> None:
@@ -216,6 +252,50 @@ def test_successful_rollback_changes_monitoring_status(tmp_path: Path) -> None:
 
     assert model["status"] == "rolled_back"
     assert model["rollback_trigger_candidate"] is None
+
+
+def test_failed_check_alert_remains_visible_and_acknowledgeable_after_rollback(
+    tmp_path: Path,
+) -> None:
+    exec_state = execution()
+    monitor = service(tmp_path, exec_state=exec_state)
+    model = monitor.record_check(
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        check_type="p0_harness_replay",
+        status="fail",
+        observed_by="release_manager",
+        summary="P0 hard fail after release.",
+        evidence_refs=["reports/harness/harness_20260629_001.json"],
+        metrics={"hard_fail_count": 1},
+        idempotency_key="p0-fail-before-rollback",
+    )
+    alert_id = next(
+        alert["alert_id"]
+        for alert in model["alerts"]
+        if alert["category"] == "post_release_check_failed"
+    )
+    assert model["rollback_trigger_candidate"] is not None
+
+    exec_state["results"].append(execution(rolled_back=True)["results"][-1])
+    exec_state["feature_flag_state"] = exec_state["results"][-1]["new_flag_state"]
+    model = monitor.read_monitoring()
+
+    assert model["status"] == "rolled_back"
+    assert any(alert["alert_id"] == alert_id for alert in model["alerts"])
+    assert model["rollback_trigger_candidate"] is None
+
+    model = monitor.acknowledge_alert(
+        alert_id=alert_id,
+        acknowledged_by="release_manager",
+        disposition="rollback_started_elsewhere",
+        reason="Rollback already completed through Step13.",
+    )
+
+    assert any(
+        alert["alert_id"] == alert_id and alert["status"] == "acknowledged"
+        for alert in model["alerts"]
+    )
 
 
 def test_idempotent_record_check_retry_ignores_advanced_now(

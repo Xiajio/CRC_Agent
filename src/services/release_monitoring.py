@@ -396,6 +396,7 @@ class ReleaseMonitoringService:
                         )
                     )
 
+        if latest_release is not None and status in {"monitoring", "rolled_back"}:
             for check in checks:
                 if (
                     check.get("execution_id") == latest_release.get("execution_id")
@@ -551,6 +552,8 @@ class ReleaseMonitoringService:
         rollback_plan = self._rollback_plan(governance)
         if rollback_plan is None or rollback_plan.get("status") != "accepted":
             return None
+        if rollback_plan.get("intent_id") != latest_release.get("intent_id"):
+            return None
         latest_acknowledgement = self._latest_acknowledgement_by_alert(
             acknowledgements
         )
@@ -655,6 +658,12 @@ class ReleaseMonitoringService:
 
         if self._integrity_status(governance.get("integrity")) != "verified":
             drift_reasons.append("governance integrity is not verified")
+        rollback_plan = self._rollback_plan(governance)
+        if (
+            rollback_plan is not None
+            and rollback_plan.get("intent_id") != latest_release.get("intent_id")
+        ):
+            drift_reasons.append("rollback plan intent does not match latest release")
         if not drift_reasons:
             return []
         severity = (
