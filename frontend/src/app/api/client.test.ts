@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "./client";
+import type { AdminReleaseMonitoringResponse } from "./types";
 
-function releaseMonitoringResponse() {
+function releaseMonitoringResponse(): AdminReleaseMonitoringResponse {
   return {
     status: "monitoring",
     latest_release: {

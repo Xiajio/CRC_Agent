@@ -161,6 +161,42 @@ def test_missing_required_checks_create_warning_alerts(tmp_path: Path) -> None:
     assert model["rollback_trigger_candidate"] is None
 
 
+def test_release_summary_flag_enabled_falls_back_to_boolean_when_flag_state_missing(
+    tmp_path: Path,
+) -> None:
+    exec_state = execution()
+    del exec_state["results"][0]["new_flag_state"]
+
+    model = service(tmp_path, exec_state=exec_state).read_monitoring()
+
+    assert model["latest_release"]["flag_enabled"] is False
+    assert isinstance(model["latest_release"]["flag_enabled"], bool)
+
+
+def test_recorded_required_check_reason_is_non_empty_string(tmp_path: Path) -> None:
+    monitor = service(tmp_path)
+
+    model = monitor.record_check(
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        check_type="agent_admin_smoke",
+        status="pass",
+        observed_by="release_manager",
+        summary="Agent admin smoke passed after release.",
+        evidence_refs=["reports/smoke/agent_admin.json"],
+        metrics={"passed": 1},
+        idempotency_key="agent-admin-smoke-recorded-reason",
+    )
+
+    recorded_summary = next(
+        item
+        for item in model["required_checks"]
+        if item["check_type"] == "agent_admin_smoke"
+    )
+    assert recorded_summary["reason"] == "latest post-release check recorded"
+    assert isinstance(recorded_summary["reason"], str)
+
+
 def test_failed_p0_check_creates_rollback_trigger_candidate(tmp_path: Path) -> None:
     monitor = service(tmp_path)
     model = monitor.record_check(

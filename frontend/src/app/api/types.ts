@@ -345,6 +345,13 @@ export type AdminReleaseMonitoringCheckType =
 export type AdminReleaseMonitoringCheckStatus = "pass" | "warning" | "fail";
 export type AdminReleaseMonitoringRequiredCheckStatus = AdminReleaseMonitoringCheckStatus | "missing";
 export type AdminReleaseMonitoringAlertSeverity = "info" | "warning" | "critical";
+export type AdminReleaseMonitoringAlertCategory =
+  | "missing_required_check"
+  | "post_release_check_failed"
+  | "execution_integrity_failed"
+  | "governance_drift"
+  | "feature_flag_state_mismatch"
+  | "rollback_ready";
 export type AdminReleaseMonitoringRecommendedAction =
   | "observe"
   | "investigate"
@@ -381,7 +388,7 @@ export interface AdminReleaseMonitoringCheckRecord {
   observed_at: string;
   summary: string;
   evidence_refs: string[];
-  metrics: Record<string, JsonValue | unknown>;
+  metrics: Record<string, JsonValue>;
   idempotency_key: string;
 }
 
@@ -390,7 +397,7 @@ export interface AdminReleaseMonitoringAlert {
   intent_id: string;
   execution_id: string;
   severity: AdminReleaseMonitoringAlertSeverity;
-  category: string;
+  category: AdminReleaseMonitoringAlertCategory;
   status: "active" | "acknowledged";
   message: string;
   source_check_ids: string[];
@@ -445,7 +452,7 @@ export interface AdminRecordReleaseMonitoringCheckRequest {
   observed_by: string;
   summary: string;
   evidence_refs: string[];
-  metrics: Record<string, JsonValue | unknown>;
+  metrics: Record<string, JsonValue>;
   idempotency_key: string;
 }
 

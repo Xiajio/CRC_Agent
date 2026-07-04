@@ -271,15 +271,14 @@ class ReleaseMonitoringService:
             return None
         rollback_plan = self._rollback_plan(governance)
         new_flag_state = latest_release.get("new_flag_state")
+        flag_enabled = (
+            new_flag_state.get("enabled") if isinstance(new_flag_state, dict) else False
+        )
         return {
             "intent_id": latest_release.get("intent_id"),
             "execution_id": latest_release.get("execution_id"),
             "released_at": self._release_timestamp(latest_release),
-            "flag_enabled": (
-                new_flag_state.get("enabled")
-                if isinstance(new_flag_state, dict)
-                else None
-            ),
+            "flag_enabled": flag_enabled if isinstance(flag_enabled, bool) else False,
             "rollback_plan_id": (
                 rollback_plan.get("rollback_plan_id")
                 if rollback_plan is not None
@@ -350,7 +349,7 @@ class ReleaseMonitoringService:
                         else None
                     ),
                     "reason": (
-                        None
+                        "latest post-release check recorded"
                         if latest_check is not None
                         else "required post-release check has not been recorded"
                     ),
