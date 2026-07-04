@@ -95,7 +95,15 @@ class ReleaseMonitoringService:
                 "non-manual checks cannot be recorded after rollback"
             )
 
-        timestamp = self._now()
+        idempotent_match = self._store.find_check_by_idempotency_key(
+            check_type,
+            idempotency_key,
+        )
+        timestamp = (
+            idempotent_match.check.observed_at
+            if idempotent_match is not None
+            else self._now()
+        )
         check = ReleaseMonitoringCheck(
             check_id=make_monitoring_check_id(
                 execution_id,
@@ -114,10 +122,6 @@ class ReleaseMonitoringService:
             idempotency_key=idempotency_key,
         )
 
-        idempotent_match = self._store.find_check_by_idempotency_key(
-            check_type,
-            idempotency_key,
-        )
         if idempotent_match is not None:
             self._store.assert_idempotent_check_matches(check)
             return self.read_monitoring()
@@ -677,9 +681,27 @@ class ReleaseMonitoringService:
             return None
         intent_id = flag_state.get("source_intent_id")
         execution_id = flag_state.get("source_execution_id")
-        if not isinstance(intent_id, str) or not isinstance(execution_id, str):
+        if (
+            isinstance(intent_id, str)
+            and intent_id.strip()
+            and isinstance(execution_id, str)
+            and execution_id.strip()
+        ):
+            return {"intent_id": intent_id, "execution_id": execution_id}
+        if flag_state.get("enabled") is not True:
             return None
-        return {"intent_id": intent_id, "execution_id": execution_id}
+        return {
+            "intent_id": (
+                intent_id
+                if isinstance(intent_id, str) and intent_id.strip()
+                else "local_feature_flag_state"
+            ),
+            "execution_id": (
+                execution_id
+                if isinstance(execution_id, str) and execution_id.strip()
+                else "local_feature_flag_state_unmatched"
+            ),
+        }
 
     def _active_intent(self, governance: dict[str, Any]) -> dict[str, Any] | None:
         active_intent = governance.get("active_intent")

@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from backend.api.services.release_monitoring_store import ReleaseMonitoringStore
+import pytest
+
+from backend.api.services.release_monitoring_store import (
+    ReleaseMonitoringIntegrityError,
+    ReleaseMonitoringStore,
+)
 from src.services.release_monitoring import ReleaseMonitoringService
 
 
@@ -109,13 +114,14 @@ def service(
     exec_state: dict[str, Any] | None = None,
     gov_state: dict[str, Any] | None = None,
     dash_state: dict[str, Any] | None = None,
+    now: Any | None = None,
 ) -> ReleaseMonitoringService:
     return ReleaseMonitoringService(
         store=ReleaseMonitoringStore(tmp_path / "reports" / "release_monitoring"),
         execution_loader=lambda: exec_state if exec_state is not None else execution(),
         governance_loader=lambda: gov_state if gov_state is not None else governance(),
         dashboard_loader=lambda: dash_state if dash_state is not None else dashboard(),
-        now=lambda: "2026-07-03T11:00:00+08:00",
+        now=now if now is not None else lambda: "2026-07-03T11:00:00+08:00",
     )
 
 
@@ -193,4 +199,98 @@ def test_successful_rollback_changes_monitoring_status(tmp_path: Path) -> None:
     model = service(tmp_path, exec_state=execution(rolled_back=True)).read_monitoring()
 
     assert model["status"] == "rolled_back"
+    assert model["rollback_trigger_candidate"] is None
+
+
+def test_idempotent_record_check_retry_ignores_advanced_now(
+    tmp_path: Path,
+) -> None:
+    current_time = ["2026-07-03T11:00:00+08:00"]
+    monitor = service(tmp_path, now=lambda: current_time[0])
+
+    first = monitor.record_check(
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        check_type="agent_admin_smoke",
+        status="pass",
+        observed_by="release_manager",
+        summary="Agent admin smoke passed after release.",
+        evidence_refs=["reports/smoke/agent_admin.json"],
+        metrics={"passed": 1},
+        idempotency_key="agent-admin-smoke-1",
+    )
+    current_time[0] = "2026-07-03T11:05:00+08:00"
+    second = monitor.record_check(
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        check_type="agent_admin_smoke",
+        status="pass",
+        observed_by="release_manager",
+        summary="Agent admin smoke passed after release.",
+        evidence_refs=["reports/smoke/agent_admin.json"],
+        metrics={"passed": 1},
+        idempotency_key="agent-admin-smoke-1",
+    )
+
+    matching_checks = [
+        check
+        for check in second["checks"]
+        if check["idempotency_key"] == "agent-admin-smoke-1"
+    ]
+    assert len(matching_checks) == 1
+    assert matching_checks[0]["observed_at"] == "2026-07-03T11:00:00+08:00"
+    assert second["checks"] == first["checks"]
+
+
+def test_idempotent_record_check_retry_rejects_changed_request_fields(
+    tmp_path: Path,
+) -> None:
+    current_time = ["2026-07-03T11:00:00+08:00"]
+    monitor = service(tmp_path, now=lambda: current_time[0])
+    monitor.record_check(
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        check_type="agent_admin_smoke",
+        status="pass",
+        observed_by="release_manager",
+        summary="Agent admin smoke passed after release.",
+        evidence_refs=["reports/smoke/agent_admin.json"],
+        metrics={"passed": 1},
+        idempotency_key="agent-admin-smoke-1",
+    )
+    current_time[0] = "2026-07-03T11:05:00+08:00"
+
+    with pytest.raises(
+        ReleaseMonitoringIntegrityError,
+        match="idempotency key payload mismatch",
+    ):
+        monitor.record_check(
+            intent_id=INTENT_ID,
+            execution_id=EXECUTION_ID,
+            check_type="agent_admin_smoke",
+            status="pass",
+            observed_by="release_manager",
+            summary="Changed smoke summary.",
+            evidence_refs=["reports/smoke/agent_admin.json"],
+            metrics={"passed": 1},
+            idempotency_key="agent-admin-smoke-1",
+        )
+
+
+def test_enabled_flag_without_release_source_ids_creates_mismatch_alert(
+    tmp_path: Path,
+) -> None:
+    exec_state = {
+        "feature_flag_state": {"enabled": True},
+        "results": [],
+        "integrity": {"status": "verified", "warnings": []},
+    }
+
+    model = service(tmp_path, exec_state=exec_state).read_monitoring()
+
+    assert model["status"] == "idle"
+    assert any(
+        alert["category"] == "feature_flag_state_mismatch"
+        for alert in model["alerts"]
+    )
     assert model["rollback_trigger_candidate"] is None
