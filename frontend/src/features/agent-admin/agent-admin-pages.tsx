@@ -29,9 +29,15 @@ import type {
   AdminReleaseGovernanceResponse,
   AdminReleaseHumanSignoffStatus,
   AdminReleaseIntegrityStatus,
+  AdminReleaseMonitoringAcknowledgementDisposition,
+  AdminReleaseMonitoringCheckStatus,
+  AdminReleaseMonitoringCheckType,
+  AdminReleaseMonitoringRequiredCheckStatus,
+  AdminReleaseMonitoringResponse,
   AdminReleaseRollbackPlanStatus,
   AdminReleaseRunStatus,
   AdminReleaseTargetScope,
+  JsonValue,
   Scene,
   SessionState,
 } from "../../app/api/types";
@@ -72,6 +78,9 @@ import type {
   AgentAdminReleaseGovernanceActions,
   AgentAdminReleaseGovernanceActionState,
   AgentAdminReleaseGovernanceResource,
+  AgentAdminReleaseMonitoringActions,
+  AgentAdminReleaseMonitoringActionState,
+  AgentAdminReleaseMonitoringResource,
 } from "./agent-admin-view";
 
 type AgentAdminPagesProps = {
@@ -84,10 +93,13 @@ type AgentAdminPagesProps = {
   releaseDashboardResource: AgentAdminReleaseDashboardResource;
   releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
   releaseExecutionResource: AgentAdminReleaseExecutionResource;
+  releaseMonitoringResource: AgentAdminReleaseMonitoringResource;
   releaseGovernanceActionState: AgentAdminReleaseGovernanceActionState;
   releaseExecutionActionState: AgentAdminReleaseExecutionActionState;
+  releaseMonitoringActionState: AgentAdminReleaseMonitoringActionState;
   releaseGovernanceActions: AgentAdminReleaseGovernanceActions;
   releaseExecutionActions: AgentAdminReleaseExecutionActions;
+  releaseMonitoringActions: AgentAdminReleaseMonitoringActions;
 };
 
 function watchedSession(activeScene: Scene, patient: SessionState, doctor: SessionState) {
@@ -104,10 +116,13 @@ export function AgentAdminTaskPages({
   releaseDashboardResource,
   releaseGovernanceResource,
   releaseExecutionResource,
+  releaseMonitoringResource,
   releaseGovernanceActionState,
   releaseExecutionActionState,
+  releaseMonitoringActionState,
   releaseGovernanceActions,
   releaseExecutionActions,
+  releaseMonitoringActions,
 }: AgentAdminPagesProps) {
   const activeTask = AGENT_ADMIN_TASKS.find((task) => task.id === activeTaskId) ?? AGENT_ADMIN_TASKS[0];
   const ActiveTaskIcon = activeTask.icon;
@@ -153,10 +168,13 @@ export function AgentAdminTaskPages({
           releaseDashboardResource={releaseDashboardResource}
           releaseGovernanceResource={releaseGovernanceResource}
           releaseExecutionResource={releaseExecutionResource}
+          releaseMonitoringResource={releaseMonitoringResource}
           releaseGovernanceActionState={releaseGovernanceActionState}
           releaseExecutionActionState={releaseExecutionActionState}
+          releaseMonitoringActionState={releaseMonitoringActionState}
           releaseGovernanceActions={releaseGovernanceActions}
           releaseExecutionActions={releaseExecutionActions}
+          releaseMonitoringActions={releaseMonitoringActions}
         />
       ) : activeTaskId === "read-only" ? (
         <ReadOnlyPage activeScene={activeScene} patient={patient} doctor={doctor} />
@@ -179,10 +197,13 @@ function AgentAdminOverviewPage({
   | "releaseDashboardResource"
   | "releaseGovernanceResource"
   | "releaseExecutionResource"
+  | "releaseMonitoringResource"
   | "releaseGovernanceActionState"
   | "releaseExecutionActionState"
+  | "releaseMonitoringActionState"
   | "releaseGovernanceActions"
   | "releaseExecutionActions"
+  | "releaseMonitoringActions"
 >) {
   const watchedState = watchedSession(activeScene, patient, doctor);
   const patientSession = buildSessionSummary("患者", patient);
@@ -858,18 +879,24 @@ function ReleasePage({
   releaseDashboardResource,
   releaseGovernanceResource,
   releaseExecutionResource,
+  releaseMonitoringResource,
   releaseGovernanceActionState,
   releaseExecutionActionState,
+  releaseMonitoringActionState,
   releaseGovernanceActions,
   releaseExecutionActions,
+  releaseMonitoringActions,
 }: {
   releaseDashboardResource: AgentAdminReleaseDashboardResource;
   releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
   releaseExecutionResource: AgentAdminReleaseExecutionResource;
+  releaseMonitoringResource: AgentAdminReleaseMonitoringResource;
   releaseGovernanceActionState: AgentAdminReleaseGovernanceActionState;
   releaseExecutionActionState: AgentAdminReleaseExecutionActionState;
+  releaseMonitoringActionState: AgentAdminReleaseMonitoringActionState;
   releaseGovernanceActions: AgentAdminReleaseGovernanceActions;
   releaseExecutionActions: AgentAdminReleaseExecutionActions;
+  releaseMonitoringActions: AgentAdminReleaseMonitoringActions;
 }) {
   if (releaseDashboardResource.status === "loading") {
     return (
@@ -900,10 +927,13 @@ function ReleasePage({
         dashboard={releaseDashboardResource.data}
         releaseGovernanceResource={releaseGovernanceResource}
         releaseExecutionResource={releaseExecutionResource}
+        releaseMonitoringResource={releaseMonitoringResource}
         releaseGovernanceActionState={releaseGovernanceActionState}
         releaseExecutionActionState={releaseExecutionActionState}
+        releaseMonitoringActionState={releaseMonitoringActionState}
         releaseGovernanceActions={releaseGovernanceActions}
         releaseExecutionActions={releaseExecutionActions}
+        releaseMonitoringActions={releaseMonitoringActions}
       />
     );
   }
@@ -921,18 +951,24 @@ function ReleaseSuccessPage({
   dashboard,
   releaseGovernanceResource,
   releaseExecutionResource,
+  releaseMonitoringResource,
   releaseGovernanceActionState,
   releaseExecutionActionState,
+  releaseMonitoringActionState,
   releaseGovernanceActions,
   releaseExecutionActions,
+  releaseMonitoringActions,
 }: {
   dashboard: AdminReleaseDashboardResponse;
   releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
   releaseExecutionResource: AgentAdminReleaseExecutionResource;
+  releaseMonitoringResource: AgentAdminReleaseMonitoringResource;
   releaseGovernanceActionState: AgentAdminReleaseGovernanceActionState;
   releaseExecutionActionState: AgentAdminReleaseExecutionActionState;
+  releaseMonitoringActionState: AgentAdminReleaseMonitoringActionState;
   releaseGovernanceActions: AgentAdminReleaseGovernanceActions;
   releaseExecutionActions: AgentAdminReleaseExecutionActions;
+  releaseMonitoringActions: AgentAdminReleaseMonitoringActions;
 }) {
   const versionRows = Object.entries(dashboard.version_chain);
   const summary = dashboard.summary;
@@ -1069,6 +1105,12 @@ function ReleaseSuccessPage({
         actionState={releaseExecutionActionState}
         actions={releaseExecutionActions}
       />
+
+      <ReleaseMonitoringSection
+        resource={releaseMonitoringResource}
+        actionState={releaseMonitoringActionState}
+        actions={releaseMonitoringActions}
+      />
     </>
   );
 }
@@ -1092,6 +1134,490 @@ function splitReleaseVerificationSteps(value: string): string[] {
     .split(/\r?\n/)
     .map((step) => step.trim())
     .filter(Boolean);
+}
+
+const releaseMonitoringCheckTypes: AdminReleaseMonitoringCheckType[] = [
+  "execution_integrity",
+  "governance_drift",
+  "p0_harness_replay",
+  "agent_admin_smoke",
+  "doctor_review_smoke",
+  "literature_isolation",
+  "manual_operator_note",
+];
+
+const releaseMonitoringCheckStatuses: AdminReleaseMonitoringCheckStatus[] = ["pass", "warning", "fail"];
+
+const releaseMonitoringAcknowledgementDispositions: AdminReleaseMonitoringAcknowledgementDisposition[] = [
+  "investigating",
+  "accepted_risk",
+  "rollback_started_elsewhere",
+  "false_positive",
+];
+
+function releaseMonitoringCheckState(
+  status: AdminReleaseMonitoringCheckStatus | AdminReleaseMonitoringRequiredCheckStatus,
+): "success" | "warning" | "ready" | "active" {
+  if (status === "pass") {
+    return "success";
+  }
+  if (status === "fail" || status === "missing") {
+    return "warning";
+  }
+  if (status === "warning") {
+    return "active";
+  }
+  return "ready";
+}
+
+function splitMonitoringEvidenceRefs(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((ref) => ref.trim())
+    .filter(Boolean);
+}
+
+function parseMonitoringMetrics(value: string): { ok: true; metrics: Record<string, JsonValue> } | { ok: false; message: string } {
+  if (!value.trim()) {
+    return { ok: true, metrics: {} };
+  }
+
+  try {
+    const parsed = JSON.parse(value) as JsonValue;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { ok: false, message: "Metrics JSON must be a valid object" };
+    }
+    return { ok: true, metrics: parsed as Record<string, JsonValue> };
+  } catch {
+    return { ok: false, message: "Metrics JSON must be a valid object" };
+  }
+}
+
+function ReleaseMonitoringSection({
+  resource,
+  actionState,
+  actions,
+}: {
+  resource: AgentAdminReleaseMonitoringResource;
+  actionState: AgentAdminReleaseMonitoringActionState;
+  actions: AgentAdminReleaseMonitoringActions;
+}) {
+  if (resource.status === "loading") {
+    return (
+      <AgentAdminPanel eyebrow="post-release monitoring" title="Post-release monitoring" icon={Activity}>
+        <div className="agent-admin-detail-list">
+          <span>reading release monitoring</span>
+          <span>post-release checks and alerts are loading from reports/release_monitoring</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  if (resource.status === "error") {
+    const status = resource.error.status ? ` (${resource.error.status})` : "";
+    return (
+      <AgentAdminPanel eyebrow="post-release monitoring" title="Post-release monitoring" icon={AlertTriangle}>
+        <div className="agent-admin-detail-list">
+          <span>release monitoring unavailable{status}: {resource.error.message}</span>
+          <span>dashboard governance and execution panels remain available</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  if (resource.status === "success") {
+    return <ReleaseMonitoringPanel monitoring={resource.data} actionState={actionState} actions={actions} />;
+  }
+
+  return (
+    <AgentAdminPanel eyebrow="post-release monitoring" title="Post-release monitoring" icon={Activity}>
+      <div className="agent-admin-detail-list">
+        <span>post-release monitoring idle</span>
+        <span>monitoring API is unavailable for this admin surface</span>
+      </div>
+    </AgentAdminPanel>
+  );
+}
+
+function ReleaseMonitoringPanel({
+  monitoring,
+  actionState,
+  actions,
+}: {
+  monitoring: AdminReleaseMonitoringResponse;
+  actionState: AgentAdminReleaseMonitoringActionState;
+  actions: AgentAdminReleaseMonitoringActions;
+}) {
+  const latestRelease = monitoring.latest_release;
+  const actionRunning = actionState.status === "running";
+  const canRecordCheck = monitoring.status === "monitoring" && monitoring.latest_release !== null && monitoring.integrity.status === "verified" && !actionRunning;
+  const canAcknowledge = monitoring.alerts.length > 0 && monitoring.integrity.status === "verified" && !actionRunning;
+  const integrityWarnings = monitoring.integrity.warnings.length > 0 ? monitoring.integrity.warnings : ["no integrity warnings"];
+
+  return (
+    <AgentAdminPanel eyebrow="post-release monitoring" title="Post-release monitoring" icon={Activity}>
+      {actionState.status === "running" ? (
+        <span className="agent-admin-action-status">{actionState.label} in progress</span>
+      ) : null}
+      {actionState.status === "error" ? (
+        <span className="agent-admin-action-status agent-admin-action-status-error">{actionState.message}</span>
+      ) : null}
+
+      <AgentAdminSplitWorkbench
+        primary={
+          <div className="agent-admin-detail-list">
+            <span>monitoring status / {monitoring.status}</span>
+            <span>latest release / {latestRelease ? `${latestRelease.intent_id} / ${latestRelease.execution_id}` : "none"}</span>
+            <span>released at / {latestRelease?.released_at ?? "not released"}</span>
+            <span>flag enabled / {latestRelease ? String(latestRelease.flag_enabled) : "not set"}</span>
+            <span>rollback plan / {latestRelease?.rollback_plan_id ?? "none"}</span>
+            <span>runtime / {monitoring.runtime.auth} / {monitoring.runtime.source} / {monitoring.runtime.mode}</span>
+          </div>
+        }
+        secondary={
+          <div className="agent-admin-detail-list">
+            <span>integrity status / {monitoring.integrity.status}</span>
+            {integrityWarnings.map((warning) => (
+              <span key={warning}>integrity warning / {warning}</span>
+            ))}
+          </div>
+        }
+      />
+
+      <AgentAdminSplitWorkbench
+        primary={
+          <AgentAdminPanel eyebrow="required checks" title="Required monitoring checks" icon={ListChecks}>
+            <div className="agent-admin-timeline">
+              {monitoring.required_checks.length > 0 ? (
+                monitoring.required_checks.map((check) => {
+                  const rowState = releaseMonitoringCheckState(check.status);
+                  return (
+                    <article key={check.check_type} className={`agent-admin-timeline-row agent-admin-timeline-row-${rowState}`}>
+                      <span className="agent-admin-timeline-node">
+                        <AgentAdminStateIcon state={rowState} />
+                        {check.check_type}
+                      </span>
+                      <span>{check.latest_check_id ?? "no latest check"} / {check.reason}</span>
+                      <strong>{check.status}</strong>
+                    </article>
+                  );
+                })
+              ) : (
+                <article className="agent-admin-timeline-row agent-admin-timeline-row-ready">
+                  <span className="agent-admin-timeline-node">
+                    <AgentAdminStateIcon state="ready" />
+                    no required checks
+                  </span>
+                  <span>monitoring has no required checks yet</span>
+                  <strong>idle</strong>
+                </article>
+              )}
+            </div>
+          </AgentAdminPanel>
+        }
+        secondary={
+          <AgentAdminPanel eyebrow="rollback trigger" title="Rollback trigger candidate" icon={AlertTriangle}>
+            <div className="agent-admin-detail-list">
+              {monitoring.rollback_trigger_candidate ? (
+                <div className="agent-admin-detail-list agent-admin-monitoring-trigger">
+                  <span>candidate / {monitoring.rollback_trigger_candidate.candidate_id}</span>
+                  <span>recommendation / {monitoring.rollback_trigger_candidate.recommended_action}</span>
+                  <span>execute_step13_rollback is the explicit backend recommendation for this candidate</span>
+                  <span>rollback plan / {monitoring.rollback_trigger_candidate.rollback_plan_id}</span>
+                  <span>rollback target / {monitoring.rollback_trigger_candidate.rollback_target}</span>
+                  <span>{monitoring.rollback_trigger_candidate.reason}</span>
+                </div>
+              ) : (
+                <span>no rollback trigger candidate</span>
+              )}
+            </div>
+          </AgentAdminPanel>
+        }
+      />
+
+      <AgentAdminSplitWorkbench
+        primary={<ReleaseMonitoringChecksHistory monitoring={monitoring} />}
+        secondary={<ReleaseMonitoringAlerts monitoring={monitoring} />}
+      />
+
+      <AgentAdminSplitWorkbench
+        primary={<ReleaseMonitoringAcknowledgements monitoring={monitoring} />}
+        secondary={
+          <ReleaseMonitoringForms
+            monitoring={monitoring}
+            canRecordCheck={canRecordCheck}
+            canAcknowledge={canAcknowledge}
+            actions={actions}
+          />
+        }
+      />
+    </AgentAdminPanel>
+  );
+}
+
+function ReleaseMonitoringChecksHistory({ monitoring }: { monitoring: AdminReleaseMonitoringResponse }) {
+  return (
+    <AgentAdminPanel eyebrow="checks history" title="Monitoring checks history" icon={FileText}>
+      <div className="agent-admin-timeline">
+        {monitoring.checks.length > 0 ? (
+          monitoring.checks.map((check) => {
+            const rowState = releaseMonitoringCheckState(check.status);
+            return (
+              <article key={check.check_id} className={`agent-admin-timeline-row agent-admin-timeline-row-${rowState}`}>
+                <span className="agent-admin-timeline-node">
+                  <AgentAdminStateIcon state={rowState} />
+                  {check.check_id}
+                </span>
+                <span>{check.check_type} / {check.observed_by} / {check.summary}</span>
+                <strong>{check.status}</strong>
+              </article>
+            );
+          })
+        ) : (
+          <article className="agent-admin-timeline-row agent-admin-timeline-row-ready">
+            <span className="agent-admin-timeline-node">
+              <AgentAdminStateIcon state="ready" />
+              no monitoring checks
+            </span>
+            <span>record a required check after release</span>
+            <strong>idle</strong>
+          </article>
+        )}
+      </div>
+    </AgentAdminPanel>
+  );
+}
+
+function ReleaseMonitoringAlerts({ monitoring }: { monitoring: AdminReleaseMonitoringResponse }) {
+  return (
+    <AgentAdminPanel eyebrow="alerts" title="Monitoring alerts" icon={AlertTriangle}>
+      <div className="agent-admin-detail-list">
+        {monitoring.alerts.length > 0 ? (
+          monitoring.alerts.map((alert) => (
+            <span
+              key={alert.alert_id}
+              className={alert.severity === "critical" ? "agent-admin-monitoring-alert-critical" : undefined}
+            >
+              {alert.alert_id} / {alert.status} / {alert.severity} / {alert.category} / {alert.recommended_action} / {alert.message}
+            </span>
+          ))
+        ) : (
+          <span>no monitoring alerts</span>
+        )}
+      </div>
+    </AgentAdminPanel>
+  );
+}
+
+function ReleaseMonitoringAcknowledgements({ monitoring }: { monitoring: AdminReleaseMonitoringResponse }) {
+  return (
+    <AgentAdminPanel eyebrow="acknowledgements" title="Monitoring acknowledgements" icon={BookOpenCheck}>
+      <div className="agent-admin-detail-list">
+        {monitoring.acknowledgements.length > 0 ? (
+          monitoring.acknowledgements.map((acknowledgement) => (
+            <span key={acknowledgement.acknowledgement_id}>
+              {acknowledgement.acknowledgement_id} / {acknowledgement.alert_id} / {acknowledgement.acknowledged_by} / {acknowledgement.disposition} / {acknowledgement.reason}
+            </span>
+          ))
+        ) : (
+          <span>no monitoring acknowledgements</span>
+        )}
+      </div>
+    </AgentAdminPanel>
+  );
+}
+
+function ReleaseMonitoringForms({
+  monitoring,
+  canRecordCheck,
+  canAcknowledge,
+  actions,
+}: {
+  monitoring: AdminReleaseMonitoringResponse;
+  canRecordCheck: boolean;
+  canAcknowledge: boolean;
+  actions: AgentAdminReleaseMonitoringActions;
+}) {
+  const [checkActor, setCheckActor] = useState("release_monitor");
+  const [checkType, setCheckType] = useState<AdminReleaseMonitoringCheckType>("execution_integrity");
+  const [checkStatus, setCheckStatus] = useState<AdminReleaseMonitoringCheckStatus>("pass");
+  const [checkSummary, setCheckSummary] = useState("");
+  const [checkIdempotencyKey, setCheckIdempotencyKey] = useState("");
+  const [evidenceRefsText, setEvidenceRefsText] = useState("");
+  const [metricsText, setMetricsText] = useState("{}");
+  const [formError, setFormError] = useState("");
+  const [alertId, setAlertId] = useState(monitoring.alerts[0]?.alert_id ?? "");
+  const [ackActor, setAckActor] = useState("release_monitor");
+  const [ackDisposition, setAckDisposition] = useState<AdminReleaseMonitoringAcknowledgementDisposition>("investigating");
+  const [ackReason, setAckReason] = useState("");
+  const latestRelease = monitoring.latest_release;
+
+  async function handleRecordCheck(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError("");
+    if (!canRecordCheck || !latestRelease) {
+      return;
+    }
+
+    const metricsResult = parseMonitoringMetrics(metricsText);
+    if (!metricsResult.ok) {
+      setFormError(metricsResult.message);
+      return;
+    }
+
+    await actions.recordCheck({
+      intent_id: latestRelease.intent_id,
+      execution_id: latestRelease.execution_id,
+      check_type: checkType,
+      status: checkStatus,
+      observed_by: checkActor.trim(),
+      summary: checkSummary.trim(),
+      evidence_refs: splitMonitoringEvidenceRefs(evidenceRefsText),
+      metrics: metricsResult.metrics,
+      idempotency_key: checkIdempotencyKey.trim(),
+    });
+  }
+
+  async function handleAcknowledgeAlert(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canAcknowledge) {
+      return;
+    }
+
+    await actions.acknowledgeAlert(alertId.trim(), {
+      acknowledged_by: ackActor.trim(),
+      disposition: ackDisposition,
+      reason: ackReason.trim(),
+    });
+  }
+
+  return (
+    <AgentAdminPanel eyebrow="monitoring writes" title="Monitoring actions" icon={KeyRound}>
+      {formError ? (
+        <span className="agent-admin-action-status agent-admin-action-status-error">{formError}</span>
+      ) : null}
+
+      <div className="agent-admin-governance-form-grid">
+        <form className="agent-admin-governance-form" onSubmit={handleRecordCheck}>
+          <h3>Record monitoring check</h3>
+          <label htmlFor="release-monitoring-actor">
+            <span>Monitoring actor</span>
+            <input
+              id="release-monitoring-actor"
+              value={checkActor}
+              onChange={(event) => setCheckActor(event.target.value)}
+              required
+            />
+          </label>
+          <label htmlFor="release-monitoring-check-type">
+            <span>Monitoring check type</span>
+            <select
+              id="release-monitoring-check-type"
+              value={checkType}
+              onChange={(event) => setCheckType(event.target.value as AdminReleaseMonitoringCheckType)}
+            >
+              {releaseMonitoringCheckTypes.map((type) => (
+                <option key={type} value={type}>{type}</option>
+              ))}
+            </select>
+          </label>
+          <label htmlFor="release-monitoring-check-status">
+            <span>Monitoring check status</span>
+            <select
+              id="release-monitoring-check-status"
+              value={checkStatus}
+              onChange={(event) => setCheckStatus(event.target.value as AdminReleaseMonitoringCheckStatus)}
+            >
+              {releaseMonitoringCheckStatuses.map((status) => (
+                <option key={status} value={status}>{status}</option>
+              ))}
+            </select>
+          </label>
+          <label htmlFor="release-monitoring-summary">
+            <span>Monitoring summary</span>
+            <textarea
+              id="release-monitoring-summary"
+              value={checkSummary}
+              onChange={(event) => setCheckSummary(event.target.value)}
+              required
+            />
+          </label>
+          <label htmlFor="release-monitoring-idempotency-key">
+            <span>Monitoring idempotency key</span>
+            <input
+              id="release-monitoring-idempotency-key"
+              value={checkIdempotencyKey}
+              onChange={(event) => setCheckIdempotencyKey(event.target.value)}
+              required
+            />
+          </label>
+          <label htmlFor="release-monitoring-evidence-refs">
+            <span>Evidence refs</span>
+            <textarea
+              id="release-monitoring-evidence-refs"
+              value={evidenceRefsText}
+              onChange={(event) => setEvidenceRefsText(event.target.value)}
+              required
+            />
+          </label>
+          <label htmlFor="release-monitoring-metrics-json">
+            <span>Metrics JSON</span>
+            <textarea
+              id="release-monitoring-metrics-json"
+              value={metricsText}
+              onChange={(event) => setMetricsText(event.target.value)}
+              required
+            />
+          </label>
+          <button type="submit" disabled={!canRecordCheck}>Record monitoring check</button>
+        </form>
+
+        <form className="agent-admin-governance-form" onSubmit={handleAcknowledgeAlert}>
+          <h3>Acknowledge monitoring alert</h3>
+          <label htmlFor="release-monitoring-alert-id">
+            <span>Alert id</span>
+            <input
+              id="release-monitoring-alert-id"
+              value={alertId}
+              onChange={(event) => setAlertId(event.target.value)}
+              required
+            />
+          </label>
+          <label htmlFor="release-monitoring-ack-actor">
+            <span>Acknowledgement actor</span>
+            <input
+              id="release-monitoring-ack-actor"
+              value={ackActor}
+              onChange={(event) => setAckActor(event.target.value)}
+              required
+            />
+          </label>
+          <label htmlFor="release-monitoring-ack-disposition">
+            <span>Acknowledgement disposition</span>
+            <select
+              id="release-monitoring-ack-disposition"
+              value={ackDisposition}
+              onChange={(event) => setAckDisposition(event.target.value as AdminReleaseMonitoringAcknowledgementDisposition)}
+            >
+              {releaseMonitoringAcknowledgementDispositions.map((disposition) => (
+                <option key={disposition} value={disposition}>{disposition}</option>
+              ))}
+            </select>
+          </label>
+          <label htmlFor="release-monitoring-ack-reason">
+            <span>Acknowledgement reason</span>
+            <textarea
+              id="release-monitoring-ack-reason"
+              value={ackReason}
+              onChange={(event) => setAckReason(event.target.value)}
+              required
+            />
+          </label>
+          <button type="submit" disabled={!canAcknowledge}>Acknowledge alert</button>
+        </form>
+      </div>
+    </AgentAdminPanel>
+  );
 }
 
 function ReleaseGovernanceSection({

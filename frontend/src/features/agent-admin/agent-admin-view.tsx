@@ -5,11 +5,14 @@ import type {
   AdminCancelReleaseIntentRequest,
   AdminCreateReleaseIntentRequest,
   AdminExecuteReleaseRequest,
+  AdminAcknowledgeReleaseMonitoringAlertRequest,
+  AdminRecordReleaseMonitoringCheckRequest,
   AdminRecordReleaseApprovalRequest,
   AdminRecordReleaseRollbackPlanRequest,
   AdminReleaseDashboardResponse,
   AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
+  AdminReleaseMonitoringResponse,
   AdminToolManifestResponse,
 } from "../../app/api/types";
 import type { Scene, SessionState } from "../../app/api/types";
@@ -38,12 +41,15 @@ type AgentAdminViewProps = {
       | "getAdminReleaseDashboard"
       | "getAdminReleaseGovernance"
       | "getAdminReleaseExecution"
+      | "getAdminReleaseMonitoring"
       | "createAdminReleaseIntent"
       | "recordAdminReleaseApproval"
       | "recordAdminReleaseRollbackPlan"
       | "cancelAdminReleaseIntent"
       | "executeAdminRelease"
       | "executeAdminReleaseRollback"
+      | "recordAdminReleaseMonitoringCheck"
+      | "acknowledgeAdminReleaseMonitoringAlert"
     >
   >;
 };
@@ -72,12 +78,23 @@ export type AgentAdminReleaseExecutionResource =
   | { status: "success"; data: AdminReleaseExecutionResponse }
   | { status: "error"; error: { status?: number; message: string } };
 
+export type AgentAdminReleaseMonitoringResource =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: AdminReleaseMonitoringResponse }
+  | { status: "error"; error: { status?: number; message: string } };
+
 export type AgentAdminReleaseGovernanceActionState =
   | { status: "idle" }
   | { status: "running"; label: string }
   | { status: "error"; message: string };
 
 export type AgentAdminReleaseExecutionActionState =
+  | { status: "idle" }
+  | { status: "running"; label: string }
+  | { status: "error"; message: string };
+
+export type AgentAdminReleaseMonitoringActionState =
   | { status: "idle" }
   | { status: "running"; label: string }
   | { status: "error"; message: string };
@@ -92,6 +109,11 @@ export type AgentAdminReleaseGovernanceActions = {
 export type AgentAdminReleaseExecutionActions = {
   executeRelease: (request: AdminExecuteReleaseRequest) => Promise<void>;
   executeRollback: (request: AdminExecuteReleaseRequest) => Promise<void>;
+};
+
+export type AgentAdminReleaseMonitoringActions = {
+  recordCheck: (request: AdminRecordReleaseMonitoringCheckRequest) => Promise<void>;
+  acknowledgeAlert: (alertId: string, request: AdminAcknowledgeReleaseMonitoringAlertRequest) => Promise<void>;
 };
 
 function apiErrorDetails(error: unknown, fallbackMessage: string): { status?: number; message: string } {
@@ -116,8 +138,10 @@ export function AgentAdminView({
   const [releaseDashboardResource, setReleaseDashboardResource] = useState<AgentAdminReleaseDashboardResource>({ status: "idle" });
   const [releaseGovernanceResource, setReleaseGovernanceResource] = useState<AgentAdminReleaseGovernanceResource>({ status: "idle" });
   const [releaseExecutionResource, setReleaseExecutionResource] = useState<AgentAdminReleaseExecutionResource>({ status: "idle" });
+  const [releaseMonitoringResource, setReleaseMonitoringResource] = useState<AgentAdminReleaseMonitoringResource>({ status: "idle" });
   const [releaseGovernanceActionState, setReleaseGovernanceActionState] = useState<AgentAdminReleaseGovernanceActionState>({ status: "idle" });
   const [releaseExecutionActionState, setReleaseExecutionActionState] = useState<AgentAdminReleaseExecutionActionState>({ status: "idle" });
+  const [releaseMonitoringActionState, setReleaseMonitoringActionState] = useState<AgentAdminReleaseMonitoringActionState>({ status: "idle" });
   const watchedState = activeScene === "doctor" ? doctor : patient;
   const watchedSceneLabel = activeScene === "doctor" ? "医生会话" : "患者会话";
 
@@ -204,6 +228,42 @@ export function AgentAdminView({
           error: {
             message: error instanceof Error ? error.message : "Unknown admin release dashboard error",
           },
+        });
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTaskId, apiClient]);
+
+  useEffect(() => {
+    if (activeTaskId !== "release") {
+      return;
+    }
+
+    if (!apiClient || typeof apiClient.getAdminReleaseMonitoring !== "function") {
+      setReleaseMonitoringResource({ status: "idle" });
+      return;
+    }
+
+    let cancelled = false;
+    setReleaseMonitoringResource({ status: "loading" });
+
+    void apiClient.getAdminReleaseMonitoring().then(
+      (data) => {
+        if (!cancelled) {
+          setReleaseMonitoringResource({ status: "success", data });
+        }
+      },
+      (error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setReleaseMonitoringResource({
+          status: "error",
+          error: apiErrorDetails(error, "Unknown admin release monitoring error"),
         });
       },
     );
@@ -403,6 +463,46 @@ export function AgentAdminView({
     },
   };
 
+  const releaseMonitoringActions: AgentAdminReleaseMonitoringActions = {
+    async recordCheck(request) {
+      if (!apiClient || typeof apiClient.recordAdminReleaseMonitoringCheck !== "function") {
+        setReleaseMonitoringActionState({ status: "error", message: "Release monitoring check API is unavailable" });
+        return;
+      }
+
+      setReleaseMonitoringActionState({ status: "running", label: "Record monitoring check" });
+      try {
+        const data = await apiClient.recordAdminReleaseMonitoringCheck(request);
+        setReleaseMonitoringResource({ status: "success", data });
+        setReleaseMonitoringActionState({ status: "idle" });
+      } catch (error) {
+        setReleaseMonitoringActionState({
+          status: "error",
+          message: apiErrorDetails(error, "Unknown release monitoring check error").message,
+        });
+      }
+    },
+
+    async acknowledgeAlert(alertId, request) {
+      if (!apiClient || typeof apiClient.acknowledgeAdminReleaseMonitoringAlert !== "function") {
+        setReleaseMonitoringActionState({ status: "error", message: "Release monitoring acknowledgement API is unavailable" });
+        return;
+      }
+
+      setReleaseMonitoringActionState({ status: "running", label: "Acknowledge monitoring alert" });
+      try {
+        const data = await apiClient.acknowledgeAdminReleaseMonitoringAlert(alertId, request);
+        setReleaseMonitoringResource({ status: "success", data });
+        setReleaseMonitoringActionState({ status: "idle" });
+      } catch (error) {
+        setReleaseMonitoringActionState({
+          status: "error",
+          message: apiErrorDetails(error, "Unknown release monitoring acknowledgement error").message,
+        });
+      }
+    },
+  };
+
   function navigateTask(taskId: AgentAdminTaskId) {
     if (taskId === "tools" && activeTaskId !== "tools" && apiClient && typeof apiClient.getAdminTools === "function") {
       setToolsResource({ status: "loading" });
@@ -415,6 +515,9 @@ export function AgentAdminView({
     }
     if (taskId === "release" && activeTaskId !== "release" && apiClient && typeof apiClient.getAdminReleaseExecution === "function") {
       setReleaseExecutionResource({ status: "loading" });
+    }
+    if (taskId === "release" && activeTaskId !== "release" && apiClient && typeof apiClient.getAdminReleaseMonitoring === "function") {
+      setReleaseMonitoringResource({ status: "loading" });
     }
     setActiveTaskId(taskId);
   }
@@ -508,10 +611,13 @@ export function AgentAdminView({
           releaseDashboardResource={releaseDashboardResource}
           releaseGovernanceResource={releaseGovernanceResource}
           releaseExecutionResource={releaseExecutionResource}
+          releaseMonitoringResource={releaseMonitoringResource}
           releaseGovernanceActionState={releaseGovernanceActionState}
           releaseExecutionActionState={releaseExecutionActionState}
+          releaseMonitoringActionState={releaseMonitoringActionState}
           releaseGovernanceActions={releaseGovernanceActions}
           releaseExecutionActions={releaseExecutionActions}
+          releaseMonitoringActions={releaseMonitoringActions}
         />
       </div>
     </main>
