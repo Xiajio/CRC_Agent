@@ -333,6 +333,128 @@ export interface AdminReleaseExecutionResponse {
   };
 }
 
+export type AdminReleaseMonitoringStatus = "idle" | "monitoring" | "rolled_back";
+export type AdminReleaseMonitoringCheckType =
+  | "execution_integrity"
+  | "governance_drift"
+  | "p0_harness_replay"
+  | "agent_admin_smoke"
+  | "doctor_review_smoke"
+  | "literature_isolation"
+  | "manual_operator_note";
+export type AdminReleaseMonitoringCheckStatus = "pass" | "warning" | "fail";
+export type AdminReleaseMonitoringRequiredCheckStatus = AdminReleaseMonitoringCheckStatus | "missing";
+export type AdminReleaseMonitoringAlertSeverity = "info" | "warning" | "critical";
+export type AdminReleaseMonitoringRecommendedAction =
+  | "observe"
+  | "investigate"
+  | "prepare_rollback"
+  | "execute_step13_rollback";
+export type AdminReleaseMonitoringAcknowledgementDisposition =
+  | "investigating"
+  | "accepted_risk"
+  | "rollback_started_elsewhere"
+  | "false_positive";
+
+export interface AdminReleaseMonitoringLatestRelease {
+  intent_id: string;
+  execution_id: string;
+  released_at: string;
+  flag_enabled: boolean;
+  rollback_plan_id: string | null;
+}
+
+export interface AdminReleaseMonitoringRequiredCheck {
+  check_type: AdminReleaseMonitoringCheckType;
+  status: AdminReleaseMonitoringRequiredCheckStatus;
+  latest_check_id: string | null;
+  reason: string;
+}
+
+export interface AdminReleaseMonitoringCheckRecord {
+  check_id: string;
+  intent_id: string;
+  execution_id: string;
+  check_type: AdminReleaseMonitoringCheckType;
+  status: AdminReleaseMonitoringCheckStatus;
+  observed_by: string;
+  observed_at: string;
+  summary: string;
+  evidence_refs: string[];
+  metrics: Record<string, JsonValue | unknown>;
+  idempotency_key: string;
+}
+
+export interface AdminReleaseMonitoringAlert {
+  alert_id: string;
+  intent_id: string;
+  execution_id: string;
+  severity: AdminReleaseMonitoringAlertSeverity;
+  category: string;
+  status: "active" | "acknowledged";
+  message: string;
+  source_check_ids: string[];
+  recommended_action: AdminReleaseMonitoringRecommendedAction;
+  created_at: string;
+}
+
+export interface AdminReleaseRollbackTriggerCandidate {
+  candidate_id: string;
+  intent_id: string;
+  execution_id: string;
+  source_alert_ids: string[];
+  recommended_action: "execute_step13_rollback";
+  rollback_plan_id: string;
+  rollback_target: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface AdminReleaseMonitoringAcknowledgement {
+  acknowledgement_id: string;
+  alert_id: string;
+  intent_id: string;
+  execution_id: string;
+  acknowledged_by: string;
+  acknowledged_at: string;
+  disposition: AdminReleaseMonitoringAcknowledgementDisposition;
+  reason: string;
+}
+
+export interface AdminReleaseMonitoringResponse {
+  status: AdminReleaseMonitoringStatus;
+  latest_release: AdminReleaseMonitoringLatestRelease | null;
+  required_checks: AdminReleaseMonitoringRequiredCheck[];
+  checks: AdminReleaseMonitoringCheckRecord[];
+  alerts: AdminReleaseMonitoringAlert[];
+  rollback_trigger_candidate: AdminReleaseRollbackTriggerCandidate | null;
+  acknowledgements: AdminReleaseMonitoringAcknowledgement[];
+  integrity: AdminReleaseGovernanceIntegrity;
+  runtime: {
+    auth: "admin";
+    source: "reports/release_monitoring";
+    mode: "post_release_monitoring";
+  };
+}
+
+export interface AdminRecordReleaseMonitoringCheckRequest {
+  intent_id: string;
+  execution_id: string;
+  check_type: AdminReleaseMonitoringCheckType;
+  status: AdminReleaseMonitoringCheckStatus;
+  observed_by: string;
+  summary: string;
+  evidence_refs: string[];
+  metrics: Record<string, JsonValue | unknown>;
+  idempotency_key: string;
+}
+
+export interface AdminAcknowledgeReleaseMonitoringAlertRequest {
+  acknowledged_by: string;
+  disposition: AdminReleaseMonitoringAcknowledgementDisposition;
+  reason: string;
+}
+
 export interface AdminExecuteReleaseRequest {
   intent_id: string;
   requested_by: string;

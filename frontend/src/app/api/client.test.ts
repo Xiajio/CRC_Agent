@@ -2,6 +2,37 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "./client";
 
+function releaseMonitoringResponse() {
+  return {
+    status: "monitoring",
+    latest_release: {
+      intent_id: "intent-1",
+      execution_id: "release-exec-1",
+      released_at: "2026-07-03T09:00:00+08:00",
+      flag_enabled: true,
+      rollback_plan_id: "rollback-1",
+    },
+    required_checks: [
+      {
+        check_type: "p0_harness_replay",
+        status: "missing",
+        latest_check_id: null,
+        reason: "Required post-release check has not been recorded.",
+      },
+    ],
+    checks: [],
+    alerts: [],
+    rollback_trigger_candidate: null,
+    acknowledgements: [],
+    integrity: { status: "verified", warnings: [] },
+    runtime: {
+      auth: "admin",
+      source: "reports/release_monitoring",
+      mode: "post_release_monitoring",
+    },
+  };
+}
+
 describe("createApiClient", () => {
   it("loads admin tools with configured Authorization headers", async () => {
     const payload = {
@@ -375,6 +406,88 @@ describe("createApiClient", () => {
         method: "POST",
         headers: expect.any(Headers),
         body: JSON.stringify(rollbackRequest),
+      },
+    ]);
+    for (const [, init] of calls) {
+      const headers = init?.headers as Headers;
+      expect(headers.get("Authorization")).toBe("Bearer dev-token");
+      expect(headers.get("Content-Type")).toBe("application/json");
+    }
+  });
+
+  it("loads admin release monitoring with configured Authorization headers", async () => {
+    const payload = releaseMonitoringResponse();
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    const fetchImpl = vi.fn(async () => response);
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+
+    await expect(client.getAdminReleaseMonitoring()).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/release-monitoring",
+      { headers: { Authorization: "Bearer dev-token" } },
+    );
+  });
+
+  it("records admin release monitoring checks and acknowledges encoded alerts with JSON request bodies", async () => {
+    const payload = releaseMonitoringResponse();
+    const response = {
+      ok: true,
+      json: vi.fn(async () => payload),
+    } as unknown as Response;
+    const calls: Array<[RequestInfo | URL, RequestInit | undefined]> = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push([input, init]);
+      return response;
+    });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer dev-token" },
+    });
+    const checkRequest = {
+      intent_id: "intent-1",
+      execution_id: "release-exec-1",
+      check_type: "p0_harness_replay" as const,
+      status: "pass" as const,
+      observed_by: "release_operator",
+      summary: "P0 replay passed after release.",
+      evidence_refs: ["reports/harness/harness_20260703_001.json"],
+      metrics: { passed_cases: 5 },
+      idempotency_key: "monitoring-check-1",
+    };
+    const acknowledgementRequest = {
+      acknowledged_by: "release_operator",
+      disposition: "investigating" as const,
+      reason: "Reviewing the alert.",
+    };
+
+    await expect(client.recordAdminReleaseMonitoringCheck(checkRequest)).resolves.toEqual(payload);
+    await expect(
+      client.acknowledgeAdminReleaseMonitoringAlert("alert/with space", acknowledgementRequest),
+    ).resolves.toEqual(payload);
+
+    expect(calls).toHaveLength(2);
+    expect(calls[0]).toEqual([
+      "http://127.0.0.1:8000/api/admin/release-monitoring/checks",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify(checkRequest),
+      },
+    ]);
+    expect(calls[1]).toEqual([
+      "http://127.0.0.1:8000/api/admin/release-monitoring/alerts/alert%2Fwith%20space/acknowledge",
+      {
+        method: "POST",
+        headers: expect.any(Headers),
+        body: JSON.stringify(acknowledgementRequest),
       },
     ]);
     for (const [, init] of calls) {

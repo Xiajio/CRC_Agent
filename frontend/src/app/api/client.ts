@@ -1,11 +1,14 @@
 import { streamJsonEvents, type FetchLike, type StreamTraceTap } from "./stream";
 import type {
+  AdminAcknowledgeReleaseMonitoringAlertRequest,
   AdminCancelReleaseIntentRequest,
   AdminCreateReleaseIntentRequest,
   AdminExecuteReleaseRequest,
+  AdminRecordReleaseMonitoringCheckRequest,
   AdminReleaseDashboardResponse,
   AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
+  AdminReleaseMonitoringResponse,
   AdminRecordReleaseApprovalRequest,
   AdminRecordReleaseRollbackPlanRequest,
   AdminToolManifestResponse,
@@ -100,6 +103,7 @@ export interface ApiClient {
   getAdminReleaseDashboard(): Promise<AdminReleaseDashboardResponse>;
   getAdminReleaseGovernance(): Promise<AdminReleaseGovernanceResponse>;
   getAdminReleaseExecution(): Promise<AdminReleaseExecutionResponse>;
+  getAdminReleaseMonitoring(): Promise<AdminReleaseMonitoringResponse>;
   createAdminReleaseIntent(request: AdminCreateReleaseIntentRequest): Promise<AdminReleaseGovernanceResponse>;
   recordAdminReleaseApproval(
     intentId: string,
@@ -115,6 +119,13 @@ export interface ApiClient {
   ): Promise<AdminReleaseGovernanceResponse>;
   executeAdminRelease(request: AdminExecuteReleaseRequest): Promise<AdminReleaseExecutionResponse>;
   executeAdminReleaseRollback(request: AdminExecuteReleaseRequest): Promise<AdminReleaseExecutionResponse>;
+  recordAdminReleaseMonitoringCheck(
+    request: AdminRecordReleaseMonitoringCheckRequest,
+  ): Promise<AdminReleaseMonitoringResponse>;
+  acknowledgeAdminReleaseMonitoringAlert(
+    alertId: string,
+    request: AdminAcknowledgeReleaseMonitoringAlertRequest,
+  ): Promise<AdminReleaseMonitoringResponse>;
   createSession(scene: Scene): Promise<SessionResponse>;
   getSession(sessionId: string, messageLimit?: number): Promise<SessionResponse>;
   getMessages(sessionId: string, before?: string | number | null, limit?: number): Promise<MessageHistoryResponse>;
@@ -193,6 +204,13 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
       return parseJsonResponse<AdminReleaseExecutionResponse>(response);
     },
 
+    async getAdminReleaseMonitoring() {
+      const response = await fetchImpl(buildUrl("/api/admin/release-monitoring", baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<AdminReleaseMonitoringResponse>(response);
+    },
+
     async createAdminReleaseIntent(request) {
       const response = await fetchImpl(buildUrl("/api/admin/release-governance/intents", baseUrl), {
         method: "POST",
@@ -257,6 +275,28 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         body: JSON.stringify(request),
       });
       return parseJsonResponse<AdminReleaseExecutionResponse>(response);
+    },
+
+    async recordAdminReleaseMonitoringCheck(request) {
+      const response = await fetchImpl(buildUrl("/api/admin/release-monitoring/checks", baseUrl), {
+        method: "POST",
+        headers: buildJsonHeaders(defaultHeaders),
+        body: JSON.stringify(request),
+      });
+      return parseJsonResponse<AdminReleaseMonitoringResponse>(response);
+    },
+
+    async acknowledgeAdminReleaseMonitoringAlert(alertId, request) {
+      const encodedAlertId = encodeURIComponent(alertId);
+      const response = await fetchImpl(
+        buildUrl(`/api/admin/release-monitoring/alerts/${encodedAlertId}/acknowledge`, baseUrl),
+        {
+          method: "POST",
+          headers: buildJsonHeaders(defaultHeaders),
+          body: JSON.stringify(request),
+        },
+      );
+      return parseJsonResponse<AdminReleaseMonitoringResponse>(response);
     },
 
     async createSession(scene) {
