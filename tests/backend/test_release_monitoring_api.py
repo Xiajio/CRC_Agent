@@ -192,6 +192,25 @@ def test_release_monitoring_unknown_alert_conflict_error_maps_to_404(
     assert response.json()["detail"] == str(service.error)
 
 
+def test_release_monitoring_validation_errors_map_to_unprocessable_entity(
+    monkeypatch,
+) -> None:
+    service = FakeReleaseMonitoringService()
+    service.error = ReleaseMonitoringValidationError("check_type must be one of ...")
+    client = _client_with_fake_service(monkeypatch, service)
+
+    try:
+        response = client.post(
+            "/api/admin/release-monitoring/checks",
+            json=_check_payload(),
+        )
+    finally:
+        client.close()
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == str(service.error)
+
+
 def test_release_monitoring_service_errors_map_to_conflict(monkeypatch) -> None:
     cases = [
         ReleaseMonitoringConflictError("check conflicts with latest release"),

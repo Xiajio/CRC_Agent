@@ -142,7 +142,6 @@ def _raise_monitoring_http_error(exc: Exception) -> None:
         (
             ReleaseMonitoringConflictError,
             ReleaseMonitoringIntegrityError,
-            ReleaseMonitoringValidationError,
             FileExistsError,
         ),
     ):
