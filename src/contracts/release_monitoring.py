@@ -315,7 +315,7 @@ class ReleaseRollbackTriggerCandidate:
         object.__setattr__(
             self,
             "source_alert_ids",
-            tuple(_require_string_list("source_alert_ids", self.source_alert_ids)),
+            tuple(_require_alert_id_list("source_alert_ids", self.source_alert_ids)),
         )
         if self.recommended_action != "execute_step13_rollback":
             raise ValueError("recommended_action must be execute_step13_rollback")
@@ -455,7 +455,7 @@ def make_rollback_trigger_candidate_id(
     alert_ids: list[str],
 ) -> str:
     _require_non_empty("execution_id", execution_id)
-    ordered_alert_ids = _require_string_list("alert_ids", alert_ids)
+    ordered_alert_ids = _require_alert_id_list("alert_ids", alert_ids)
     payload = {"execution_id": execution_id, "alert_ids": sorted(ordered_alert_ids)}
     return f"release_monitor_rollback_candidate_{_slug(execution_id)}_{_stable_hash(payload)}"
 
@@ -638,6 +638,13 @@ def _require_string_list(field_name: str, value: list[str]) -> list[str]:
     for item in value:
         _require_non_empty(field_name, item)
     return list(value)
+
+
+def _require_alert_id_list(field_name: str, value: list[str]) -> list[str]:
+    values = _require_string_list(field_name, value)
+    if not values:
+        raise ValueError(f"{field_name} must contain at least one alert id")
+    return values
 
 
 def _stable_hash(payload: dict[str, JsonValue]) -> str:

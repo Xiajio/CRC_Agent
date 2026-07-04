@@ -164,6 +164,25 @@ def test_rollback_trigger_candidate_requires_step13_rollback_action(action: str)
         ReleaseRollbackTriggerCandidate(**payload)
 
 
+def test_rollback_trigger_candidate_requires_source_alert_ids() -> None:
+    payload = make_candidate().to_dict()
+    payload["source_alert_ids"] = []
+
+    with pytest.raises(
+        ValueError,
+        match="source_alert_ids must contain at least one alert id",
+    ):
+        ReleaseRollbackTriggerCandidate(**payload)
+
+
+def test_rollback_trigger_candidate_id_requires_alert_ids() -> None:
+    with pytest.raises(
+        ValueError,
+        match="alert_ids must contain at least one alert id",
+    ):
+        make_rollback_trigger_candidate_id(EXECUTION_ID, [])
+
+
 def test_alert_rejects_resolved_status() -> None:
     check = make_check()
     alert = ReleaseMonitoringAlert(
