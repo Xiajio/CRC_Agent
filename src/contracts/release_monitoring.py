@@ -43,15 +43,15 @@ MonitoringAlertCategory = Literal[
 MonitoringAlertStatus = Literal["active", "acknowledged"]
 MonitoringRecommendedAction = Literal[
     "observe",
-    "prepare_rollback",
     "investigate",
+    "prepare_rollback",
     "execute_step13_rollback",
 ]
 MonitoringAcknowledgementDisposition = Literal[
     "investigating",
-    "false_positive",
     "accepted_risk",
     "rollback_started_elsewhere",
+    "false_positive",
 ]
 MonitoringAuditEventType = Literal[
     "check_recorded",
@@ -92,17 +92,17 @@ MONITORING_ALERT_STATUSES: tuple[MonitoringAlertStatus, ...] = (
 )
 MONITORING_RECOMMENDED_ACTIONS: tuple[MonitoringRecommendedAction, ...] = (
     "observe",
-    "prepare_rollback",
     "investigate",
+    "prepare_rollback",
     "execute_step13_rollback",
 )
 MONITORING_ACKNOWLEDGEMENT_DISPOSITIONS: tuple[
     MonitoringAcknowledgementDisposition, ...
 ] = (
     "investigating",
-    "false_positive",
     "accepted_risk",
     "rollback_started_elsewhere",
+    "false_positive",
 )
 MONITORING_EVENT_TYPES: tuple[MonitoringAuditEventType, ...] = (
     "check_recorded",

@@ -38,16 +38,16 @@ SPEC_ALERT_CATEGORIES = (
 )
 SPEC_RECOMMENDED_ACTIONS = (
     "observe",
-    "prepare_rollback",
     "investigate",
+    "prepare_rollback",
     "execute_step13_rollback",
 )
 SPEC_ALERT_STATUSES = ("active", "acknowledged")
 SPEC_ACKNOWLEDGEMENT_DISPOSITIONS = (
     "investigating",
-    "false_positive",
     "accepted_risk",
     "rollback_started_elsewhere",
+    "false_positive",
 )
 
 
