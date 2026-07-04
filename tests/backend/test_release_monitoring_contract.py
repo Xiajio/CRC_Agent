@@ -86,11 +86,17 @@ def test_monitoring_contracts_round_trip_to_dict() -> None:
         previous_event_hash=GENESIS_MONITORING_EVENT_HASH,
     )
 
-    assert check.to_dict()["check_type"] == "p0_harness_replay"
-    assert alert.to_dict()["recommended_action"] == "execute_step13_rollback"
-    assert candidate.to_dict()["rollback_plan_id"] == ROLLBACK_PLAN_ID
-    assert acknowledgement.to_dict()["disposition"] == "investigating"
-    assert event.to_dict()["event_hash"].startswith("sha256:")
+    assert ReleaseMonitoringCheck(**check.to_dict()).to_dict() == check.to_dict()
+    assert ReleaseMonitoringAlert(**alert.to_dict()).to_dict() == alert.to_dict()
+    assert (
+        ReleaseRollbackTriggerCandidate(**candidate.to_dict()).to_dict()
+        == candidate.to_dict()
+    )
+    assert (
+        ReleaseMonitoringAcknowledgement(**acknowledgement.to_dict()).to_dict()
+        == acknowledgement.to_dict()
+    )
+    assert ReleaseMonitoringAuditEvent(**event.to_dict()).to_dict() == event.to_dict()
 
 
 @pytest.mark.parametrize("check_type", ["runtime_patient_scan", "scheduler_probe", ""])
