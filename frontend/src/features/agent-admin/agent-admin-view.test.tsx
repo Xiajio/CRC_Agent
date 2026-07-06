@@ -5,6 +5,7 @@ import type {
   AdminReleaseDashboardResponse,
   AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
+  AdminReleaseMonitoringResponse,
   AdminToolManifestResponse,
 } from "../../app/api/types";
 import type { SessionState } from "../../app/api/types";
@@ -247,6 +248,53 @@ function makeAdminReleaseExecution(
       auth: "admin",
       source: "reports/release_execution",
       mode: "controlled_local_execution",
+    },
+  };
+}
+
+function makeAdminReleaseMonitoring(
+  overrides: Partial<AdminReleaseMonitoringResponse> = {},
+): AdminReleaseMonitoringResponse {
+  return {
+    status: overrides.status ?? "monitoring",
+    latest_release: "latest_release" in overrides ? overrides.latest_release! : {
+      intent_id: "intent-1",
+      execution_id: "release_exec_1",
+      released_at: "2026-07-03T09:00:00+08:00",
+      flag_enabled: true,
+      rollback_plan_id: "rollback-1",
+    },
+    required_checks: overrides.required_checks ?? [
+      {
+        check_type: "execution_integrity",
+        status: "pass",
+        latest_check_id: "check-execution",
+        reason: "execution hash chain verified",
+      },
+    ],
+    checks: overrides.checks ?? [
+      {
+        check_id: "check-execution",
+        intent_id: "intent-1",
+        execution_id: "release_exec_1",
+        check_type: "execution_integrity",
+        status: "pass",
+        observed_by: "release_monitor",
+        observed_at: "2026-07-03T09:05:00+08:00",
+        summary: "execution integrity verified",
+        evidence_refs: ["reports/release_execution/latest.json"],
+        metrics: { latency_ms: 120 },
+        idempotency_key: "monitoring-check-1",
+      },
+    ],
+    alerts: overrides.alerts ?? [],
+    rollback_trigger_candidate: overrides.rollback_trigger_candidate ?? null,
+    acknowledgements: overrides.acknowledgements ?? [],
+    integrity: overrides.integrity ?? { status: "verified", warnings: [] },
+    runtime: overrides.runtime ?? {
+      auth: "admin",
+      source: "reports/release_monitoring",
+      mode: "post_release_monitoring",
     },
   };
 }
@@ -1013,6 +1061,254 @@ describe("AgentAdminView", () => {
     expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("rollback / succeeded");
   });
 
+  it("refreshes release monitoring after successful release execution", async () => {
+    const executeAdminRelease = vi.fn(async () =>
+      makeAdminReleaseExecution({
+        preflight: {
+          release: { allowed: false, reasons: ["feature flag is already enabled"] },
+          rollback: { allowed: true, reasons: [] },
+        },
+        feature_flag_state: {
+          flag_name: "doctor_review_cockpit_v0",
+          enabled: true,
+          scope: "feature_flag_candidate",
+          source_intent_id: "intent-1",
+          source_execution_id: "release_exec_1",
+          rollback_target: "agent_policy_20260624_0",
+          updated_by: "release_manager",
+          updated_at: "2026-07-03T09:00:00+08:00",
+        },
+      }),
+    );
+    const getAdminReleaseMonitoring = vi
+      .fn()
+      .mockResolvedValueOnce(makeAdminReleaseMonitoring({
+        status: "idle",
+        latest_release: null,
+        required_checks: [],
+        checks: [],
+      }))
+      .mockResolvedValueOnce(makeAdminReleaseMonitoring({
+        status: "monitoring",
+        latest_release: {
+          intent_id: "intent-1",
+          execution_id: "release_exec_1",
+          released_at: "2026-07-03T09:00:00+08:00",
+          flag_enabled: true,
+          rollback_plan_id: "rollback-1",
+        },
+      }));
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () =>
+        makeAdminReleaseExecution({
+          preflight: {
+            release: { allowed: true, reasons: [] },
+            rollback: { allowed: false, reasons: ["no successful release execution exists"] },
+          },
+        }),
+      ),
+      getAdminReleaseMonitoring,
+      executeAdminRelease,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-execute-release-monitoring" })}
+        doctor={makeState({ sessionId: "doctor-execute-release-monitoring" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("monitoring status / idle"));
+    fireEvent.change(screen.getByLabelText("Execution actor"), { target: { value: "release_manager" } });
+    fireEvent.change(screen.getByLabelText("Execution reason"), { target: { value: "Approved release." } });
+    fireEvent.change(screen.getByLabelText("Idempotency key"), { target: { value: "release-refresh-1" } });
+    fireEvent.change(screen.getByLabelText("Expected rollback plan"), { target: { value: "rollback-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Execute release" }));
+
+    await waitFor(() => expect(getAdminReleaseMonitoring).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("monitoring status / monitoring");
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("latest release / intent-1 / release_exec_1");
+  });
+
+  it("keeps newer release monitoring refresh when the initial request resolves later", async () => {
+    let resolveInitialMonitoring!: (value: AdminReleaseMonitoringResponse) => void;
+    let resolveRefreshMonitoring!: (value: AdminReleaseMonitoringResponse) => void;
+    const initialMonitoring = new Promise<AdminReleaseMonitoringResponse>((resolve) => {
+      resolveInitialMonitoring = resolve;
+    });
+    const refreshMonitoring = new Promise<AdminReleaseMonitoringResponse>((resolve) => {
+      resolveRefreshMonitoring = resolve;
+    });
+    const getAdminReleaseMonitoring = vi
+      .fn()
+      .mockReturnValueOnce(initialMonitoring)
+      .mockReturnValueOnce(refreshMonitoring);
+    const executeAdminRelease = vi.fn(async () =>
+      makeAdminReleaseExecution({
+        preflight: {
+          release: { allowed: false, reasons: ["feature flag is already enabled"] },
+          rollback: { allowed: true, reasons: [] },
+        },
+        feature_flag_state: {
+          flag_name: "doctor_review_cockpit_v0",
+          enabled: true,
+          scope: "feature_flag_candidate",
+          source_intent_id: "intent-1",
+          source_execution_id: "release_exec_1",
+          rollback_target: "agent_policy_20260624_0",
+          updated_by: "release_manager",
+          updated_at: "2026-07-03T09:00:00+08:00",
+        },
+      }),
+    );
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () =>
+        makeAdminReleaseExecution({
+          preflight: {
+            release: { allowed: true, reasons: [] },
+            rollback: { allowed: false, reasons: ["no successful release execution exists"] },
+          },
+        }),
+      ),
+      getAdminReleaseMonitoring,
+      executeAdminRelease,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-race" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-race" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(getAdminReleaseMonitoring).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Release execution"));
+    fireEvent.change(screen.getByLabelText("Execution actor"), { target: { value: "release_manager" } });
+    fireEvent.change(screen.getByLabelText("Execution reason"), { target: { value: "Approved release." } });
+    fireEvent.change(screen.getByLabelText("Idempotency key"), { target: { value: "release-race-1" } });
+    fireEvent.change(screen.getByLabelText("Expected rollback plan"), { target: { value: "rollback-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Execute release" }));
+
+    await waitFor(() => expect(getAdminReleaseMonitoring).toHaveBeenCalledTimes(2));
+    resolveRefreshMonitoring(makeAdminReleaseMonitoring({
+      status: "monitoring",
+      latest_release: {
+        intent_id: "intent-1",
+        execution_id: "release_exec_1",
+        released_at: "2026-07-03T09:00:00+08:00",
+        flag_enabled: true,
+        rollback_plan_id: "rollback-1",
+      },
+    }));
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("monitoring status / monitoring"));
+    resolveInitialMonitoring(makeAdminReleaseMonitoring({
+      status: "idle",
+      latest_release: null,
+      required_checks: [],
+      checks: [],
+    }));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("latest release / intent-1 / release_exec_1");
+    expect(screen.getByTestId("agent-admin-task-page")).not.toHaveTextContent("monitoring status / idle");
+  });
+
+  it("refreshes release monitoring after successful rollback execution", async () => {
+    const executeAdminReleaseRollback = vi.fn(async () =>
+      makeAdminReleaseExecution({
+        preflight: {
+          release: { allowed: true, reasons: [] },
+          rollback: { allowed: false, reasons: ["feature flag is already disabled"] },
+        },
+        feature_flag_state: {
+          flag_name: "doctor_review_cockpit_v0",
+          enabled: false,
+          scope: "feature_flag_candidate",
+          source_intent_id: "intent-1",
+          source_execution_id: "release_exec_rollback_1",
+          rollback_target: "agent_policy_20260624_0",
+          updated_by: "release_manager",
+          updated_at: "2026-07-03T09:05:00+08:00",
+        },
+      }),
+    );
+    const getAdminReleaseMonitoring = vi
+      .fn()
+      .mockResolvedValueOnce(makeAdminReleaseMonitoring({ status: "monitoring" }))
+      .mockResolvedValueOnce(makeAdminReleaseMonitoring({
+        status: "rolled_back",
+        latest_release: {
+          intent_id: "intent-1",
+          execution_id: "release_exec_rollback_1",
+          released_at: "2026-07-03T09:05:00+08:00",
+          flag_enabled: false,
+          rollback_plan_id: "rollback-1",
+        },
+      }));
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () =>
+        makeAdminReleaseExecution({
+          preflight: {
+            release: { allowed: false, reasons: ["feature flag is already enabled"] },
+            rollback: { allowed: true, reasons: [] },
+          },
+          feature_flag_state: {
+            flag_name: "doctor_review_cockpit_v0",
+            enabled: true,
+            scope: "feature_flag_candidate",
+            source_intent_id: "intent-1",
+            source_execution_id: "release_exec_1",
+            rollback_target: "agent_policy_20260624_0",
+            updated_by: "release_manager",
+            updated_at: "2026-07-03T09:00:00+08:00",
+          },
+        }),
+      ),
+      getAdminReleaseMonitoring,
+      executeAdminReleaseRollback,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-execute-rollback-monitoring" })}
+        doctor={makeState({ sessionId: "doctor-execute-rollback-monitoring" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("monitoring status / monitoring"));
+    fireEvent.change(screen.getByLabelText("Execution actor"), { target: { value: "release_manager" } });
+    fireEvent.change(screen.getByLabelText("Execution reason"), { target: { value: "Rollback to accepted target." } });
+    fireEvent.change(screen.getByLabelText("Idempotency key"), { target: { value: "rollback-refresh-1" } });
+    fireEvent.change(screen.getByLabelText("Expected rollback plan"), { target: { value: "rollback-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Execute rollback" }));
+
+    await waitFor(() => expect(getAdminReleaseMonitoring).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("monitoring status / rolled_back");
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("latest release / intent-1 / release_exec_rollback_1");
+  });
+
   it("shows release execution action errors without replacing the read model", async () => {
     const apiClient = {
       getAdminTools: vi.fn(async () => makeAdminToolsManifest()),
@@ -1060,6 +1356,391 @@ describe("AgentAdminView", () => {
 
     await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("preflight denied"));
     expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("flag / not set");
+  });
+
+  it("loads release monitoring with dashboard governance and execution state", async () => {
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () => makeAdminReleaseExecution()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-load" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-load" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(apiClient.getAdminReleaseMonitoring).toHaveBeenCalledTimes(1));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("Release Dashboard");
+    expect(page).toHaveTextContent("Release governance");
+    expect(page).toHaveTextContent("Release execution");
+    expect(page).toHaveTextContent("Post-release monitoring");
+    expect(page).toHaveTextContent("monitoring status / monitoring");
+  });
+
+  it("renders the idle post-release monitoring state", async () => {
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseMonitoring: vi.fn(async () =>
+        makeAdminReleaseMonitoring({
+          status: "idle",
+          latest_release: null,
+          required_checks: [],
+          checks: [],
+        }),
+      ),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-idle" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-idle" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Post-release monitoring"));
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("monitoring status / idle");
+    expect(page).toHaveTextContent("latest release / none");
+  });
+
+  it("renders missing active monitoring checks explicitly", async () => {
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseMonitoring: vi.fn(async () =>
+        makeAdminReleaseMonitoring({
+          required_checks: [
+            {
+              check_type: "p0_harness_replay",
+              status: "missing",
+              latest_check_id: null,
+              reason: "p0 harness replay has not been recorded",
+            },
+          ],
+          checks: [],
+        }),
+      ),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-missing" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-missing" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("p0_harness_replay"));
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("missing");
+    expect(page).toHaveTextContent("p0 harness replay has not been recorded");
+  });
+
+  it("renders critical alerts with backend rollback trigger recommendations", async () => {
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseMonitoring: vi.fn(async () =>
+        makeAdminReleaseMonitoring({
+          alerts: [
+            {
+              alert_id: "alert-critical-1",
+              intent_id: "intent-1",
+              execution_id: "release_exec_1",
+              severity: "critical",
+              category: "rollback_ready",
+              status: "active",
+              message: "critical monitoring failure",
+              source_check_ids: ["check-failed"],
+              recommended_action: "execute_step13_rollback",
+              created_at: "2026-07-03T09:10:00+08:00",
+            },
+          ],
+          rollback_trigger_candidate: {
+            candidate_id: "rollback-candidate-1",
+            intent_id: "intent-1",
+            execution_id: "release_exec_1",
+            source_alert_ids: ["alert-critical-1"],
+            recommended_action: "execute_step13_rollback",
+            rollback_plan_id: "rollback-1",
+            rollback_target: "agent_policy_20260624_0",
+            reason: "critical active alert requires rollback",
+            created_at: "2026-07-03T09:11:00+08:00",
+          },
+        }),
+      ),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-alert" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-alert" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("alert-critical-1"));
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("critical");
+    expect(page).toHaveTextContent("execute_step13_rollback");
+    expect(page).toHaveTextContent("critical active alert requires rollback");
+  });
+
+  it("records monitoring checks with latest release ids and parsed evidence and metrics", async () => {
+    const updatedMonitoring = makeAdminReleaseMonitoring({
+      checks: [
+        {
+          check_id: "check-recorded",
+          intent_id: "intent-1",
+          execution_id: "release_exec_1",
+          check_type: "agent_admin_smoke",
+          status: "pass",
+          observed_by: "monitor-admin",
+          observed_at: "2026-07-03T09:20:00+08:00",
+          summary: "agent admin smoke passed",
+          evidence_refs: ["reports/a.json", "reports/b.json"],
+          metrics: { passed: true, duration_ms: 42 },
+          idempotency_key: "monitoring-check-submit",
+        },
+      ],
+    });
+    const recordAdminReleaseMonitoringCheck = vi.fn(async () => updatedMonitoring);
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      recordAdminReleaseMonitoringCheck,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-record" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-record" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Record monitoring check"));
+    fireEvent.change(screen.getByLabelText("Monitoring actor"), { target: { value: "monitor-admin" } });
+    fireEvent.change(screen.getByLabelText("Monitoring check type"), { target: { value: "agent_admin_smoke" } });
+    fireEvent.change(screen.getByLabelText("Monitoring check status"), { target: { value: "pass" } });
+    fireEvent.change(screen.getByLabelText("Monitoring summary"), { target: { value: "agent admin smoke passed" } });
+    fireEvent.change(screen.getByLabelText("Monitoring idempotency key"), { target: { value: "monitoring-check-submit" } });
+    fireEvent.change(screen.getByLabelText("Evidence refs"), { target: { value: "reports/a.json\nreports/b.json" } });
+    fireEvent.change(screen.getByLabelText("Metrics JSON"), { target: { value: "{\"passed\":true,\"duration_ms\":42}" } });
+    fireEvent.click(screen.getByRole("button", { name: "Record monitoring check" }));
+
+    await waitFor(() => expect(recordAdminReleaseMonitoringCheck).toHaveBeenCalledTimes(1));
+    expect(recordAdminReleaseMonitoringCheck).toHaveBeenCalledWith({
+      intent_id: "intent-1",
+      execution_id: "release_exec_1",
+      check_type: "agent_admin_smoke",
+      status: "pass",
+      observed_by: "monitor-admin",
+      summary: "agent admin smoke passed",
+      evidence_refs: ["reports/a.json", "reports/b.json"],
+      metrics: { passed: true, duration_ms: 42 },
+      idempotency_key: "monitoring-check-submit",
+    });
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("check-recorded");
+  });
+
+  it("records monitoring checks with blank metrics as an empty object", async () => {
+    const recordAdminReleaseMonitoringCheck = vi.fn(async () => makeAdminReleaseMonitoring());
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      recordAdminReleaseMonitoringCheck,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-blank-metrics" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-blank-metrics" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Record monitoring check"));
+    fireEvent.change(screen.getByLabelText("Monitoring actor"), { target: { value: "monitor-admin" } });
+    fireEvent.change(screen.getByLabelText("Monitoring check type"), { target: { value: "agent_admin_smoke" } });
+    fireEvent.change(screen.getByLabelText("Monitoring check status"), { target: { value: "pass" } });
+    fireEvent.change(screen.getByLabelText("Monitoring summary"), { target: { value: "blank metrics smoke passed" } });
+    fireEvent.change(screen.getByLabelText("Monitoring idempotency key"), { target: { value: "monitoring-blank-metrics" } });
+    fireEvent.change(screen.getByLabelText("Evidence refs"), { target: { value: "reports/a.json" } });
+    fireEvent.change(screen.getByLabelText("Metrics JSON"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Record monitoring check" }));
+
+    await waitFor(() => expect(recordAdminReleaseMonitoringCheck).toHaveBeenCalledTimes(1));
+    expect(recordAdminReleaseMonitoringCheck).toHaveBeenCalledWith({
+      intent_id: "intent-1",
+      execution_id: "release_exec_1",
+      check_type: "agent_admin_smoke",
+      status: "pass",
+      observed_by: "monitor-admin",
+      summary: "blank metrics smoke passed",
+      evidence_refs: ["reports/a.json"],
+      metrics: {},
+      idempotency_key: "monitoring-blank-metrics",
+    });
+  });
+
+  it("acknowledges monitoring alerts", async () => {
+    const updatedMonitoring = makeAdminReleaseMonitoring({
+      alerts: [],
+      acknowledgements: [
+        {
+          acknowledgement_id: "ack-1",
+          alert_id: "alert-warning-1",
+          intent_id: "intent-1",
+          execution_id: "release_exec_1",
+          acknowledged_by: "monitor-admin",
+          acknowledged_at: "2026-07-03T09:25:00+08:00",
+          disposition: "investigating",
+          reason: "triage started",
+        },
+      ],
+    });
+    const acknowledgeAdminReleaseMonitoringAlert = vi.fn(async () => updatedMonitoring);
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseMonitoring: vi.fn(async () =>
+        makeAdminReleaseMonitoring({
+          alerts: [
+            {
+              alert_id: "alert-warning-1",
+              intent_id: "intent-1",
+              execution_id: "release_exec_1",
+              severity: "warning",
+              category: "post_release_check_failed",
+              status: "active",
+              message: "agent admin smoke failed",
+              source_check_ids: ["check-agent-admin"],
+              recommended_action: "investigate",
+              created_at: "2026-07-03T09:21:00+08:00",
+            },
+          ],
+        }),
+      ),
+      acknowledgeAdminReleaseMonitoringAlert,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-ack" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-ack" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("alert-warning-1"));
+    fireEvent.change(screen.getByLabelText("Alert id"), { target: { value: "alert-warning-1" } });
+    fireEvent.change(screen.getByLabelText("Acknowledgement actor"), { target: { value: "monitor-admin" } });
+    fireEvent.change(screen.getByLabelText("Acknowledgement disposition"), { target: { value: "investigating" } });
+    fireEvent.change(screen.getByLabelText("Acknowledgement reason"), { target: { value: "triage started" } });
+    fireEvent.click(screen.getByRole("button", { name: "Acknowledge alert" }));
+
+    await waitFor(() => expect(acknowledgeAdminReleaseMonitoringAlert).toHaveBeenCalledTimes(1));
+    expect(acknowledgeAdminReleaseMonitoringAlert).toHaveBeenCalledWith("alert-warning-1", {
+      acknowledged_by: "monitor-admin",
+      disposition: "investigating",
+      reason: "triage started",
+    });
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("ack-1");
+  });
+
+  it("renders monitoring API errors without hiding dashboard governance or execution panels", async () => {
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () => makeAdminReleaseExecution()),
+      getAdminReleaseMonitoring: vi.fn(async () => {
+        throw new Error("monitoring reports unavailable");
+      }),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-error" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-error" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("release monitoring unavailable"));
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("Release Dashboard");
+    expect(page).toHaveTextContent("Release governance");
+    expect(page).toHaveTextContent("Release execution");
+    expect(page).toHaveTextContent("monitoring reports unavailable");
+  });
+
+  it("shows a local error for invalid monitoring metrics JSON without calling the record API", async () => {
+    const recordAdminReleaseMonitoringCheck = vi.fn(async () => makeAdminReleaseMonitoring());
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      recordAdminReleaseMonitoringCheck,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-monitoring-invalid-json" })}
+        doctor={makeState({ sessionId: "doctor-monitoring-invalid-json" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Record monitoring check"));
+    fireEvent.change(screen.getByLabelText("Monitoring summary"), { target: { value: "agent admin smoke passed" } });
+    fireEvent.change(screen.getByLabelText("Monitoring idempotency key"), { target: { value: "monitoring-invalid-json" } });
+    fireEvent.change(screen.getByLabelText("Evidence refs"), { target: { value: "reports/a.json" } });
+    fireEvent.change(screen.getByLabelText("Metrics JSON"), { target: { value: "{invalid-json" } });
+    fireEvent.click(screen.getByRole("button", { name: "Record monitoring check" }));
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("Metrics JSON must be a valid object"));
+    expect(recordAdminReleaseMonitoringCheck).not.toHaveBeenCalled();
   });
 
   it("does not fetch release dashboard until the release task is selected", () => {
