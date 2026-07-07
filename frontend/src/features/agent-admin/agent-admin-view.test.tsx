@@ -1780,12 +1780,13 @@ describe("AgentAdminView", () => {
         },
       }),
     );
+    const getAdminReleaseClosure = vi.fn(async () => makeAdminReleaseClosure());
     const apiClient = {
       getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
       getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
       getAdminReleaseExecution: vi.fn(async () => makeAdminReleaseExecution()),
       getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
-      getAdminReleaseClosure: vi.fn(async () => makeAdminReleaseClosure()),
+      getAdminReleaseClosure,
       recordAdminReleaseClosure,
     };
 
@@ -1803,6 +1804,8 @@ describe("AgentAdminView", () => {
 
     expect(await screen.findByText("Release closure")).toBeInTheDocument();
     expect(screen.getByText("ready_to_close")).toBeInTheDocument();
+    await waitFor(() => expect(getAdminReleaseClosure).toHaveBeenCalledTimes(1));
+    getAdminReleaseClosure.mockClear();
 
     fireEvent.change(screen.getByLabelText("Closure actor"), {
       target: { value: "release_manager" },
@@ -1824,6 +1827,8 @@ describe("AgentAdminView", () => {
       rationale: "Required checks passed.",
       idempotency_key: "close-1",
     });
+    await waitFor(() => expect(screen.getByText("latest closure / accepted / release_manager")).toBeInTheDocument());
+    expect(getAdminReleaseClosure).not.toHaveBeenCalled();
   });
 
   it("renders blocked release closure gate reasons and disables submit", async () => {

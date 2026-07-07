@@ -602,7 +602,6 @@ export function AgentAdminView({
         const data = await apiClient.recordAdminReleaseClosure(request);
         setReleaseClosureResource({ status: "success", data });
         setReleaseClosureActionState({ status: "idle" });
-        await refreshReleaseClosureResource();
       } catch (error) {
         setReleaseClosureActionState({
           status: "error",
