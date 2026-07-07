@@ -60,8 +60,19 @@ class ReleaseClosureService:
                 str(latest_release.get("intent_id")),
             )
         )
-        latest_closure = self._latest_closure(store_state.closures)
-        latest_package = self._latest_package(store_state.evidence_packages)
+        current_release_execution_id = (
+            None
+            if latest_release is None
+            else str(latest_release.get("execution_id"))
+        )
+        latest_closure = self._latest_closure_for_release(
+            store_state.closures,
+            current_release_execution_id,
+        )
+        latest_package = self._latest_package_for_release(
+            store_state.evidence_packages,
+            current_release_execution_id,
+        )
         integrity = self._integrity_model(
             dashboard=dashboard,
             governance=governance,
@@ -523,21 +534,37 @@ class ReleaseClosureService:
             return None
         return deepcopy(max(rollbacks, key=self._result_sort_key))
 
-    def _latest_closure(
+    def _latest_closure_for_release(
         self,
         closures: list[ReleaseClosureRecord],
+        release_execution_id: str | None,
     ) -> ReleaseClosureRecord | None:
-        if not closures:
+        if not closures or release_execution_id is None:
             return None
-        return max(closures, key=lambda item: item.closed_at)
+        matching = [
+            closure
+            for closure in closures
+            if closure.release_execution_id == release_execution_id
+        ]
+        if not matching:
+            return None
+        return max(matching, key=lambda item: item.closed_at)
 
-    def _latest_package(
+    def _latest_package_for_release(
         self,
         packages: list[ReleaseEvidencePackage],
+        release_execution_id: str | None,
     ) -> ReleaseEvidencePackage | None:
-        if not packages:
+        if not packages or release_execution_id is None:
             return None
-        return max(packages, key=lambda item: item.generated_at)
+        matching = [
+            package
+            for package in packages
+            if package.release_execution_id == release_execution_id
+        ]
+        if not matching:
+            return None
+        return max(matching, key=lambda item: item.generated_at)
 
     def _result_sort_key(self, result: dict[str, Any]) -> str:
         return str(

@@ -16,6 +16,9 @@ INTENT_ID = "release_intent_release_safety_20260629_001_6da729a0"
 RELEASE_EXECUTION_ID = (
     "release_exec_release_intent_release_safety_20260629_001_6da729a0_release_291a1a2b"
 )
+LATER_RELEASE_EXECUTION_ID = (
+    "release_exec_release_intent_release_safety_20260629_001_6da729a0_release_9f61d7ce"
+)
 ROLLBACK_EXECUTION_ID = (
     "release_exec_release_intent_release_safety_20260629_001_6da729a0_rollback_10ca7caa"
 )
@@ -239,6 +242,54 @@ def test_record_accepted_closure_writes_package(tmp_path: Path) -> None:
     assert model["status"] == "closed"
     assert model["latest_closure"]["closure_status"] == "accepted"
     assert model["latest_evidence_package"]["closure_id"] == model["latest_closure"]["closure_id"]
+
+
+def test_read_closure_scopes_latest_fields_and_status_to_latest_successful_release(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseClosureStore(tmp_path)
+    app = service(tmp_path, store=store)
+
+    app.record_closure(
+        intent_id=INTENT_ID,
+        release_execution_id=RELEASE_EXECUTION_ID,
+        closure_status="accepted",
+        closed_by="release_manager",
+        rationale="Older release was closed.",
+        idempotency_key="close-release-a",
+    )
+
+    newer_execution = {
+        "results": [
+            {
+                "execution_id": RELEASE_EXECUTION_ID,
+                "intent_id": INTENT_ID,
+                "action": "release",
+                "status": "succeeded",
+                "finished_at": "2026-07-07T09:00:00+08:00",
+            },
+            {
+                "execution_id": LATER_RELEASE_EXECUTION_ID,
+                "intent_id": INTENT_ID,
+                "action": "release",
+                "status": "succeeded",
+                "finished_at": "2026-07-07T11:00:00+08:00",
+            },
+        ],
+        "integrity": {"status": "verified", "warnings": []},
+    }
+
+    model = service(
+        tmp_path,
+        store=store,
+        execution_model=newer_execution,
+    ).read_closure()
+
+    assert model["status"] == "ready_to_close"
+    assert model["latest_release"]["release_execution_id"] == LATER_RELEASE_EXECUTION_ID
+    assert model["latest_closure"] is None
+    assert model["latest_evidence_package"] is None
+    assert model["closure_gate"]["allowed"] is True
 
 
 def test_record_closure_rejects_when_no_successful_release_exists(tmp_path: Path) -> None:
