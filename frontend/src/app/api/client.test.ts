@@ -77,23 +77,39 @@ function releaseMonitoringResponse(): AdminReleaseMonitoringResponse {
 }
 
 describe("createApiClient", () => {
+  // @ts-expect-error Review cleanup: admin auth must continue to flow through headers, not a separate option.
+  createApiClient({ adminToken: "admin-token" });
+
   it("gets admin release closure", async () => {
     const payload = releaseClosureResponse();
     const fetch = vi.fn().mockResolvedValue(jsonResponse(payload));
-    const client = createApiClient({ baseUrl: "http://127.0.0.1:8000", fetchImpl: fetch, adminToken: "admin-token" });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: fetch,
+      headers: { Authorization: "Bearer admin-token" },
+    });
 
     await expect(client.getAdminReleaseClosure()).resolves.toEqual(payload);
 
     expect(fetch).toHaveBeenCalledWith(
       "http://127.0.0.1:8000/api/admin/release-closure",
-      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer admin-token" }) }),
+      { headers: { Authorization: "Bearer admin-token" } },
     );
   });
 
   it("records admin release closure with JSON request body", async () => {
     const payload = releaseClosureResponse();
     const fetch = vi.fn().mockResolvedValue(jsonResponse(payload));
-    const client = createApiClient({ baseUrl: "http://127.0.0.1:8000", fetchImpl: fetch, adminToken: "admin-token" });
+    let latestInit: RequestInit | undefined;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      latestInit = init;
+      return jsonResponse(payload);
+    });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer admin-token" },
+    });
     const request = {
       intent_id: "intent-1",
       release_execution_id: "release-exec-1",
@@ -105,13 +121,16 @@ describe("createApiClient", () => {
 
     await expect(client.recordAdminReleaseClosure(request)).resolves.toEqual(payload);
 
-    expect(fetch).toHaveBeenCalledWith(
+    expect(fetchImpl).toHaveBeenCalledWith(
       "http://127.0.0.1:8000/api/admin/release-closure/closures",
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify(request),
       }),
     );
+    const headers = latestInit?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer admin-token");
+    expect(headers.get("Content-Type")).toBe("application/json");
   });
 
   it("loads admin tools with configured Authorization headers", async () => {

@@ -57,7 +57,6 @@ export interface ApiClientOptions {
   baseUrl?: string;
   fetchImpl?: FetchLike;
   headers?: HeadersInit;
-  adminToken?: string;
 }
 
 function buildUrl(path: string, baseUrl?: string, query?: URLSearchParams): string {
@@ -179,24 +178,6 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const defaultHeaders = options.headers;
   const baseUrl = options.baseUrl;
-  const adminToken = options.adminToken;
-
-  function adminHeaders(): HeadersInit | undefined {
-    if (adminToken) {
-      return { Authorization: `Bearer ${adminToken}` };
-    }
-    return defaultHeaders;
-  }
-
-  function jsonAdminHeaders(): HeadersInit {
-    if (adminToken) {
-      return {
-        Authorization: `Bearer ${adminToken}`,
-        "Content-Type": "application/json",
-      };
-    }
-    return buildJsonHeaders(defaultHeaders);
-  }
 
   return {
     async getAdminTools() {
@@ -236,7 +217,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
 
     async getAdminReleaseClosure() {
       const response = await fetchImpl(buildUrl("/api/admin/release-closure", baseUrl), {
-        headers: adminHeaders(),
+        headers: defaultHeaders,
       });
       return parseJsonResponse<AdminReleaseClosureResponse>(response);
     },
@@ -332,7 +313,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
     async recordAdminReleaseClosure(request) {
       const response = await fetchImpl(buildUrl("/api/admin/release-closure/closures", baseUrl), {
         method: "POST",
-        headers: jsonAdminHeaders(),
+        headers: buildJsonHeaders(defaultHeaders),
         body: JSON.stringify(request),
       });
       return parseJsonResponse<AdminReleaseClosureResponse>(response);
