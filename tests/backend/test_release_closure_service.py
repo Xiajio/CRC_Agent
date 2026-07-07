@@ -71,6 +71,17 @@ def execution(
     return {"results": results, "integrity": {"status": integrity_status, "warnings": []}}
 
 
+def execution_history(
+    results: list[dict[str, Any]],
+    *,
+    integrity_status: str = "verified",
+) -> dict[str, Any]:
+    return {
+        "results": results,
+        "integrity": {"status": integrity_status, "warnings": []},
+    }
+
+
 def monitoring(
     *,
     missing: bool = False,
@@ -292,6 +303,50 @@ def test_read_closure_scopes_latest_fields_and_status_to_latest_successful_relea
     assert model["closure_gate"]["allowed"] is True
 
 
+def test_read_closure_ignores_older_rollback_for_latest_release_cycle(
+    tmp_path: Path,
+) -> None:
+    model = service(
+        tmp_path,
+        execution_model=execution_history(
+            [
+                {
+                    "execution_id": RELEASE_EXECUTION_ID,
+                    "intent_id": INTENT_ID,
+                    "action": "release",
+                    "status": "succeeded",
+                    "finished_at": "2026-07-07T09:00:00+08:00",
+                },
+                {
+                    "execution_id": ROLLBACK_EXECUTION_ID,
+                    "intent_id": INTENT_ID,
+                    "action": "rollback",
+                    "status": "succeeded",
+                    "finished_at": "2026-07-07T09:30:00+08:00",
+                },
+                {
+                    "execution_id": LATER_RELEASE_EXECUTION_ID,
+                    "intent_id": INTENT_ID,
+                    "action": "release",
+                    "status": "succeeded",
+                    "finished_at": "2026-07-07T11:00:00+08:00",
+                },
+            ]
+        ),
+    ).read_closure()
+
+    assert model["status"] == "ready_to_close"
+    assert model["latest_release"] == {
+        "intent_id": INTENT_ID,
+        "release_execution_id": LATER_RELEASE_EXECUTION_ID,
+        "released_at": "2026-07-07T11:00:00+08:00",
+        "rollback_execution_id": None,
+        "rolled_back_at": None,
+    }
+    assert model["latest_closure"] is None
+    assert model["closure_gate"]["allowed"] is True
+
+
 def test_record_closure_rejects_when_no_successful_release_exists(tmp_path: Path) -> None:
     app = service(tmp_path, execution_model=execution(release=False))
 
@@ -442,6 +497,100 @@ def test_record_accepted_closure_is_blocked_after_successful_rollback(
             closed_by="release_manager",
             rationale="Close anyway.",
             idempotency_key="close-after-rollback-1",
+        )
+
+
+def test_record_accepted_closure_succeeds_for_newer_release_despite_older_rollback(
+    tmp_path: Path,
+) -> None:
+    app = service(
+        tmp_path,
+        execution_model=execution_history(
+            [
+                {
+                    "execution_id": RELEASE_EXECUTION_ID,
+                    "intent_id": INTENT_ID,
+                    "action": "release",
+                    "status": "succeeded",
+                    "finished_at": "2026-07-07T09:00:00+08:00",
+                },
+                {
+                    "execution_id": ROLLBACK_EXECUTION_ID,
+                    "intent_id": INTENT_ID,
+                    "action": "rollback",
+                    "status": "succeeded",
+                    "finished_at": "2026-07-07T09:30:00+08:00",
+                },
+                {
+                    "execution_id": LATER_RELEASE_EXECUTION_ID,
+                    "intent_id": INTENT_ID,
+                    "action": "release",
+                    "status": "succeeded",
+                    "finished_at": "2026-07-07T11:00:00+08:00",
+                },
+            ]
+        ),
+    )
+
+    model = app.record_closure(
+        intent_id=INTENT_ID,
+        release_execution_id=LATER_RELEASE_EXECUTION_ID,
+        closure_status="accepted",
+        closed_by="release_manager",
+        rationale="Latest release passed closure gates.",
+        idempotency_key="close-release-b-accepted",
+    )
+
+    assert model["status"] == "closed"
+    assert model["latest_release"]["release_execution_id"] == LATER_RELEASE_EXECUTION_ID
+    assert model["latest_release"]["rollback_execution_id"] is None
+    assert model["latest_closure"]["release_execution_id"] == LATER_RELEASE_EXECUTION_ID
+    assert model["latest_closure"]["closure_status"] == "accepted"
+
+
+def test_rolled_back_closure_rejects_older_rollback_for_previous_release_cycle(
+    tmp_path: Path,
+) -> None:
+    app = service(
+        tmp_path,
+        execution_model=execution_history(
+            [
+                {
+                    "execution_id": RELEASE_EXECUTION_ID,
+                    "intent_id": INTENT_ID,
+                    "action": "release",
+                    "status": "succeeded",
+                    "finished_at": "2026-07-07T09:00:00+08:00",
+                },
+                {
+                    "execution_id": ROLLBACK_EXECUTION_ID,
+                    "intent_id": INTENT_ID,
+                    "action": "rollback",
+                    "status": "succeeded",
+                    "finished_at": "2026-07-07T09:30:00+08:00",
+                },
+                {
+                    "execution_id": LATER_RELEASE_EXECUTION_ID,
+                    "intent_id": INTENT_ID,
+                    "action": "release",
+                    "status": "succeeded",
+                    "finished_at": "2026-07-07T11:00:00+08:00",
+                },
+            ]
+        ),
+    )
+
+    with pytest.raises(
+        ReleaseClosureConflictError,
+        match="successful rollback is required for rolled_back closure",
+    ):
+        app.record_closure(
+            intent_id=INTENT_ID,
+            release_execution_id=LATER_RELEASE_EXECUTION_ID,
+            closure_status="rolled_back",
+            closed_by="release_manager",
+            rationale="Rollback completed for latest release.",
+            idempotency_key="close-release-b-rollback",
         )
 
 

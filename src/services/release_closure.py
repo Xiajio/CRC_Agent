@@ -55,9 +55,9 @@ class ReleaseClosureService:
         latest_rollback = (
             None
             if latest_release is None
-            else self._latest_successful_rollback(
+            else self._latest_successful_rollback_for_release(
                 execution,
-                str(latest_release.get("intent_id")),
+                latest_release,
             )
         )
         current_release_execution_id = (
@@ -164,7 +164,10 @@ class ReleaseClosureService:
                 "closure must reference the latest successful release execution"
             )
 
-        rollback = self._latest_successful_rollback(execution, intent_id)
+        rollback = self._latest_successful_rollback_for_release(
+            execution,
+            latest_release,
+        )
         warning_conflict = self._warning_alert_conflict(
             monitoring=monitoring,
             closure_status=closure_status,
@@ -514,21 +517,24 @@ class ReleaseClosureService:
             return None
         return deepcopy(max(releases, key=self._result_sort_key))
 
-    def _latest_successful_rollback(
+    def _latest_successful_rollback_for_release(
         self,
         execution: dict[str, Any],
-        intent_id: str,
+        release: dict[str, Any],
     ) -> dict[str, Any] | None:
         results = execution.get("results")
         if not isinstance(results, list):
             return None
+        release_intent_id = release.get("intent_id")
+        release_finished_at = self._result_sort_key(release)
         rollbacks = [
             result
             for result in results
             if isinstance(result, dict)
-            and result.get("intent_id") == intent_id
+            and result.get("intent_id") == release_intent_id
             and result.get("action") == "rollback"
             and result.get("status") == "succeeded"
+            and self._result_sort_key(result) > release_finished_at
         ]
         if not rollbacks:
             return None
