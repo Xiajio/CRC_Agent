@@ -31,6 +31,7 @@ ROLLBACK_PLAN_ID = "rollback_plan_release_intent_release_safety_20260629_001_1b0
 SPEC_ALERT_CATEGORIES = (
     "missing_required_check",
     "post_release_check_failed",
+    "post_release_check_warning",
     "execution_integrity_failed",
     "governance_drift",
     "feature_flag_state_mismatch",

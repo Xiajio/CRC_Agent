@@ -222,6 +222,7 @@ Allowed `category` values:
 
 - `missing_required_check`
 - `post_release_check_failed`
+- `post_release_check_warning`
 - `execution_integrity_failed`
 - `governance_drift`
 - `feature_flag_state_mismatch`
@@ -357,11 +358,12 @@ Derived alert rules:
 2. Governance integrity failure creates a critical `governance_drift` alert.
 3. Dashboard release report, rollback target, version chain, hard fail count, or literature status drift creates a warning or critical `governance_drift` alert.
 4. Missing required checks create warning `missing_required_check` alerts.
-5. A failed `p0_harness_replay` check creates a critical `post_release_check_failed` alert with recommended action `execute_step13_rollback`.
-6. A failed `doctor_review_smoke` check creates a critical `post_release_check_failed` alert with recommended action `prepare_rollback`.
-7. A failed `literature_isolation` check creates a critical `post_release_check_failed` alert with recommended action `execute_step13_rollback`.
-8. A current local feature flag enabled for an execution without a matching successful release result creates a critical `feature_flag_state_mismatch` alert.
-9. A current local feature flag disabled after successful rollback clears rollback trigger candidate derivation.
+5. Warning required checks create warning `post_release_check_warning` alerts.
+6. A failed `p0_harness_replay` check creates a critical `post_release_check_failed` alert with recommended action `execute_step13_rollback`.
+7. A failed `doctor_review_smoke` check creates a critical `post_release_check_failed` alert with recommended action `prepare_rollback`.
+8. A failed `literature_isolation` check creates a critical `post_release_check_failed` alert with recommended action `execute_step13_rollback`.
+9. A current local feature flag enabled for an execution without a matching successful release result creates a critical `feature_flag_state_mismatch` alert.
+10. A current local feature flag disabled after successful rollback clears rollback trigger candidate derivation.
 
 ## 9. Read Model
 
