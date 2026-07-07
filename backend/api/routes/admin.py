@@ -225,7 +225,10 @@ async def get_admin_release_monitoring() -> dict[str, Any]:
 
 @router.get("/release-closure")
 async def get_admin_release_closure() -> dict[str, Any]:
-    return _release_closure_service().read_closure()
+    try:
+        return _release_closure_service().read_closure()
+    except Exception as exc:
+        _raise_closure_http_error(exc)
 
 
 @router.post("/release-execution/release")

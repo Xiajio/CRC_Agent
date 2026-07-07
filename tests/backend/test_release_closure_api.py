@@ -7,7 +7,7 @@ import backend.api.routes.admin as admin_routes
 from src.services.release_closure import ReleaseClosureConflictError
 
 
-def test_get_release_closure_requires_admin_token(monkeypatch) -> None:
+def test_get_release_closure_returns_status_for_admin_token(monkeypatch) -> None:
     monkeypatch.setenv("API_BEARER_TOKEN", "user-token")
     monkeypatch.setenv("API_ADMIN_BEARER_TOKEN", "admin-token")
     monkeypatch.setattr(
@@ -24,6 +24,26 @@ def test_get_release_closure_requires_admin_token(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert response.json()["status"] == "idle"
+
+
+def test_get_release_closure_maps_store_os_error(monkeypatch) -> None:
+    monkeypatch.setenv("API_BEARER_TOKEN", "user-token")
+    monkeypatch.setenv("API_ADMIN_BEARER_TOKEN", "admin-token")
+
+    class Service:
+        def read_closure(self):
+            raise OSError("closure store unavailable")
+
+    monkeypatch.setattr(admin_routes, "_release_closure_service", lambda: Service())
+    client = TestClient(create_app())
+
+    response = client.get(
+        "/api/admin/release-closure",
+        headers={"Authorization": "Bearer admin-token"},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "closure store unavailable"
 
 
 def test_record_closure_maps_gate_conflict(monkeypatch) -> None:
