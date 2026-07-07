@@ -152,6 +152,38 @@ def test_canonical_payload_hash_allows_normal_closure_text() -> None:
 
 
 @pytest.mark.parametrize(
+    "rationale",
+    [
+        "No session transcript was retained for this closure.",
+        "The operator prompt confirmed completion.",
+    ],
+)
+def test_canonical_payload_hash_allows_benign_prompt_and_transcript_mentions(
+    rationale: str,
+) -> None:
+    assert canonical_closure_payload_hash({"rationale": rationale}).startswith(
+        "sha256:"
+    )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"note": "api_key=abc123"},
+        {"note": "token: abc123"},
+        {"note": "chain_of_thought: hidden steps"},
+        {"note": "hidden_reasoning: internal notes"},
+        {"note": "raw_patient_identifier: 12345"},
+    ],
+)
+def test_canonical_payload_hash_rejects_obvious_sensitive_value_patterns(
+    payload: dict[str, str],
+) -> None:
+    with pytest.raises(ValueError, match="forbidden content"):
+        canonical_closure_payload_hash(payload)
+
+
+@pytest.mark.parametrize(
     "artifact_ref",
     [
         "reports/release_monitoring/checks/foo.json",
