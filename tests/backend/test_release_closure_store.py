@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import backend.api.services.release_closure_store as release_closure_store_module
 from backend.api.services.release_closure_store import (
     ReleaseClosureIntegrityError,
     ReleaseClosureStore,
@@ -131,3 +132,65 @@ def test_audit_tampering_blocks_writes(tmp_path: Path) -> None:
 
     with pytest.raises(ReleaseClosureIntegrityError, match="release closure integrity failed"):
         store.write_closure_with_package(*make_pair("close-2"), timestamp="2026-07-07T10:05:00+08:00")
+
+
+def test_failed_second_audit_append_rolls_back_without_poisoned_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ReleaseClosureStore(tmp_path)
+    closure, package = make_pair()
+    original_dumps = release_closure_store_module.json.dumps
+    calls = 0
+
+    def fail_after_first_event(*args: object, **kwargs: object) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("simulated second append failure")
+        return original_dumps(*args, **kwargs)
+
+    monkeypatch.setattr(release_closure_store_module.json, "dumps", fail_after_first_event)
+
+    with pytest.raises(OSError, match="simulated second append failure"):
+        store.write_closure_with_package(closure, package, timestamp=closure.closed_at)
+
+    state = store.read_state()
+
+    assert state.integrity == {"status": "verified", "warnings": []}
+    assert state.closures == []
+    assert state.evidence_packages == []
+    assert state.audit_events == []
+
+
+@pytest.mark.parametrize(
+    ("overrides", "artifact_refs"),
+    [
+        ({"closure_id": "release_closure_other"}, None),
+        ({"package_id": "release_evidence_package_other"}, None),
+        ({"intent_id": "release_intent_other"}, None),
+        ({"release_execution_id": "release_exec_other"}, None),
+        ({"rollback_execution_id": "rollback_exec_other"}, None),
+        ({"closure_status": "accepted_with_observations"}, None),
+        ({}, ["reports/release_closure/closures/release_closure_other.json"]),
+    ],
+)
+def test_mismatched_closure_and_package_are_rejected_before_persistence(
+    tmp_path: Path,
+    overrides: dict[str, str | None],
+    artifact_refs: list[str] | None,
+) -> None:
+    store = ReleaseClosureStore(tmp_path)
+    closure, package = make_pair()
+    package_payload = {**package.to_dict(), **overrides}
+    if artifact_refs is not None:
+        package_payload["artifact_refs"] = artifact_refs
+    mismatched_package = ReleaseEvidencePackage(**package_payload)
+
+    with pytest.raises(ValueError, match="closure/package mismatch"):
+        store.write_closure_with_package(
+            closure,
+            mismatched_package,
+            timestamp=closure.closed_at,
+        )
+
+    assert sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*")) == []

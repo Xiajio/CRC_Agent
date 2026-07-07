@@ -122,6 +122,7 @@ class ReleaseClosureStore:
         timestamp: str,
     ) -> None:
         self._raise_if_integrity_failed()
+        self._validate_closure_package_pair(closure, package)
         self.assert_idempotent_closure_matches(closure, package)
         self._ensure_root()
         closure_path = self._artifact_path(self.closures_dir, closure.closure_id)
@@ -163,8 +164,10 @@ class ReleaseClosureStore:
             closure_path.unlink(missing_ok=True)
             raise
         try:
-            self._append_audit_event(closure_event, timestamp=timestamp)
-            self._append_audit_event(package_event, timestamp=timestamp)
+            self._append_audit_events(
+                (closure_event, package_event),
+                timestamp=timestamp,
+            )
         except Exception:
             package_path.unlink(missing_ok=True)
             closure_path.unlink(missing_ok=True)
@@ -257,11 +260,34 @@ class ReleaseClosureStore:
         *,
         timestamp: str,
     ) -> None:
+        self._append_audit_events((event,), timestamp=timestamp)
+
+    def _append_audit_events(
+        self,
+        events: tuple[ReleaseClosureAuditEvent, ...] | list[ReleaseClosureAuditEvent],
+        *,
+        timestamp: str,
+    ) -> None:
         audit_path = self._audit_path(timestamp)
+        self._raise_if_parent_outside_root(audit_path)
+        self._raise_if_existing_write_target_outside_root(audit_path)
         audit_path.parent.mkdir(parents=True, exist_ok=True)
-        with audit_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(event.to_dict(), sort_keys=True))
-            handle.write("\n")
+        audit_preexisted = audit_path.exists()
+        with audit_path.open("a+", encoding="utf-8") as handle:
+            handle.seek(0, 2)
+            initial_size = handle.tell()
+            try:
+                for event in events:
+                    handle.write(json.dumps(event.to_dict(), sort_keys=True))
+                    handle.write("\n")
+                handle.flush()
+            except Exception:
+                handle.flush()
+                handle.seek(initial_size)
+                handle.truncate()
+                raise
+        if not audit_preexisted and audit_path.exists() and audit_path.stat().st_size == 0:
+            audit_path.unlink(missing_ok=True)
 
     def _audit_path(self, timestamp: str) -> Path:
         audit_path = self.audit_dir / f"release_closure_{_audit_date(timestamp)}.jsonl"
@@ -606,6 +632,37 @@ class ReleaseClosureStore:
             raise ReleaseClosureIntegrityError(
                 f"{path} resolves outside closure root {self.root}"
             ) from exc
+
+    def _validate_closure_package_pair(
+        self,
+        closure: ReleaseClosureRecord,
+        package: ReleaseEvidencePackage,
+    ) -> None:
+        mismatches: list[str] = []
+        if package.closure_id != closure.closure_id:
+            mismatches.append("closure_id")
+        if package.package_id != closure.evidence_package_id:
+            mismatches.append("evidence_package_id")
+        if package.intent_id != closure.intent_id:
+            mismatches.append("intent_id")
+        if package.release_execution_id != closure.release_execution_id:
+            mismatches.append("release_execution_id")
+        if package.rollback_execution_id != closure.rollback_execution_id:
+            mismatches.append("rollback_execution_id")
+        if package.closure_status != closure.closure_status:
+            mismatches.append("closure_status")
+
+        expected_closure_ref = f"reports/release_closure/closures/{closure.closure_id}.json"
+        if expected_closure_ref not in package.artifact_refs:
+            mismatches.append("artifact_refs")
+        for artifact_ref in package.artifact_refs:
+            if artifact_ref.startswith("reports/release_closure/closures/") and artifact_ref != expected_closure_ref:
+                mismatches.append("artifact_refs")
+                break
+
+        if mismatches:
+            mismatch_summary = ", ".join(sorted(set(mismatches)))
+            raise ValueError(f"closure/package mismatch: {mismatch_summary}")
 
 
 def _audit_date(timestamp: str) -> str:
