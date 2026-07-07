@@ -5,6 +5,7 @@ from datetime import date
 import json
 from pathlib import Path
 import re
+import threading
 from typing import Any, Callable, TypeVar
 
 from src.contracts.release_closure import (
@@ -66,6 +67,9 @@ _WINDOWS_RESERVED_DEVICE_NAMES = frozenset(
 
 
 class ReleaseClosureStore:
+    _release_write_locks: dict[tuple[str, str], threading.RLock] = {}
+    _release_write_locks_guard = threading.Lock()
+
     def __init__(self, root: Path) -> None:
         self.root = Path(root)
         self.closures_dir = self.root / "closures"
@@ -121,74 +125,84 @@ class ReleaseClosureStore:
         *,
         timestamp: str,
     ) -> None:
-        state = self._read_verified_state(action="write")
-        self._validate_closure_package_pair(closure, package)
-        existing_closure = self._closure_for_release_execution(
-            state.closures,
-            closure.release_execution_id,
-        )
-        if existing_closure is not None:
-            if existing_closure.idempotency_key != closure.idempotency_key:
-                raise ReleaseClosureIntegrityError(
-                    "release execution already has a closure"
-                )
-            self.assert_idempotent_closure_matches(closure, package)
-            return
-        self.assert_idempotent_closure_matches(closure, package)
-        self._ensure_root()
-        closure_path = self._artifact_path(self.closures_dir, closure.closure_id)
-        package_path = self._artifact_path(self.packages_dir, package.package_id)
-        self._audit_path(timestamp)
-        closure_event = build_release_closure_audit_event(
-            event_id=make_release_closure_event_id(
+        with self._release_write_lock(closure.release_execution_id):
+            state = self._read_verified_state(action="write")
+            self._validate_closure_package_pair(closure, package)
+            existing_closure = self._closure_for_release_execution(
+                state.closures,
                 closure.release_execution_id,
-                "closure_recorded",
-                f"{timestamp}#{closure.closure_id}",
-            ),
-            intent_id=closure.intent_id,
-            release_execution_id=closure.release_execution_id,
-            event_type="closure_recorded",
-            actor=closure.closed_by,
-            timestamp=timestamp,
-            payload=closure.to_dict(),
-            previous_event_hash=self._last_event_hash(closure.release_execution_id),
-        )
-        package_event = build_release_closure_audit_event(
-            event_id=make_release_closure_event_id(
-                package.release_execution_id,
-                "evidence_package_generated",
-                f"{timestamp}#{package.package_id}",
-            ),
-            intent_id=package.intent_id,
-            release_execution_id=package.release_execution_id,
-            event_type="evidence_package_generated",
-            actor=package.generated_by,
-            timestamp=timestamp,
-            payload=package.to_dict(),
-            previous_event_hash=closure_event.event_hash,
-        )
-
-        self._write_json_once(closure_path, closure.to_dict())
-        try:
-            self._write_json_once(package_path, package.to_dict())
-        except Exception:
-            closure_path.unlink(missing_ok=True)
-            self._remove_empty_directories(self.closures_dir, self.packages_dir)
-            raise
-        try:
-            self._append_audit_events(
-                (closure_event, package_event),
+            )
+            if existing_closure is not None:
+                if existing_closure.idempotency_key != closure.idempotency_key:
+                    raise ReleaseClosureIntegrityError(
+                        "release execution already has a closure"
+                    )
+                self.assert_idempotent_closure_matches(closure, package)
+                return
+            self.assert_idempotent_closure_matches(closure, package)
+            self._ensure_root()
+            closure_path = self._artifact_path(self.closures_dir, closure.closure_id)
+            package_path = self._artifact_path(self.packages_dir, package.package_id)
+            self._audit_path(timestamp)
+            closure_event = build_release_closure_audit_event(
+                event_id=make_release_closure_event_id(
+                    closure.release_execution_id,
+                    "closure_recorded",
+                    f"{timestamp}#{closure.closure_id}",
+                ),
+                intent_id=closure.intent_id,
+                release_execution_id=closure.release_execution_id,
+                event_type="closure_recorded",
+                actor=closure.closed_by,
                 timestamp=timestamp,
+                payload=closure.to_dict(),
+                previous_event_hash=self._last_event_hash(closure.release_execution_id),
             )
-        except Exception:
-            package_path.unlink(missing_ok=True)
-            closure_path.unlink(missing_ok=True)
-            self._remove_empty_directories(
-                self.closures_dir,
-                self.packages_dir,
-                self.audit_dir,
+            package_event = build_release_closure_audit_event(
+                event_id=make_release_closure_event_id(
+                    package.release_execution_id,
+                    "evidence_package_generated",
+                    f"{timestamp}#{package.package_id}",
+                ),
+                intent_id=package.intent_id,
+                release_execution_id=package.release_execution_id,
+                event_type="evidence_package_generated",
+                actor=package.generated_by,
+                timestamp=timestamp,
+                payload=package.to_dict(),
+                previous_event_hash=closure_event.event_hash,
             )
-            raise
+
+            self._write_json_once(closure_path, closure.to_dict())
+            try:
+                self._write_json_once(package_path, package.to_dict())
+            except Exception:
+                closure_path.unlink(missing_ok=True)
+                self._remove_empty_directories(self.closures_dir, self.packages_dir)
+                raise
+            try:
+                self._append_audit_events(
+                    (closure_event, package_event),
+                    timestamp=timestamp,
+                )
+            except Exception:
+                package_path.unlink(missing_ok=True)
+                closure_path.unlink(missing_ok=True)
+                self._remove_empty_directories(
+                    self.closures_dir,
+                    self.packages_dir,
+                    self.audit_dir,
+                )
+                raise
+
+    def _release_write_lock(self, release_execution_id: str) -> threading.RLock:
+        lock_key = (str(self.root.resolve(strict=False)), release_execution_id)
+        with self._release_write_locks_guard:
+            lock = self._release_write_locks.get(lock_key)
+            if lock is None:
+                lock = threading.RLock()
+                self._release_write_locks[lock_key] = lock
+            return lock
 
     def _read_state_with_integrity(self) -> ReleaseClosureState:
         root_warning = self._root_layout_warning()

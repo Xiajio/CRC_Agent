@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
+import threading
 
 import pytest
 
@@ -236,6 +238,124 @@ def test_write_rejects_second_closure_for_same_release_with_different_key(
     state = store.read_state()
     assert [item.closure_id for item in state.closures] == [closure.closure_id]
     assert [item.package_id for item in state.evidence_packages] == [package.package_id]
+
+
+def test_concurrent_different_key_closure_write_allows_only_one_pair(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseClosureStore(tmp_path)
+    first_closure, first_package = make_pair("close-1")
+    second_closure, second_package = make_pair("close-2")
+    first_closure_path = tmp_path / "closures" / f"{first_closure.closure_id}.json"
+    first_write_started = threading.Event()
+    release_first_write = threading.Event()
+    original_write_json_once = store._write_json_once
+
+    def pause_first_closure_write(path: Path, payload: dict[str, object]) -> None:
+        if path == first_closure_path:
+            first_write_started.set()
+            assert release_first_write.wait(timeout=5)
+        original_write_json_once(path, payload)
+
+    store._write_json_once = pause_first_closure_write  # type: ignore[method-assign]
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = executor.submit(
+            store.write_closure_with_package,
+            first_closure,
+            first_package,
+            timestamp=first_closure.closed_at,
+        )
+        assert first_write_started.wait(timeout=5)
+        second_future = executor.submit(
+            store.write_closure_with_package,
+            second_closure,
+            second_package,
+            timestamp="2026-07-07T10:05:00+08:00",
+        )
+        try:
+            second_future.result(timeout=0.5)
+        except TimeoutError:
+            pass
+        release_first_write.set()
+
+        errors: list[BaseException] = []
+        for future in (first_future, second_future):
+            try:
+                future.result(timeout=5)
+            except BaseException as exc:
+                errors.append(exc)
+
+    assert len(errors) == 1
+    assert isinstance(errors[0], ReleaseClosureIntegrityError)
+    assert "release execution already has a closure" in str(errors[0])
+
+    state = store.read_state()
+    assert state.integrity == {"status": "verified", "warnings": []}
+    assert len(state.closures) == 1
+    assert len(state.evidence_packages) == 1
+    assert len(state.audit_events) == 2
+
+
+def test_concurrent_same_key_closure_write_replays_idempotently(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseClosureStore(tmp_path)
+    closure, package = make_pair("close-1")
+    closure_path = tmp_path / "closures" / f"{closure.closure_id}.json"
+    first_write_started = threading.Event()
+    release_first_write = threading.Event()
+    pause_owner: dict[str, int] = {}
+    pause_owner_lock = threading.Lock()
+    original_write_json_once = store._write_json_once
+
+    def pause_first_same_key_closure_write(
+        path: Path,
+        payload: dict[str, object],
+    ) -> None:
+        if path == closure_path:
+            current_thread_id = threading.get_ident()
+            with pause_owner_lock:
+                pause_owner.setdefault("thread_id", current_thread_id)
+                should_pause = pause_owner["thread_id"] == current_thread_id
+            if should_pause:
+                first_write_started.set()
+                assert release_first_write.wait(timeout=5)
+        original_write_json_once(path, payload)
+
+    store._write_json_once = pause_first_same_key_closure_write  # type: ignore[method-assign]
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = executor.submit(
+            store.write_closure_with_package,
+            closure,
+            package,
+            timestamp=closure.closed_at,
+        )
+        assert first_write_started.wait(timeout=5)
+        second_future = executor.submit(
+            store.write_closure_with_package,
+            closure,
+            package,
+            timestamp=closure.closed_at,
+        )
+        try:
+            second_future.result(timeout=0.5)
+        except TimeoutError:
+            pass
+        release_first_write.set()
+
+        for future in (first_future, second_future):
+            future.result(timeout=5)
+
+    state = store.read_state()
+    assert state.integrity == {"status": "verified", "warnings": []}
+    assert [item.closure_id for item in state.closures] == [closure.closure_id]
+    assert [item.package_id for item in state.evidence_packages] == [package.package_id]
+    assert [event.event_type for event in state.audit_events] == [
+        "closure_recorded",
+        "evidence_package_generated",
+    ]
 
 
 def test_read_state_detects_multiple_closure_package_pairs_for_release_execution(
