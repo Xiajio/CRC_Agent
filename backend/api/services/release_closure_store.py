@@ -162,6 +162,7 @@ class ReleaseClosureStore:
             self._write_json_once(package_path, package.to_dict())
         except Exception:
             closure_path.unlink(missing_ok=True)
+            self._remove_empty_directories(self.closures_dir, self.packages_dir)
             raise
         try:
             self._append_audit_events(
@@ -171,6 +172,11 @@ class ReleaseClosureStore:
         except Exception:
             package_path.unlink(missing_ok=True)
             closure_path.unlink(missing_ok=True)
+            self._remove_empty_directories(
+                self.closures_dir,
+                self.packages_dir,
+                self.audit_dir,
+            )
             raise
 
     def _read_state_with_integrity(self) -> ReleaseClosureState:
@@ -288,6 +294,7 @@ class ReleaseClosureStore:
                 raise
         if not audit_preexisted and audit_path.exists() and audit_path.stat().st_size == 0:
             audit_path.unlink(missing_ok=True)
+            self._remove_empty_directories(self.audit_dir)
 
     def _audit_path(self, timestamp: str) -> Path:
         audit_path = self.audit_dir / f"release_closure_{_audit_date(timestamp)}.jsonl"
@@ -447,6 +454,19 @@ class ReleaseClosureStore:
         warnings.extend(self._audit_chain_warnings(records))
         return _AuditReadResult(records=records, warnings=warnings)
 
+    def _remove_empty_directories(self, *directories: Path) -> None:
+        for directory in directories:
+            current = directory
+            while current != self.root:
+                try:
+                    current.rmdir()
+                except FileNotFoundError:
+                    current = current.parent
+                    continue
+                except OSError:
+                    break
+                current = current.parent
+
     def _artifact_consistency_warnings(
         self,
         *,
@@ -456,6 +476,7 @@ class ReleaseClosureStore:
     ) -> list[str]:
         warnings: list[str] = []
         packages_by_id = {package.package_id: package for package in packages}
+        closures_by_id = {closure.closure_id: closure for closure in closures}
         closure_hashes = {
             (
                 closure.release_execution_id,
@@ -487,17 +508,18 @@ class ReleaseClosureStore:
                     f"closure artifact {closure.closure_id} references missing evidence package"
                 )
         for package in packages:
-            matching_closure = next(
-                (closure for closure in closures if closure.closure_id == package.closure_id),
-                None,
-            )
+            matching_closure = closures_by_id.get(package.closure_id)
             if matching_closure is None:
                 warnings.append(
                     f"package artifact {package.package_id} references missing closure artifact"
                 )
-            elif matching_closure.evidence_package_id != package.package_id:
+                continue
+            try:
+                self._validate_closure_package_pair(matching_closure, package)
+            except ValueError as exc:
                 warnings.append(
-                    f"package artifact {package.package_id} does not match closure evidence_package_id"
+                    "closure/package mismatch for "
+                    f"{matching_closure.closure_id} and {package.package_id}: {exc}"
                 )
         for release_execution_id, payload_hash in closure_hashes:
             if (release_execution_id, payload_hash) not in audit_closure_hashes:

@@ -12,6 +12,8 @@ from backend.api.services.release_closure_store import (
 from src.contracts.release_closure import (
     ReleaseClosureRecord,
     ReleaseEvidencePackage,
+    build_release_closure_audit_event,
+    make_release_closure_event_id,
     make_release_closure_id,
     make_release_evidence_package_id,
 )
@@ -146,7 +148,7 @@ def test_failed_second_audit_append_rolls_back_without_poisoned_ledger(
     def fail_after_first_event(*args: object, **kwargs: object) -> str:
         nonlocal calls
         calls += 1
-        if calls == 2:
+        if calls == 4:
             raise OSError("simulated second append failure")
         return original_dumps(*args, **kwargs)
 
@@ -163,6 +165,67 @@ def test_failed_second_audit_append_rolls_back_without_poisoned_ledger(
     assert state.evidence_packages == []
     assert state.audit_events == []
     assert before == after
+
+
+def test_read_state_detects_tampered_package_even_when_audit_hash_matches(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseClosureStore(tmp_path)
+    closure, package = make_pair()
+    store.write_closure_with_package(closure, package, timestamp=closure.closed_at)
+
+    tampered_package_payload = package.to_dict()
+    tampered_package_payload["snapshot_hashes"] = {
+        **tampered_package_payload["snapshot_hashes"],
+        "monitoring": "sha256:" + "e" * 64,
+    }
+    package_path = tmp_path / "packages" / f"{package.package_id}.json"
+    package_path.write_text(
+        release_closure_store_module.json.dumps(
+            tampered_package_payload,
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    audit_path = next((tmp_path / "audit").glob("release_closure_*.jsonl"))
+    audit_lines = [
+        release_closure_store_module.json.loads(line)
+        for line in audit_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    audit_lines[1] = build_release_closure_audit_event(
+        event_id=make_release_closure_event_id(
+            package.release_execution_id,
+            "evidence_package_generated",
+            f"{closure.closed_at}#{package.package_id}",
+        ),
+        intent_id=package.intent_id,
+        release_execution_id=package.release_execution_id,
+        event_type="evidence_package_generated",
+        actor=package.generated_by,
+        timestamp=closure.closed_at,
+        payload=tampered_package_payload,
+        previous_event_hash=audit_lines[0]["event_hash"],
+    ).to_dict()
+    audit_path.write_text(
+        "\n".join(
+            release_closure_store_module.json.dumps(line, sort_keys=True)
+            for line in audit_lines
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    state = store.read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert any(
+        "closure/package mismatch" in warning or "snapshot_hashes" in warning
+        for warning in state.integrity["warnings"]
+    )
 
 
 @pytest.mark.parametrize(
