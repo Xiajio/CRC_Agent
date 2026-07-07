@@ -285,6 +285,7 @@ class ReleaseEvidencePackage:
             raise TypeError("snapshot_hashes must be a dictionary")
         snapshot_hashes = _copy_json_safe(self.snapshot_hashes, path="snapshot_hashes")
         _reject_forbidden_payload_keys(snapshot_hashes)
+        _validate_snapshot_hashes(snapshot_hashes, path="snapshot_hashes")
         object.__setattr__(
             self,
             "snapshot_hashes",
@@ -587,7 +588,37 @@ def _validate_artifact_refs(field_name: str, value: list[str]) -> list[str]:
         parts = normalized_ref.split("/")
         if any(part in {"", ".", ".."} for part in parts):
             raise ValueError(f"{field_name} must be repo-relative")
+        if not normalized_ref.startswith("reports/release_closure/"):
+            raise ValueError(
+                "artifact_refs must be under reports/release_closure"
+            )
     return refs
+
+
+def _validate_snapshot_hashes(
+    value: dict[str, JsonValue],
+    *,
+    path: str,
+) -> None:
+    for key, item in value.items():
+        item_path = f"{path}.{key}"
+        if isinstance(item, dict):
+            _validate_snapshot_hashes(item, path=item_path)
+            continue
+        if isinstance(item, list):
+            for index, nested_item in enumerate(item):
+                nested_path = f"{item_path}[{index}]"
+                if isinstance(nested_item, dict):
+                    _validate_snapshot_hashes(nested_item, path=nested_path)
+                elif isinstance(nested_item, list):
+                    _validate_snapshot_hashes(
+                        {"item": nested_item},
+                        path=nested_path,
+                    )
+                else:
+                    _require_hash(nested_path, nested_item)
+            continue
+        _require_hash(item_path, item)
 
 
 def _require_gate_checks(
