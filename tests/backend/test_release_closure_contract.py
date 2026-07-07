@@ -135,6 +135,14 @@ def test_rolled_back_closure_requires_rollback_execution_id() -> None:
         ReleaseClosureRecord(**payload)
 
 
+def test_closure_record_rejects_unsafe_rationale_at_construction() -> None:
+    payload = make_closure().to_dict()
+    payload["rationale"] = "Bearer abcdef123456"
+
+    with pytest.raises(ValueError, match="forbidden content"):
+        ReleaseClosureRecord(**payload)
+
+
 def test_hash_rejects_forbidden_payload_keys() -> None:
     with pytest.raises(ValueError, match="forbidden key"):
         canonical_closure_payload_hash({"patient_id": "p-1"})
@@ -197,6 +205,13 @@ def test_canonical_payload_hash_allows_benign_absence_mentions() -> None:
     ).startswith("sha256:")
 
 
+def test_closure_record_allows_benign_api_key_absence_sentence() -> None:
+    payload = make_closure().to_dict()
+    payload["rationale"] = "No API key was retained in this closure package."
+
+    assert ReleaseClosureRecord(**payload).rationale == payload["rationale"]
+
+
 @pytest.mark.parametrize(
     "artifact_ref",
     [
@@ -257,6 +272,87 @@ def test_evidence_package_rejects_non_sha256_snapshot_hashes() -> None:
                 "monitoring": payload["monitoring_snapshot_hash"],
             },
         )
+
+
+def test_evidence_package_rejects_unsafe_summary_at_construction() -> None:
+    payload = make_closure().to_dict()
+
+    with pytest.raises(ValueError, match="forbidden content"):
+        ReleaseEvidencePackage(
+            package_id=make_release_evidence_package_id(payload["closure_id"]),
+            closure_id=payload["closure_id"],
+            intent_id=INTENT_ID,
+            release_execution_id=RELEASE_EXECUTION_ID,
+            rollback_execution_id=None,
+            generated_by="release_manager",
+            generated_at="2026-07-07T10:00:00+08:00",
+            closure_status="accepted",
+            summary="api_key=abcdef123456",
+            source_refs=[
+                "GET /api/admin/release-dashboard",
+            ],
+            artifact_refs=[f"reports/release_closure/closures/{payload['closure_id']}.json"],
+            snapshot_hashes={
+                "dashboard": payload["dashboard_snapshot_hash"],
+                "governance": payload["governance_snapshot_hash"],
+                "execution": payload["execution_snapshot_hash"],
+                "monitoring": payload["monitoring_snapshot_hash"],
+            },
+        )
+
+
+def test_evidence_package_rejects_unsafe_source_refs_at_construction() -> None:
+    payload = make_closure().to_dict()
+
+    with pytest.raises(ValueError, match="forbidden content"):
+        ReleaseEvidencePackage(
+            package_id=make_release_evidence_package_id(payload["closure_id"]),
+            closure_id=payload["closure_id"],
+            intent_id=INTENT_ID,
+            release_execution_id=RELEASE_EXECUTION_ID,
+            rollback_execution_id=None,
+            generated_by="release_manager",
+            generated_at="2026-07-07T10:00:00+08:00",
+            closure_status="accepted",
+            summary="Release observation period closed after checks passed.",
+            source_refs=[
+                "authorization: bearer abcdef123456",
+            ],
+            artifact_refs=[f"reports/release_closure/closures/{payload['closure_id']}.json"],
+            snapshot_hashes={
+                "dashboard": payload["dashboard_snapshot_hash"],
+                "governance": payload["governance_snapshot_hash"],
+                "execution": payload["execution_snapshot_hash"],
+                "monitoring": payload["monitoring_snapshot_hash"],
+            },
+        )
+
+
+def test_evidence_package_allows_benign_api_key_absence_sentence() -> None:
+    payload = make_closure().to_dict()
+    package = ReleaseEvidencePackage(
+        package_id=make_release_evidence_package_id(payload["closure_id"]),
+        closure_id=payload["closure_id"],
+        intent_id=INTENT_ID,
+        release_execution_id=RELEASE_EXECUTION_ID,
+        rollback_execution_id=None,
+        generated_by="release_manager",
+        generated_at="2026-07-07T10:00:00+08:00",
+        closure_status="accepted",
+        summary="No API key was retained in this closure package.",
+        source_refs=[
+            "GET /api/admin/release-dashboard",
+        ],
+        artifact_refs=[f"reports/release_closure/closures/{payload['closure_id']}.json"],
+        snapshot_hashes={
+            "dashboard": payload["dashboard_snapshot_hash"],
+            "governance": payload["governance_snapshot_hash"],
+            "execution": payload["execution_snapshot_hash"],
+            "monitoring": payload["monitoring_snapshot_hash"],
+        },
+    )
+
+    assert package.summary == "No API key was retained in this closure package."
 
 
 @pytest.mark.parametrize(

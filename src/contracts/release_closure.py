@@ -177,6 +177,7 @@ class ReleaseClosureRecord:
         _require_non_empty("closed_by", self.closed_by)
         _require_non_empty("closed_at", self.closed_at)
         _require_non_empty("rationale", self.rationale)
+        _require_sanitized_free_text("rationale", self.rationale)
         _require_hash("monitoring_snapshot_hash", self.monitoring_snapshot_hash)
         _require_hash("dashboard_snapshot_hash", self.dashboard_snapshot_hash)
         _require_hash("governance_snapshot_hash", self.governance_snapshot_hash)
@@ -271,11 +272,13 @@ class ReleaseEvidencePackage:
         _require_non_empty("generated_at", self.generated_at)
         _validate_choice("closure_status", self.closure_status, CLOSURE_STATUSES)
         _require_non_empty("summary", self.summary)
+        _require_sanitized_free_text("summary", self.summary)
         object.__setattr__(
             self,
             "source_refs",
             tuple(_require_string_list("source_refs", self.source_refs)),
         )
+        _require_sanitized_free_text_list("source_refs", self.source_refs)
         object.__setattr__(
             self,
             "artifact_refs",
@@ -326,6 +329,7 @@ class ReleaseClosureGateCheck:
         _require_non_empty("name", self.name)
         _validate_choice("status", self.status, CLOSURE_GATE_CHECK_STATUSES)
         _require_non_empty("reason", self.reason)
+        _require_sanitized_free_text("reason", self.reason)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -351,6 +355,7 @@ class ReleaseClosureGate:
             "reasons",
             tuple(_require_string_list("reasons", self.reasons)),
         )
+        _require_sanitized_free_text_list("reasons", self.reasons)
         object.__setattr__(
             self,
             "checks",
@@ -636,7 +641,7 @@ def _find_forbidden_payload_value_marker(value: str) -> str | None:
     patterns = (
         (r"\bauthorization\b\s*[:=]\s*bearer\s+[A-Za-z0-9._-]{8,}", "authorization bearer token"),
         (r"\bbearer\b\s+[A-Za-z0-9._-]{8,}", "bearer token"),
-        (r"\bapi[\s_-]*key\b", "api key"),
+        (r"\bapi[\s_-]*key\b(?:\s*[:=]\s*|\s+)[A-Za-z0-9._-]{6,}", "api key"),
         (r"\bapikey\b", "apikey"),
         (r"\btoken\b\s*[:=]\s*\S+", "token"),
         (
@@ -659,6 +664,17 @@ def _find_forbidden_payload_value_marker(value: str) -> str | None:
         if re.search(pattern, normalized) is not None:
             return marker
     return None
+
+
+def _require_sanitized_free_text(field_name: str, value: str) -> None:
+    marker = _find_forbidden_payload_value_marker(value)
+    if marker is not None:
+        raise ValueError(f"{field_name} contains forbidden content: {marker}")
+
+
+def _require_sanitized_free_text_list(field_name: str, values: Any) -> None:
+    for item in values:
+        _require_sanitized_free_text(field_name, item)
 
 
 def _require_gate_checks(
