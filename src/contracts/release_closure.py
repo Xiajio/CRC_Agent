@@ -634,17 +634,24 @@ def _reject_forbidden_payload_values(
 def _find_forbidden_payload_value_marker(value: str) -> str | None:
     normalized = re.sub(r"\s+", " ", value).strip().lower()
     patterns = (
-        (r"\bbearer\b", "bearer"),
+        (r"\bauthorization\b\s*[:=]\s*bearer\s+[A-Za-z0-9._-]{8,}", "authorization bearer token"),
+        (r"\bbearer\b\s+[A-Za-z0-9._-]{8,}", "bearer token"),
         (r"\bapi[\s_-]*key\b", "api key"),
         (r"\bapikey\b", "apikey"),
         (r"\btoken\b\s*[:=]\s*\S+", "token"),
-        (r"\bhidden[\s_-]*reasoning\b", "hidden reasoning"),
-        (r"\bchain[\s_-]*of[\s_-]*thought\b", "chain of thought"),
+        (
+            r"\bhidden[\s_-]*reasoning\b\s*[:=]\s*\S+",
+            "hidden reasoning",
+        ),
+        (
+            r"\bchain[\s_-]*of[\s_-]*thought\b\s*[:=]\s*\S+",
+            "chain of thought",
+        ),
         (r"\bprompt\b\s*[:=]\s*\S+", "prompt"),
         (r"\bsession[\s_-]*transcript\b\s*[:=]\s*\S+", "session transcript"),
         (r"\btranscript\b\s*[:=]\s*\S+", "transcript"),
         (
-            r"\braw[\s_-]*patient[\s_-]*identifier(?:s)?\b",
+            r"\braw[\s_-]*patient[\s_-]*identifier(?:s)?\b\s*[:=]\s*\S+",
             "raw patient identifier",
         ),
     )

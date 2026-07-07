@@ -142,7 +142,7 @@ def test_hash_rejects_forbidden_payload_keys() -> None:
 
 def test_canonical_payload_hash_rejects_forbidden_string_content() -> None:
     with pytest.raises(ValueError, match="forbidden content"):
-        canonical_closure_payload_hash({"note": "Bearer abc"})
+        canonical_closure_payload_hash({"note": "Bearer abcdef123456"})
 
 
 def test_canonical_payload_hash_allows_normal_closure_text() -> None:
@@ -169,11 +169,13 @@ def test_canonical_payload_hash_allows_benign_prompt_and_transcript_mentions(
 @pytest.mark.parametrize(
     "payload",
     [
+        {"note": "Bearer abcdef123456"},
+        {"note": "authorization: bearer abcdef123456"},
         {"note": "api_key=abc123"},
         {"note": "token: abc123"},
-        {"note": "chain_of_thought: hidden steps"},
-        {"note": "hidden_reasoning: internal notes"},
-        {"note": "raw_patient_identifier: 12345"},
+        {"note": "hidden_reasoning: actual hidden text"},
+        {"note": "chain_of_thought: actual hidden text"},
+        {"note": "raw_patient_identifier: MRN12345"},
     ],
 )
 def test_canonical_payload_hash_rejects_obvious_sensitive_value_patterns(
@@ -181,6 +183,18 @@ def test_canonical_payload_hash_rejects_obvious_sensitive_value_patterns(
 ) -> None:
     with pytest.raises(ValueError, match="forbidden content"):
         canonical_closure_payload_hash(payload)
+
+
+def test_canonical_payload_hash_allows_benign_bearer_text() -> None:
+    assert canonical_closure_payload_hash(
+        {"rationale": "Existing admin bearer auth behavior is reused."}
+    ).startswith("sha256:")
+
+
+def test_canonical_payload_hash_allows_benign_absence_mentions() -> None:
+    assert canonical_closure_payload_hash(
+        {"rationale": "No hidden reasoning or raw patient identifier was retained."}
+    ).startswith("sha256:")
 
 
 @pytest.mark.parametrize(
