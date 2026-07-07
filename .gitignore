@@ -49,6 +49,11 @@ tests/backend/*
 !tests/backend/test_release_monitoring_service.py
 !tests/backend/test_release_monitoring_api.py
 !tests/backend/test_release_monitoring_non_mutation.py
+!tests/backend/test_release_closure_contract.py
+!tests/backend/test_release_closure_store.py
+!tests/backend/test_release_closure_service.py
+!tests/backend/test_release_closure_api.py
+!tests/backend/test_release_closure_non_mutation.py
 !tests/backend/test_context_maintenance.py
 !tests/backend/test_crc_triage_patient_commands.py
 !tests/backend/test_crc_triage_flow.py
