@@ -188,6 +188,7 @@ docs/superpowers/*
 docs/superpowers/plans/*
 !docs/superpowers/plans/2026-07-03-controlled-release-execution.md
 !docs/superpowers/plans/2026-07-03-post-release-monitoring.md
+!docs/superpowers/plans/2026-07-07-post-release-closure.md
 !docs/superpowers/specs/
 !docs/demo/
 docs/demo/*
