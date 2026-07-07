@@ -446,6 +446,7 @@ def make_release_closure_event_id(
 def canonical_closure_payload_hash(payload: JsonValue) -> str:
     payload_copy = _copy_json_safe(payload, path="payload")
     _reject_forbidden_payload_keys(payload_copy)
+    _reject_forbidden_payload_values(payload_copy)
     stable_json = json.dumps(
         payload_copy,
         sort_keys=True,
@@ -602,23 +603,54 @@ def _validate_snapshot_hashes(
 ) -> None:
     for key, item in value.items():
         item_path = f"{path}.{key}"
-        if isinstance(item, dict):
-            _validate_snapshot_hashes(item, path=item_path)
-            continue
-        if isinstance(item, list):
-            for index, nested_item in enumerate(item):
-                nested_path = f"{item_path}[{index}]"
-                if isinstance(nested_item, dict):
-                    _validate_snapshot_hashes(nested_item, path=nested_path)
-                elif isinstance(nested_item, list):
-                    _validate_snapshot_hashes(
-                        {"item": nested_item},
-                        path=nested_path,
-                    )
-                else:
-                    _require_hash(nested_path, nested_item)
-            continue
+        if not isinstance(item, str):
+            raise ValueError(
+                "snapshot_hashes values must be direct sha256 hash strings"
+            )
         _require_hash(item_path, item)
+
+
+def _reject_forbidden_payload_values(
+    value: JsonValue,
+    *,
+    path: str = "payload",
+) -> None:
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _reject_forbidden_payload_values(item, path=f"{path}[{index}]")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _reject_forbidden_payload_values(item, path=f"{path}.{key}")
+        return
+    if isinstance(value, str):
+        marker = _find_forbidden_payload_value_marker(value)
+        if marker is not None:
+            raise ValueError(
+                f"payload contains forbidden content at {path}: {marker}"
+            )
+
+
+def _find_forbidden_payload_value_marker(value: str) -> str | None:
+    normalized = re.sub(r"\s+", " ", value).strip().lower()
+    patterns = (
+        (r"\bbearer\b", "bearer"),
+        (r"\bapi[\s_-]*key\b", "api key"),
+        (r"\bapikey\b", "apikey"),
+        (r"\bhidden[\s_-]*reasoning\b", "hidden reasoning"),
+        (r"\bchain[\s_-]*of[\s_-]*thought\b", "chain of thought"),
+        (r"\bprompt\b", "prompt"),
+        (r"\bsession[\s_-]*transcript\b", "session transcript"),
+        (r"\btranscript\b", "transcript"),
+        (
+            r"\braw[\s_-]*patient[\s_-]*identifier(?:s)?\b",
+            "raw patient identifier",
+        ),
+    )
+    for pattern, marker in patterns:
+        if re.search(pattern, normalized) is not None:
+            return marker
+    return None
 
 
 def _require_gate_checks(

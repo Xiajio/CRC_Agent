@@ -140,6 +140,17 @@ def test_hash_rejects_forbidden_payload_keys() -> None:
         canonical_closure_payload_hash({"patient_id": "p-1"})
 
 
+def test_canonical_payload_hash_rejects_forbidden_string_content() -> None:
+    with pytest.raises(ValueError, match="forbidden content"):
+        canonical_closure_payload_hash({"note": "Bearer abc"})
+
+
+def test_canonical_payload_hash_allows_normal_closure_text() -> None:
+    assert canonical_closure_payload_hash(
+        {"note": "Release observation period closed after checks passed."}
+    ).startswith("sha256:")
+
+
 @pytest.mark.parametrize(
     "artifact_ref",
     [
@@ -199,4 +210,48 @@ def test_evidence_package_rejects_non_sha256_snapshot_hashes() -> None:
                 "execution": payload["execution_snapshot_hash"],
                 "monitoring": payload["monitoring_snapshot_hash"],
             },
+        )
+
+
+@pytest.mark.parametrize(
+    "snapshot_hashes",
+    [
+        {
+            "dashboard": {"value": "sha256:" + "a" * 64},
+            "governance": "sha256:" + "b" * 64,
+            "execution": "sha256:" + "c" * 64,
+            "monitoring": "sha256:" + "d" * 64,
+        },
+        {
+            "dashboard": ["sha256:" + "a" * 64],
+            "governance": "sha256:" + "b" * 64,
+            "execution": "sha256:" + "c" * 64,
+            "monitoring": "sha256:" + "d" * 64,
+        },
+    ],
+)
+def test_evidence_package_rejects_nested_snapshot_hash_values(
+    snapshot_hashes: dict[str, object],
+) -> None:
+    payload = make_closure().to_dict()
+
+    with pytest.raises(
+        ValueError,
+        match="snapshot_hashes values must be direct sha256 hash strings",
+    ):
+        ReleaseEvidencePackage(
+            package_id=make_release_evidence_package_id(payload["closure_id"]),
+            closure_id=payload["closure_id"],
+            intent_id=INTENT_ID,
+            release_execution_id=RELEASE_EXECUTION_ID,
+            rollback_execution_id=None,
+            generated_by="release_manager",
+            generated_at="2026-07-07T10:00:00+08:00",
+            closure_status="accepted",
+            summary="Release observation period closed after checks passed.",
+            source_refs=[
+                "GET /api/admin/release-dashboard",
+            ],
+            artifact_refs=[f"reports/release_closure/closures/{payload['closure_id']}.json"],
+            snapshot_hashes=snapshot_hashes,  # type: ignore[arg-type]
         )
