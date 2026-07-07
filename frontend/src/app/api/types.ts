@@ -462,6 +462,80 @@ export interface AdminAcknowledgeReleaseMonitoringAlertRequest {
   reason: string;
 }
 
+export type AdminReleaseClosureStatus = "idle" | "ready_to_close" | "blocked" | "closed" | "rolled_back_closed";
+export type AdminReleaseClosureRecordStatus = "accepted" | "accepted_with_observations" | "rolled_back";
+export type AdminReleaseClosureGateCheckStatus = "pass" | "warning" | "fail";
+
+export interface AdminReleaseClosureGateCheck {
+  name: string;
+  status: AdminReleaseClosureGateCheckStatus;
+  reason: string;
+}
+
+export interface AdminReleaseClosureGate {
+  allowed: boolean;
+  status: AdminReleaseClosureStatus;
+  reasons: string[];
+  checks: AdminReleaseClosureGateCheck[];
+}
+
+export interface AdminReleaseClosureLatestRelease {
+  intent_id: string;
+  release_execution_id: string;
+  released_at: string | null;
+  rollback_execution_id: string | null;
+  rolled_back_at: string | null;
+}
+
+export interface AdminReleaseClosureRecord {
+  closure_id: string;
+  intent_id: string;
+  release_execution_id: string;
+  rollback_execution_id: string | null;
+  closure_status: AdminReleaseClosureRecordStatus;
+  closed_by: string;
+  closed_at: string;
+  rationale: string;
+  evidence_package_id: string;
+  idempotency_key: string;
+}
+
+export interface AdminReleaseEvidencePackage {
+  package_id: string;
+  closure_id: string;
+  intent_id: string;
+  release_execution_id: string;
+  rollback_execution_id: string | null;
+  generated_by: string;
+  generated_at: string;
+  closure_status: AdminReleaseClosureRecordStatus;
+  summary: string;
+  source_refs: string[];
+  artifact_refs: string[];
+  snapshot_hashes: Record<string, string>;
+}
+
+export interface AdminReleaseClosureResponse {
+  status: AdminReleaseClosureStatus;
+  latest_release: AdminReleaseClosureLatestRelease | null;
+  closure_gate: AdminReleaseClosureGate;
+  latest_closure: AdminReleaseClosureRecord | null;
+  latest_evidence_package: AdminReleaseEvidencePackage | null;
+  closures: AdminReleaseClosureRecord[];
+  evidence_packages: AdminReleaseEvidencePackage[];
+  integrity: { status: "verified" | "failed"; warnings: string[] };
+  runtime: { auth: "admin"; source: "reports/release_closure"; mode: "post_release_closure" };
+}
+
+export interface AdminRecordReleaseClosureRequest {
+  intent_id: string;
+  release_execution_id: string;
+  closure_status: AdminReleaseClosureRecordStatus;
+  closed_by: string;
+  rationale: string;
+  idempotency_key: string;
+}
+
 export interface AdminExecuteReleaseRequest {
   intent_id: string;
   requested_by: string;

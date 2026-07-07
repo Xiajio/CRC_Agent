@@ -1,7 +1,49 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "./client";
-import type { AdminReleaseMonitoringResponse } from "./types";
+import type { AdminReleaseClosureResponse, AdminReleaseMonitoringResponse } from "./types";
+
+function jsonResponse(payload: unknown): Response {
+  return {
+    ok: true,
+    json: vi.fn(async () => payload),
+  } as unknown as Response;
+}
+
+function releaseClosureResponse(): AdminReleaseClosureResponse {
+  return {
+    status: "ready_to_close",
+    latest_release: {
+      intent_id: "intent-1",
+      release_execution_id: "release-exec-1",
+      released_at: "2026-07-03T09:00:00+08:00",
+      rollback_execution_id: null,
+      rolled_back_at: null,
+    },
+    closure_gate: {
+      allowed: true,
+      status: "ready_to_close",
+      reasons: [],
+      checks: [
+        {
+          name: "required_checks_complete",
+          status: "pass",
+          reason: "All required post-release checks are recorded.",
+        },
+      ],
+    },
+    latest_closure: null,
+    latest_evidence_package: null,
+    closures: [],
+    evidence_packages: [],
+    integrity: { status: "verified", warnings: [] },
+    runtime: {
+      auth: "admin",
+      source: "reports/release_closure",
+      mode: "post_release_closure",
+    },
+  };
+}
 
 function releaseMonitoringResponse(): AdminReleaseMonitoringResponse {
   return {
@@ -35,6 +77,43 @@ function releaseMonitoringResponse(): AdminReleaseMonitoringResponse {
 }
 
 describe("createApiClient", () => {
+  it("gets admin release closure", async () => {
+    const payload = releaseClosureResponse();
+    const fetch = vi.fn().mockResolvedValue(jsonResponse(payload));
+    const client = createApiClient({ baseUrl: "http://127.0.0.1:8000", fetchImpl: fetch, adminToken: "admin-token" });
+
+    await expect(client.getAdminReleaseClosure()).resolves.toEqual(payload);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/release-closure",
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: "Bearer admin-token" }) }),
+    );
+  });
+
+  it("records admin release closure with JSON request body", async () => {
+    const payload = releaseClosureResponse();
+    const fetch = vi.fn().mockResolvedValue(jsonResponse(payload));
+    const client = createApiClient({ baseUrl: "http://127.0.0.1:8000", fetchImpl: fetch, adminToken: "admin-token" });
+    const request = {
+      intent_id: "intent-1",
+      release_execution_id: "release-exec-1",
+      closure_status: "accepted",
+      closed_by: "release_manager",
+      rationale: "Required checks passed.",
+      idempotency_key: "close-1",
+    } as const;
+
+    await expect(client.recordAdminReleaseClosure(request)).resolves.toEqual(payload);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/release-closure/closures",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    );
+  });
+
   it("loads admin tools with configured Authorization headers", async () => {
     const payload = {
       tools: [

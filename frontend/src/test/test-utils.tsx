@@ -6,6 +6,7 @@ import { AppProviders } from "../app/providers";
 import type { ApiClient } from "../app/api/client";
 import { ApiClientError } from "../app/api/client";
 import type {
+  AdminReleaseClosureResponse,
   AdminReleaseDashboardResponse,
   AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
@@ -284,6 +285,34 @@ export function makeAdminReleaseMonitoringResponse(
   };
 }
 
+export function makeAdminReleaseClosureResponse(
+  overrides: Partial<AdminReleaseClosureResponse> = {},
+): AdminReleaseClosureResponse {
+  return {
+    status: overrides.status ?? "idle",
+    latest_release: overrides.latest_release ?? null,
+    closure_gate: overrides.closure_gate ?? {
+      allowed: false,
+      status: "idle",
+      reasons: [],
+      checks: [],
+    },
+    latest_closure: overrides.latest_closure ?? null,
+    latest_evidence_package: overrides.latest_evidence_package ?? null,
+    closures: overrides.closures ?? [],
+    evidence_packages: overrides.evidence_packages ?? [],
+    integrity: overrides.integrity ?? {
+      status: "verified",
+      warnings: [],
+    },
+    runtime: overrides.runtime ?? {
+      auth: "admin",
+      source: "reports/release_closure",
+      mode: "post_release_closure",
+    },
+  };
+}
+
 export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClient {
   const createSession = vi.fn(async (scene: Scene) => makeSessionResponse({ scene }));
   const getSession = vi.fn(async (sessionId: string) => makeSessionResponse({ session_id: sessionId }));
@@ -463,6 +492,9 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
   const getAdminReleaseMonitoring = vi.fn(async (): Promise<AdminReleaseMonitoringResponse> =>
     makeAdminReleaseMonitoringResponse(),
   );
+  const getAdminReleaseClosure = vi.fn(async (): Promise<AdminReleaseClosureResponse> =>
+    makeAdminReleaseClosureResponse(),
+  );
   const createAdminReleaseIntent = vi.fn(async () => getAdminReleaseGovernance());
   const recordAdminReleaseApproval = vi.fn(async () => getAdminReleaseGovernance());
   const recordAdminReleaseRollbackPlan = vi.fn(async () => getAdminReleaseGovernance());
@@ -471,6 +503,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
   const executeAdminReleaseRollback = vi.fn(async () => makeAdminReleaseExecutionResponse());
   const recordAdminReleaseMonitoringCheck = vi.fn(async () => makeAdminReleaseMonitoringResponse());
   const acknowledgeAdminReleaseMonitoringAlert = vi.fn(async () => makeAdminReleaseMonitoringResponse());
+  const recordAdminReleaseClosure = vi.fn(async () => makeAdminReleaseClosureResponse());
   const deletePatientRegistryPatient = vi.fn(async () => ({
     patient_id: 33,
     deleted_records: 1,
@@ -492,6 +525,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
     getAdminReleaseGovernance,
     getAdminReleaseExecution,
     getAdminReleaseMonitoring,
+    getAdminReleaseClosure,
     createAdminReleaseIntent,
     recordAdminReleaseApproval,
     recordAdminReleaseRollbackPlan,
@@ -500,6 +534,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
     executeAdminReleaseRollback,
     recordAdminReleaseMonitoringCheck,
     acknowledgeAdminReleaseMonitoringAlert,
+    recordAdminReleaseClosure,
     createSession,
     getSession,
     getMessages,

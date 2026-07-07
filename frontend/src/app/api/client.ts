@@ -3,7 +3,9 @@ import type {
   AdminAcknowledgeReleaseMonitoringAlertRequest,
   AdminCancelReleaseIntentRequest,
   AdminCreateReleaseIntentRequest,
+  AdminRecordReleaseClosureRequest,
   AdminExecuteReleaseRequest,
+  AdminReleaseClosureResponse,
   AdminRecordReleaseMonitoringCheckRequest,
   AdminReleaseDashboardResponse,
   AdminReleaseExecutionResponse,
@@ -55,6 +57,7 @@ export interface ApiClientOptions {
   baseUrl?: string;
   fetchImpl?: FetchLike;
   headers?: HeadersInit;
+  adminToken?: string;
 }
 
 function buildUrl(path: string, baseUrl?: string, query?: URLSearchParams): string {
@@ -104,6 +107,7 @@ export interface ApiClient {
   getAdminReleaseGovernance(): Promise<AdminReleaseGovernanceResponse>;
   getAdminReleaseExecution(): Promise<AdminReleaseExecutionResponse>;
   getAdminReleaseMonitoring(): Promise<AdminReleaseMonitoringResponse>;
+  getAdminReleaseClosure(): Promise<AdminReleaseClosureResponse>;
   createAdminReleaseIntent(request: AdminCreateReleaseIntentRequest): Promise<AdminReleaseGovernanceResponse>;
   recordAdminReleaseApproval(
     intentId: string,
@@ -126,6 +130,7 @@ export interface ApiClient {
     alertId: string,
     request: AdminAcknowledgeReleaseMonitoringAlertRequest,
   ): Promise<AdminReleaseMonitoringResponse>;
+  recordAdminReleaseClosure(request: AdminRecordReleaseClosureRequest): Promise<AdminReleaseClosureResponse>;
   createSession(scene: Scene): Promise<SessionResponse>;
   getSession(sessionId: string, messageLimit?: number): Promise<SessionResponse>;
   getMessages(sessionId: string, before?: string | number | null, limit?: number): Promise<MessageHistoryResponse>;
@@ -174,6 +179,24 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   const fetchImpl = options.fetchImpl ?? fetch;
   const defaultHeaders = options.headers;
   const baseUrl = options.baseUrl;
+  const adminToken = options.adminToken;
+
+  function adminHeaders(): HeadersInit | undefined {
+    if (adminToken) {
+      return { Authorization: `Bearer ${adminToken}` };
+    }
+    return defaultHeaders;
+  }
+
+  function jsonAdminHeaders(): HeadersInit {
+    if (adminToken) {
+      return {
+        Authorization: `Bearer ${adminToken}`,
+        "Content-Type": "application/json",
+      };
+    }
+    return buildJsonHeaders(defaultHeaders);
+  }
 
   return {
     async getAdminTools() {
@@ -209,6 +232,13 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         headers: defaultHeaders,
       });
       return parseJsonResponse<AdminReleaseMonitoringResponse>(response);
+    },
+
+    async getAdminReleaseClosure() {
+      const response = await fetchImpl(buildUrl("/api/admin/release-closure", baseUrl), {
+        headers: adminHeaders(),
+      });
+      return parseJsonResponse<AdminReleaseClosureResponse>(response);
     },
 
     async createAdminReleaseIntent(request) {
@@ -297,6 +327,15 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         },
       );
       return parseJsonResponse<AdminReleaseMonitoringResponse>(response);
+    },
+
+    async recordAdminReleaseClosure(request) {
+      const response = await fetchImpl(buildUrl("/api/admin/release-closure/closures", baseUrl), {
+        method: "POST",
+        headers: jsonAdminHeaders(),
+        body: JSON.stringify(request),
+      });
+      return parseJsonResponse<AdminReleaseClosureResponse>(response);
     },
 
     async createSession(scene) {
