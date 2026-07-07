@@ -165,6 +165,17 @@ class ReleaseClosureService:
             raise ReleaseClosureConflictError(
                 "closure must reference the latest successful release execution"
             )
+        existing_release_closure = self._latest_closure_for_release(
+            store_state.closures,
+            release_execution_id,
+        )
+        if (
+            existing_release_closure is not None
+            and existing_release_closure.idempotency_key != idempotency_key
+        ):
+            raise ReleaseClosureConflictError(
+                "release execution already has a closure"
+            )
 
         rollback = self._latest_successful_rollback_for_release(
             execution,

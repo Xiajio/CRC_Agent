@@ -23,13 +23,17 @@ INTENT_ID = "release_intent_release_safety_20260629_001_6da729a0"
 RELEASE_EXECUTION_ID = "release_exec_release_intent_release_safety_20260629_001_6da729a0_release_291a1a2b"
 
 
-def make_pair(idempotency_key: str = "close-1") -> tuple[ReleaseClosureRecord, ReleaseEvidencePackage]:
-    closure_id = make_release_closure_id(RELEASE_EXECUTION_ID, idempotency_key)
+def make_pair(
+    idempotency_key: str = "close-1",
+    *,
+    release_execution_id: str = RELEASE_EXECUTION_ID,
+) -> tuple[ReleaseClosureRecord, ReleaseEvidencePackage]:
+    closure_id = make_release_closure_id(release_execution_id, idempotency_key)
     package_id = make_release_evidence_package_id(closure_id)
     closure = ReleaseClosureRecord(
         closure_id=closure_id,
         intent_id=INTENT_ID,
-        release_execution_id=RELEASE_EXECUTION_ID,
+        release_execution_id=release_execution_id,
         rollback_execution_id=None,
         closure_status="accepted",
         closed_by="release_manager",
@@ -123,6 +127,29 @@ def test_idempotency_payload_mismatch_fails(tmp_path: Path) -> None:
 
     with pytest.raises(FileExistsError, match="idempotency payload mismatch"):
         store.assert_idempotent_closure_matches(changed, changed_package)
+
+
+def test_write_rejects_second_closure_for_same_release_with_different_key(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseClosureStore(tmp_path)
+    closure, package = make_pair("close-1")
+    store.write_closure_with_package(closure, package, timestamp=closure.closed_at)
+    second_closure, second_package = make_pair("close-2")
+
+    with pytest.raises(
+        ReleaseClosureIntegrityError,
+        match="release execution already has a closure",
+    ):
+        store.write_closure_with_package(
+            second_closure,
+            second_package,
+            timestamp="2026-07-07T10:05:00+08:00",
+        )
+
+    state = store.read_state()
+    assert [item.closure_id for item in state.closures] == [closure.closure_id]
+    assert [item.package_id for item in state.evidence_packages] == [package.package_id]
 
 
 def test_audit_tampering_blocks_writes(tmp_path: Path) -> None:

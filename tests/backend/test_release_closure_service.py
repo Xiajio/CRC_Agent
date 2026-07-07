@@ -764,6 +764,34 @@ def test_idempotent_retry_returns_current_model_when_source_state_is_unchanged(
     assert second == first
 
 
+def test_second_closure_for_same_release_with_different_key_conflicts(
+    tmp_path: Path,
+) -> None:
+    app = service(tmp_path)
+
+    app.record_closure(
+        intent_id=INTENT_ID,
+        release_execution_id=RELEASE_EXECUTION_ID,
+        closure_status="accepted",
+        closed_by="release_manager",
+        rationale="Required checks passed.",
+        idempotency_key="close-single-release-1",
+    )
+
+    with pytest.raises(
+        ReleaseClosureConflictError,
+        match="release execution already has a closure",
+    ):
+        app.record_closure(
+            intent_id=INTENT_ID,
+            release_execution_id=RELEASE_EXECUTION_ID,
+            closure_status="accepted",
+            closed_by="release_manager",
+            rationale="Required checks still passed.",
+            idempotency_key="close-single-release-2",
+        )
+
+
 def test_idempotent_retry_conflicts_when_source_state_changes(tmp_path: Path) -> None:
     store = ReleaseClosureStore(tmp_path)
     current_monitoring = monitoring(warning_active=True, warning_acknowledged=True)

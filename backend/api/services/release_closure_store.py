@@ -121,8 +121,19 @@ class ReleaseClosureStore:
         *,
         timestamp: str,
     ) -> None:
-        self._raise_if_integrity_failed()
+        state = self._read_verified_state(action="write")
         self._validate_closure_package_pair(closure, package)
+        existing_closure = self._closure_for_release_execution(
+            state.closures,
+            closure.release_execution_id,
+        )
+        if existing_closure is not None:
+            if existing_closure.idempotency_key != closure.idempotency_key:
+                raise ReleaseClosureIntegrityError(
+                    "release execution already has a closure"
+                )
+            self.assert_idempotent_closure_matches(closure, package)
+            return
         self.assert_idempotent_closure_matches(closure, package)
         self._ensure_root()
         closure_path = self._artifact_path(self.closures_dir, closure.closure_id)
@@ -235,11 +246,25 @@ class ReleaseClosureStore:
         return GENESIS_CLOSURE_EVENT_HASH
 
     def _raise_if_integrity_failed(self) -> None:
+        self._read_verified_state(action="write")
+
+    def _read_verified_state(self, *, action: str) -> ReleaseClosureState:
         state = self.read_state()
         if state.integrity["status"] != "verified":
             raise ReleaseClosureIntegrityError(
-                "release closure integrity failed; refusing write"
+                f"release closure integrity failed; refusing {action}"
             )
+        return state
+
+    def _closure_for_release_execution(
+        self,
+        closures: list[ReleaseClosureRecord],
+        release_execution_id: str,
+    ) -> ReleaseClosureRecord | None:
+        for closure in closures:
+            if closure.release_execution_id == release_execution_id:
+                return closure
+        return None
 
     def _ensure_root(self) -> None:
         self._raise_if_parent_outside_root(self.closures_dir)
