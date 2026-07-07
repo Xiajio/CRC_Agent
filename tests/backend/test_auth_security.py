@@ -93,6 +93,14 @@ def _auth_client(*, user_token: str = "user-token", admin_token: str | None = "a
     async def admin_release_monitoring() -> dict[str, object]:
         return {"runtime": {"auth": "admin", "mode": "post_release_monitoring"}}
 
+    @app.get("/api/admin/release-closure")
+    async def release_closure_read() -> dict[str, bool]:
+        return {"ok": True}
+
+    @app.post("/api/admin/release-closure/closures")
+    async def release_closure_write() -> dict[str, bool]:
+        return {"ok": True}
+
     @app.post("/api/admin/release-monitoring/checks")
     async def record_release_monitoring_check() -> dict[str, bool]:
         return {"ok": True}
@@ -139,8 +147,10 @@ def test_bearer_auth_required_for_api_routes() -> None:
         ("post", "/api/admin/release-execution/release"),
         ("post", "/api/admin/release-execution/rollback"),
         ("get", "/api/admin/release-monitoring"),
+        ("get", "/api/admin/release-closure"),
         ("post", "/api/admin/release-monitoring/checks"),
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
+        ("post", "/api/admin/release-closure/closures"),
     ],
 )
 def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: str, path: str) -> None:
@@ -172,8 +182,10 @@ def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: 
         ("post", "/api/admin/release-execution/release"),
         ("post", "/api/admin/release-execution/rollback"),
         ("get", "/api/admin/release-monitoring"),
+        ("get", "/api/admin/release-closure"),
         ("post", "/api/admin/release-monitoring/checks"),
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
+        ("post", "/api/admin/release-closure/closures"),
     ],
 )
 def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
@@ -204,8 +216,10 @@ def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
         ("post", "/api/admin/release-execution/release"),
         ("post", "/api/admin/release-execution/rollback"),
         ("get", "/api/admin/release-monitoring"),
+        ("get", "/api/admin/release-closure"),
         ("post", "/api/admin/release-monitoring/checks"),
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
+        ("post", "/api/admin/release-closure/closures"),
     ],
 )
 def test_admin_endpoints_use_user_token_when_no_separate_admin_token(method: str, path: str) -> None:

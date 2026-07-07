@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
+from backend.api.schemas.release_closure import ReleaseClosureRequest
 from backend.api.schemas.release_execution import ReleaseExecutionRequestPayload
 from backend.api.schemas.release_governance import (
     ReleaseGovernanceApprovalRequest,
@@ -17,6 +18,10 @@ from backend.api.schemas.release_monitoring import (
     ReleaseMonitoringCheckRequest,
 )
 from backend.api.services.admin_release_dashboard import REPO_ROOT, build_release_dashboard
+from backend.api.services.release_closure_store import (
+    ReleaseClosureIntegrityError,
+    ReleaseClosureStore,
+)
 from backend.api.services.release_execution_store import (
     ReleaseExecutionIntegrityError,
     ReleaseExecutionStore,
@@ -30,6 +35,11 @@ from backend.api.services.release_monitoring_store import (
     ReleaseMonitoringStore,
 )
 from src.config import load_settings
+from src.services.release_closure import (
+    ReleaseClosureConflictError,
+    ReleaseClosureService,
+    ReleaseClosureValidationError,
+)
 from src.services.release_execution import (
     ReleaseExecutionConflictError,
     ReleaseExecutionPreflightError,
@@ -51,6 +61,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 _GOVERNANCE_STORE_ROOT = REPO_ROOT / "reports" / "release_governance"
 _EXECUTION_STORE_ROOT = REPO_ROOT / "reports" / "release_execution"
 _MONITORING_STORE_ROOT = REPO_ROOT / "reports" / "release_monitoring"
+_CLOSURE_STORE_ROOT = REPO_ROOT / "reports" / "release_closure"
 
 
 def _web_search_enabled_from_request(request: Request) -> bool:
@@ -91,6 +102,17 @@ def _release_monitoring_service() -> ReleaseMonitoringService:
         execution_loader=_release_execution_service().read_execution,
         governance_loader=_release_governance_service().read_governance,
         dashboard_loader=build_release_dashboard,
+        now=_governance_timestamp,
+    )
+
+
+def _release_closure_service() -> ReleaseClosureService:
+    return ReleaseClosureService(
+        store=ReleaseClosureStore(_CLOSURE_STORE_ROOT),
+        dashboard_loader=build_release_dashboard,
+        governance_loader=_release_governance_service().read_governance,
+        execution_loader=_release_execution_service().read_execution,
+        monitoring_loader=_release_monitoring_service().read_monitoring,
         now=_governance_timestamp,
     )
 
@@ -153,6 +175,23 @@ def _raise_monitoring_http_error(exc: Exception) -> None:
     raise exc
 
 
+def _raise_closure_http_error(exc: Exception) -> None:
+    if isinstance(
+        exc,
+        (
+            ReleaseClosureConflictError,
+            ReleaseClosureIntegrityError,
+            FileExistsError,
+        ),
+    ):
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if isinstance(exc, (ReleaseClosureValidationError, TypeError, ValueError)):
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if isinstance(exc, OSError):
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    raise exc
+
+
 def _model_dump(model: Any) -> dict[str, Any]:
     return model.model_dump()
 
@@ -182,6 +221,11 @@ async def get_admin_release_execution() -> dict[str, Any]:
 @router.get("/release-monitoring")
 async def get_admin_release_monitoring() -> dict[str, Any]:
     return _release_monitoring_service().read_monitoring()
+
+
+@router.get("/release-closure")
+async def get_admin_release_closure() -> dict[str, Any]:
+    return _release_closure_service().read_closure()
 
 
 @router.post("/release-execution/release")
@@ -226,6 +270,16 @@ async def acknowledge_admin_release_monitoring_alert(
         )
     except Exception as exc:
         _raise_monitoring_http_error(exc)
+
+
+@router.post("/release-closure/closures")
+async def record_admin_release_closure(
+    payload: ReleaseClosureRequest,
+) -> dict[str, Any]:
+    try:
+        return _release_closure_service().record_closure(**_model_dump(payload))
+    except Exception as exc:
+        _raise_closure_http_error(exc)
 
 
 @router.post("/release-governance/intents")
