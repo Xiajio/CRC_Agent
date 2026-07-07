@@ -639,9 +639,18 @@ def _reject_forbidden_payload_values(
 def _find_forbidden_payload_value_marker(value: str) -> str | None:
     normalized = re.sub(r"\s+", " ", value).strip().lower()
     patterns = (
-        (r"\bauthorization\b\s*[:=]\s*bearer\s+[A-Za-z0-9._-]{8,}", "authorization bearer token"),
-        (r"\bbearer\b\s+[A-Za-z0-9._-]{8,}", "bearer token"),
-        (r"\bapi[\s_-]*key\b(?:\s*[:=]\s*|\s+)[A-Za-z0-9._-]{6,}", "api key"),
+        (
+            r"\bauthorization\b\s*[:=]\s*bearer\s+[A-Za-z0-9._-]{3,}(?:[.,;!?])?\s*$",
+            "authorization bearer token",
+        ),
+        (
+            r"\bbearer\b\s+[A-Za-z0-9._-]{3,}(?:[.,;!?])?\s*$",
+            "bearer token",
+        ),
+        (
+            r"\bapi[\s_-]*key\b\s*[:=]\s*[A-Za-z0-9._-]{3,}(?:[.,;!?])?\s*$",
+            "api key",
+        ),
         (r"\bapikey\b", "apikey"),
         (r"\btoken\b\s*[:=]\s*\S+", "token"),
         (

@@ -143,6 +143,14 @@ def test_closure_record_rejects_unsafe_rationale_at_construction() -> None:
         ReleaseClosureRecord(**payload)
 
 
+def test_closure_record_rejects_short_form_bearer_at_construction() -> None:
+    payload = make_closure().to_dict()
+    payload["rationale"] = "Bearer abc"
+
+    with pytest.raises(ValueError, match="forbidden content"):
+        ReleaseClosureRecord(**payload)
+
+
 def test_hash_rejects_forbidden_payload_keys() -> None:
     with pytest.raises(ValueError, match="forbidden key"):
         canonical_closure_payload_hash({"patient_id": "p-1"})
@@ -151,6 +159,14 @@ def test_hash_rejects_forbidden_payload_keys() -> None:
 def test_canonical_payload_hash_rejects_forbidden_string_content() -> None:
     with pytest.raises(ValueError, match="forbidden content"):
         canonical_closure_payload_hash({"note": "Bearer abcdef123456"})
+
+
+def test_canonical_payload_hash_rejects_short_form_credential_values() -> None:
+    with pytest.raises(ValueError, match="forbidden content"):
+        canonical_closure_payload_hash({"note": "authorization: bearer abc"})
+
+    with pytest.raises(ValueError, match="forbidden content"):
+        canonical_closure_payload_hash({"note": "api_key=abc12"})
 
 
 def test_canonical_payload_hash_allows_normal_closure_text() -> None:
