@@ -501,13 +501,25 @@ class ReleaseClosureStore:
                 )
         for release_execution_id, payload_hash in closure_hashes:
             if (release_execution_id, payload_hash) not in audit_closure_hashes:
+                closure_id = next(
+                    closure.closure_id
+                    for closure in closures
+                    if closure.release_execution_id == release_execution_id
+                    and canonical_closure_payload_hash(closure.to_dict()) == payload_hash
+                )
                 warnings.append(
-                    f"closure artifact {release_execution_id} does not match an audit payload hash"
+                    f"closure artifact {closure_id} does not match an audit payload hash"
                 )
         for release_execution_id, payload_hash in package_hashes:
             if (release_execution_id, payload_hash) not in audit_package_hashes:
+                package_id = next(
+                    package.package_id
+                    for package in packages
+                    if package.release_execution_id == release_execution_id
+                    and canonical_closure_payload_hash(package.to_dict()) == payload_hash
+                )
                 warnings.append(
-                    f"package artifact {release_execution_id} does not match an audit payload hash"
+                    f"package artifact {package_id} does not match an audit payload hash"
                 )
         for event in audit_events:
             if event.event_type == "closure_recorded" and (
@@ -651,6 +663,14 @@ class ReleaseClosureStore:
             mismatches.append("rollback_execution_id")
         if package.closure_status != closure.closure_status:
             mismatches.append("closure_status")
+        expected_snapshot_hashes = {
+            "dashboard": closure.dashboard_snapshot_hash,
+            "execution": closure.execution_snapshot_hash,
+            "governance": closure.governance_snapshot_hash,
+            "monitoring": closure.monitoring_snapshot_hash,
+        }
+        if package.snapshot_hashes != expected_snapshot_hashes:
+            mismatches.append("snapshot_hashes")
 
         expected_closure_ref = f"reports/release_closure/closures/{closure.closure_id}.json"
         if expected_closure_ref not in package.artifact_refs:

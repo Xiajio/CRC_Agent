@@ -139,6 +139,7 @@ def test_failed_second_audit_append_rolls_back_without_poisoned_ledger(
 ) -> None:
     store = ReleaseClosureStore(tmp_path)
     closure, package = make_pair()
+    before = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
     original_dumps = release_closure_store_module.json.dumps
     calls = 0
 
@@ -155,11 +156,13 @@ def test_failed_second_audit_append_rolls_back_without_poisoned_ledger(
         store.write_closure_with_package(closure, package, timestamp=closure.closed_at)
 
     state = store.read_state()
+    after = sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*"))
 
     assert state.integrity == {"status": "verified", "warnings": []}
     assert state.closures == []
     assert state.evidence_packages == []
     assert state.audit_events == []
+    assert before == after
 
 
 @pytest.mark.parametrize(
@@ -185,6 +188,29 @@ def test_mismatched_closure_and_package_are_rejected_before_persistence(
     if artifact_refs is not None:
         package_payload["artifact_refs"] = artifact_refs
     mismatched_package = ReleaseEvidencePackage(**package_payload)
+
+    with pytest.raises(ValueError, match="closure/package mismatch"):
+        store.write_closure_with_package(
+            closure,
+            mismatched_package,
+            timestamp=closure.closed_at,
+        )
+
+    assert sorted(path.relative_to(tmp_path).as_posix() for path in tmp_path.rglob("*")) == []
+
+
+def test_snapshot_hash_mismatch_is_rejected_before_persistence(tmp_path: Path) -> None:
+    store = ReleaseClosureStore(tmp_path)
+    closure, package = make_pair()
+    mismatched_package = ReleaseEvidencePackage(
+        **{
+            **package.to_dict(),
+            "snapshot_hashes": {
+                **package.to_dict()["snapshot_hashes"],
+                "monitoring": "sha256:" + "e" * 64,
+            },
+        }
+    )
 
     with pytest.raises(ValueError, match="closure/package mismatch"):
         store.write_closure_with_package(
