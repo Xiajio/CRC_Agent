@@ -409,6 +409,20 @@ class ReleaseMonitoringService:
                     if check_alert is not None:
                         alerts.append(check_alert)
 
+        if latest_release is not None and status in {"monitoring", "rolled_back"}:
+            for check in checks:
+                if (
+                    check.get("execution_id") == latest_release.get("execution_id")
+                    and check.get("status") == "warning"
+                ):
+                    alerts.append(
+                        self._warning_check_alert(
+                            latest_release,
+                            check,
+                            acknowledgements,
+                        )
+                    )
+
         if self._integrity_status(execution.get("integrity")) != "verified":
             release = latest_release or self._release_from_flag_state(execution)
             if release is not None:
@@ -472,6 +486,28 @@ class ReleaseMonitoringService:
         return sorted(
             self._dedupe_alerts(alerts),
             key=lambda alert: (alert["severity"] != "critical", alert["alert_id"]),
+        )
+
+    def _warning_check_alert(
+        self,
+        latest_release: dict[str, Any],
+        check: dict[str, Any],
+        acknowledgements: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        check_type = str(check.get("check_type"))
+        return self._alert(
+            latest_release,
+            severity="warning",
+            category="post_release_check_warning",
+            discriminator=check_type,
+            message=f"Post-release check warning: {check_type}.",
+            source_check_ids=[str(check.get("check_id"))],
+            recommended_action="investigate",
+            acknowledgements=acknowledgements,
+            created_at=str(
+                check.get("observed_at")
+                or self._release_timestamp(latest_release)
+            ),
         )
 
     def _failed_check_alert(

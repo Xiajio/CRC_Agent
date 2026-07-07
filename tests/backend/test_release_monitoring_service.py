@@ -218,6 +218,51 @@ def test_failed_p0_check_creates_rollback_trigger_candidate(tmp_path: Path) -> N
     )
 
 
+def test_warning_required_check_creates_acknowledgeable_warning_alert(
+    tmp_path: Path,
+) -> None:
+    monitor = service(tmp_path)
+
+    model = monitor.record_check(
+        intent_id=INTENT_ID,
+        execution_id=EXECUTION_ID,
+        check_type="governance_drift",
+        status="warning",
+        observed_by="release_manager",
+        summary="Governance drift needs operator observation before closure.",
+        evidence_refs=["reports/release_monitoring/governance_drift.json"],
+        metrics={"warnings": 1},
+        idempotency_key="governance-warning-1",
+    )
+
+    alert = next(
+        item
+        for item in model["alerts"]
+        if item["category"] == "post_release_check_warning"
+    )
+    assert alert["severity"] == "warning"
+    assert alert["status"] == "active"
+    assert alert["source_check_ids"] == [
+        next(
+            check["check_id"]
+            for check in model["checks"]
+            if check["idempotency_key"] == "governance-warning-1"
+        )
+    ]
+
+    acknowledged = monitor.acknowledge_alert(
+        alert_id=alert["alert_id"],
+        acknowledged_by="release_manager",
+        disposition="accepted_risk",
+        reason="Warning reviewed for accepted-with-observations closure.",
+    )
+
+    assert any(
+        item["alert_id"] == alert["alert_id"] and item["status"] == "acknowledged"
+        for item in acknowledged["alerts"]
+    )
+
+
 def test_rollback_candidate_requires_matching_rollback_plan_intent(
     tmp_path: Path,
 ) -> None:

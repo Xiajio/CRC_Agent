@@ -1200,6 +1200,18 @@ const releaseClosureStatuses: AdminReleaseClosureRecordStatus[] = [
   "rolled_back",
 ];
 
+function releaseClosureAllowedStatuses(closure: AdminReleaseClosureResponse): AdminReleaseClosureRecordStatus[] {
+  if (closure.closure_gate.allowed_statuses) {
+    return closure.closure_gate.allowed_statuses;
+  }
+  if (!closure.closure_gate.allowed) {
+    return [];
+  }
+  return closure.latest_release?.rollback_execution_id
+    ? ["rolled_back"]
+    : ["accepted", "accepted_with_observations"];
+}
+
 function releaseMonitoringCheckState(
   status: AdminReleaseMonitoringCheckStatus | AdminReleaseMonitoringRequiredCheckStatus,
 ): "success" | "warning" | "ready" | "active" {
@@ -1896,8 +1908,14 @@ function ReleaseClosureForms({
   const [closureIdempotencyKey, setClosureIdempotencyKey] = useState("");
   const latestRelease = closure.latest_release;
   const rolledBackRelease = latestRelease?.rollback_execution_id !== null && latestRelease?.rollback_execution_id !== undefined;
-  const defaultClosureStatus: AdminReleaseClosureRecordStatus = rolledBackRelease ? "rolled_back" : "accepted";
+  const allowedStatuses = releaseClosureAllowedStatuses(closure);
+  const defaultClosureStatus: AdminReleaseClosureRecordStatus = rolledBackRelease
+    ? "rolled_back"
+    : allowedStatuses.includes("accepted")
+      ? "accepted"
+      : allowedStatuses[0] ?? "accepted";
   const [closureStatus, setClosureStatus] = useState<AdminReleaseClosureRecordStatus>(defaultClosureStatus);
+  const effectiveClosureStatus = allowedStatuses.includes(closureStatus) ? closureStatus : defaultClosureStatus;
 
   useEffect(() => {
     setClosureStatus(defaultClosureStatus);
@@ -1905,14 +1923,14 @@ function ReleaseClosureForms({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canSubmit || !latestRelease) {
+    if (!canSubmit || !latestRelease || !allowedStatuses.includes(effectiveClosureStatus)) {
       return;
     }
 
     const request: AdminRecordReleaseClosureRequest = {
       intent_id: latestRelease.intent_id,
       release_execution_id: latestRelease.release_execution_id,
-      closure_status: rolledBackRelease ? "rolled_back" : closureStatus,
+      closure_status: rolledBackRelease ? "rolled_back" : effectiveClosureStatus,
       closed_by: closureActor.trim(),
       rationale: closureRationale.trim(),
       idempotency_key: closureIdempotencyKey.trim(),
@@ -1937,14 +1955,14 @@ function ReleaseClosureForms({
           <span>Closure status</span>
           <select
             id="release-closure-status"
-            value={closureStatus}
+            value={effectiveClosureStatus}
             onChange={(event) => setClosureStatus(event.target.value as AdminReleaseClosureRecordStatus)}
           >
             {releaseClosureStatuses.map((status) => (
               <option
                 key={status}
                 value={status}
-                disabled={rolledBackRelease && status !== "rolled_back"}
+                disabled={!allowedStatuses.includes(status)}
               >
                 {status}
               </option>

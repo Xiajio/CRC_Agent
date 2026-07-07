@@ -5,11 +5,22 @@ from typing import Any
 
 import pytest
 
-from backend.api.services.release_closure_store import ReleaseClosureStore
+from backend.api.services.release_closure_store import (
+    ReleaseClosureState,
+    ReleaseClosureStore,
+)
+from backend.api.services.release_monitoring_store import ReleaseMonitoringStore
+from src.contracts.release_closure import (
+    ReleaseClosureRecord,
+    ReleaseEvidencePackage,
+    make_release_closure_id,
+    make_release_evidence_package_id,
+)
 from src.services.release_closure import (
     ReleaseClosureConflictError,
     ReleaseClosureService,
 )
+from src.services.release_monitoring import REQUIRED_CHECK_TYPES, ReleaseMonitoringService
 
 
 INTENT_ID = "release_intent_release_safety_20260629_001_6da729a0"
@@ -193,6 +204,125 @@ def service(
     )
 
 
+def monitoring_service(
+    tmp_path: Path,
+    *,
+    execution_model: dict[str, Any] | None = None,
+) -> ReleaseMonitoringService:
+    return ReleaseMonitoringService(
+        store=ReleaseMonitoringStore(tmp_path / "monitoring"),
+        execution_loader=lambda: execution_model if execution_model is not None else execution(),
+        governance_loader=lambda: {
+            "active_intent": {
+                "intent_id": INTENT_ID,
+                "target_scope": "feature_flag_candidate",
+                "derived_status": "approved",
+                "rollback_target": "agent_policy_20260624_0",
+                "source_release_report_id": "release_safety_20260629_001",
+                "version_chain": {"agent_policy_version": "agent_policy_20260629_0"},
+                "release_decision_snapshot": "feature_flag_or_pass",
+            },
+            "required_approvals": [{"role": "release_manager", "status": "approved"}],
+            "rollback_plan": {
+                "rollback_plan_id": "rollback_plan_1",
+                "intent_id": INTENT_ID,
+                "rollback_target": "agent_policy_20260624_0",
+                "status": "accepted",
+            },
+            "integrity": {"status": "verified", "warnings": []},
+        },
+        dashboard_loader=lambda: {
+            "version_chain": {"agent_policy_version": "agent_policy_20260629_0"},
+            "release_decision": "feature_flag_or_pass",
+            "rollback_target": "agent_policy_20260624_0",
+            "summary": {"hard_fail_count": 0},
+            "runs": [
+                {"kind": "release_safety", "run_id": "release_safety_20260629_001"},
+                {"kind": "literature_shadow_harness", "status": "shadow_only"},
+            ],
+            "integrity": {"status": "verified", "warnings": []},
+        },
+        now=lambda: "2026-07-07T09:15:00+08:00",
+    )
+
+
+def record_required_checks(
+    monitor: ReleaseMonitoringService,
+    *,
+    warning_check_type: str | None = None,
+) -> dict[str, Any]:
+    model = monitor.read_monitoring()
+    for check_type in REQUIRED_CHECK_TYPES:
+        status = "warning" if check_type == warning_check_type else "pass"
+        model = monitor.record_check(
+            intent_id=INTENT_ID,
+            execution_id=RELEASE_EXECUTION_ID,
+            check_type=check_type,
+            status=status,
+            observed_by="release_manager",
+            summary=f"{check_type} recorded with {status}.",
+            evidence_refs=[f"reports/release_monitoring/{check_type}.json"],
+            metrics={"status": status},
+            idempotency_key=f"{check_type}-{status}-real-flow",
+        )
+    return model
+
+
+def closure_pair(
+    idempotency_key: str,
+    *,
+    closed_at: str,
+    generated_at: str,
+) -> tuple[ReleaseClosureRecord, ReleaseEvidencePackage]:
+    closure_id = make_release_closure_id(RELEASE_EXECUTION_ID, idempotency_key)
+    package_id = make_release_evidence_package_id(closure_id)
+    closure = ReleaseClosureRecord(
+        closure_id=closure_id,
+        intent_id=INTENT_ID,
+        release_execution_id=RELEASE_EXECUTION_ID,
+        rollback_execution_id=None,
+        closure_status="accepted",
+        closed_by="release_manager",
+        closed_at=closed_at,
+        rationale="Required checks passed.",
+        monitoring_snapshot_hash="sha256:" + "a" * 64,
+        dashboard_snapshot_hash="sha256:" + "b" * 64,
+        governance_snapshot_hash="sha256:" + "c" * 64,
+        execution_snapshot_hash="sha256:" + "d" * 64,
+        required_check_ids=["check-execution"],
+        acknowledged_alert_ids=[],
+        unresolved_alert_ids=[],
+        rollback_trigger_candidate_id=None,
+        evidence_package_id=package_id,
+        idempotency_key=idempotency_key,
+    )
+    package = ReleaseEvidencePackage(
+        package_id=package_id,
+        closure_id=closure_id,
+        intent_id=INTENT_ID,
+        release_execution_id=RELEASE_EXECUTION_ID,
+        rollback_execution_id=None,
+        generated_by="release_manager",
+        generated_at=generated_at,
+        closure_status="accepted",
+        summary=f"Evidence for {idempotency_key}.",
+        source_refs=[
+            "GET /api/admin/release-dashboard",
+            "GET /api/admin/release-governance",
+            "GET /api/admin/release-execution",
+            "GET /api/admin/release-monitoring",
+        ],
+        artifact_refs=[f"reports/release_closure/closures/{closure_id}.json"],
+        snapshot_hashes={
+            "dashboard": closure.dashboard_snapshot_hash,
+            "governance": closure.governance_snapshot_hash,
+            "execution": closure.execution_snapshot_hash,
+            "monitoring": closure.monitoring_snapshot_hash,
+        },
+    )
+    return closure, package
+
+
 def test_read_closure_returns_latest_release_contract(tmp_path: Path) -> None:
     model = service(tmp_path, execution_model=execution(rollback=True)).read_closure()
 
@@ -241,6 +371,60 @@ def test_closure_blocked_when_required_check_fails(tmp_path: Path) -> None:
     )
     assert check["status"] == "fail"
     assert "governance_drift=fail" in check["reason"]
+
+
+def test_real_warning_check_requires_acknowledgement_then_allows_observed_closure(
+    tmp_path: Path,
+) -> None:
+    monitor = monitoring_service(tmp_path)
+    model = record_required_checks(monitor, warning_check_type="governance_drift")
+    warning_alert_id = next(
+        alert["alert_id"]
+        for alert in model["alerts"]
+        if alert["category"] == "post_release_check_warning"
+    )
+    app = service(tmp_path, monitoring_model=monitor.read_monitoring())
+
+    before_ack = app.read_closure()
+
+    assert before_ack["status"] == "blocked"
+    assert before_ack["closure_gate"]["allowed"] is False
+    assert (
+        "accepted_with_observations requires acknowledged active warning alerts"
+        in before_ack["closure_gate"]["reasons"]
+    )
+
+    monitor.acknowledge_alert(
+        alert_id=warning_alert_id,
+        acknowledged_by="release_manager",
+        disposition="accepted_risk",
+        reason="Warning reviewed for accepted-with-observations closure.",
+    )
+    app = service(tmp_path, monitoring_model=monitor.read_monitoring())
+    after_ack = app.read_closure()
+
+    assert after_ack["status"] == "ready_to_close"
+    assert after_ack["closure_gate"]["allowed"] is True
+    assert after_ack["closure_gate"]["allowed_statuses"] == [
+        "accepted_with_observations"
+    ]
+    assert after_ack["closure_gate"]["blocked_status_reasons"]["accepted"] == [
+        "required monitoring checks must pass for accepted closure",
+        "active warning monitoring alerts exist",
+    ]
+
+    closed = app.record_closure(
+        intent_id=INTENT_ID,
+        release_execution_id=RELEASE_EXECUTION_ID,
+        closure_status="accepted_with_observations",
+        closed_by="release_manager",
+        rationale="Warning check was acknowledged.",
+        idempotency_key="close-real-warning-observed",
+    )
+
+    assert closed["status"] == "closed"
+    assert closed["latest_closure"]["closure_status"] == "accepted_with_observations"
+    assert closed["latest_closure"]["acknowledged_alert_ids"] == [warning_alert_id]
 
 
 def test_accepted_closure_rejects_required_check_warning_even_when_alert_acknowledged(
@@ -423,6 +607,35 @@ def test_read_closure_scopes_latest_fields_and_status_to_latest_successful_relea
     assert model["closure_gate"]["allowed"] is True
 
 
+def test_read_closure_uses_latest_closure_evidence_package_id_when_packages_drift(
+    tmp_path: Path,
+) -> None:
+    older_closure, newer_generated_package = closure_pair(
+        "close-older",
+        closed_at="2026-07-07T10:00:00+08:00",
+        generated_at="2026-07-07T10:10:00+08:00",
+    )
+    latest_closure, linked_package = closure_pair(
+        "close-latest",
+        closed_at="2026-07-07T10:05:00+08:00",
+        generated_at="2026-07-07T10:05:00+08:00",
+    )
+
+    class FakeStore:
+        def read_state(self) -> ReleaseClosureState:
+            return ReleaseClosureState(
+                closures=[older_closure, latest_closure],
+                evidence_packages=[newer_generated_package, linked_package],
+                audit_events=[],
+                integrity={"status": "verified", "warnings": []},
+            )
+
+    model = service(tmp_path, store=FakeStore()).read_closure()  # type: ignore[arg-type]
+
+    assert model["latest_closure"]["closure_id"] == latest_closure.closure_id
+    assert model["latest_evidence_package"]["package_id"] == linked_package.package_id
+
+
 def test_read_closure_ignores_older_rollback_for_latest_release_cycle(
     tmp_path: Path,
 ) -> None:
@@ -537,6 +750,23 @@ def test_record_accepted_with_observations_requires_acknowledged_warning_alerts(
         )
 
 
+def test_read_closure_blocks_unacknowledged_warning_alert_conflict(
+    tmp_path: Path,
+) -> None:
+    model = service(
+        tmp_path,
+        monitoring_model=monitoring(warning_active=True),
+    ).read_closure()
+
+    assert model["status"] == "blocked"
+    assert model["closure_gate"]["allowed"] is False
+    assert (
+        "accepted_with_observations requires acknowledged active warning alerts"
+        in model["closure_gate"]["reasons"]
+    )
+    assert model["closure_gate"]["allowed_statuses"] == []
+
+
 def test_record_accepted_with_observations_succeeds_when_warning_is_acknowledged(
     tmp_path: Path,
 ) -> None:
@@ -563,6 +793,24 @@ def test_record_accepted_with_observations_succeeds_when_warning_is_acknowledged
         "release_monitor_alert_warning"
     ]
     assert model["latest_closure"]["unresolved_alert_ids"] == []
+
+
+def test_read_closure_exposes_observed_close_path_when_warning_is_acknowledged(
+    tmp_path: Path,
+) -> None:
+    model = service(
+        tmp_path,
+        monitoring_model=monitoring(warning_active=True, warning_acknowledged=True),
+    ).read_closure()
+
+    assert model["status"] == "ready_to_close"
+    assert model["closure_gate"]["allowed"] is True
+    assert model["closure_gate"]["allowed_statuses"] == [
+        "accepted_with_observations"
+    ]
+    assert model["closure_gate"]["blocked_status_reasons"]["accepted"] == [
+        "active warning monitoring alerts exist"
+    ]
 
 
 def test_record_closure_rejects_rollback_trigger_candidate_for_non_rollback_status(

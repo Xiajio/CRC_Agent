@@ -35,6 +35,7 @@ MonitoringAlertSeverity = Literal["info", "warning", "critical"]
 MonitoringAlertCategory = Literal[
     "missing_required_check",
     "post_release_check_failed",
+    "post_release_check_warning",
     "execution_integrity_failed",
     "governance_drift",
     "feature_flag_state_mismatch",
@@ -81,6 +82,7 @@ MONITORING_ALERT_SEVERITIES: tuple[MonitoringAlertSeverity, ...] = (
 MONITORING_ALERT_CATEGORIES: tuple[MonitoringAlertCategory, ...] = (
     "missing_required_check",
     "post_release_check_failed",
+    "post_release_check_warning",
     "execution_integrity_failed",
     "governance_drift",
     "feature_flag_state_mismatch",

@@ -526,6 +526,30 @@ class ReleaseClosureStore:
             for event in audit_events
             if event.event_type == "evidence_package_generated"
         }
+        closure_ids_by_release: dict[str, list[str]] = {}
+        for closure in closures:
+            closure_ids_by_release.setdefault(
+                closure.release_execution_id,
+                [],
+            ).append(closure.closure_id)
+        for release_execution_id, closure_ids in closure_ids_by_release.items():
+            if len(closure_ids) > 1:
+                warnings.append(
+                    "multiple closure artifacts for release execution "
+                    f"{release_execution_id}: {', '.join(sorted(closure_ids))}"
+                )
+        package_ids_by_release: dict[str, list[str]] = {}
+        for package in packages:
+            package_ids_by_release.setdefault(
+                package.release_execution_id,
+                [],
+            ).append(package.package_id)
+        for release_execution_id, package_ids in package_ids_by_release.items():
+            if len(package_ids) > 1:
+                warnings.append(
+                    "multiple evidence package artifacts for release execution "
+                    f"{release_execution_id}: {', '.join(sorted(package_ids))}"
+                )
 
         for closure in closures:
             if closure.evidence_package_id not in packages_by_id:

@@ -477,6 +477,8 @@ export interface AdminReleaseClosureGate {
   status: AdminReleaseClosureStatus;
   reasons: string[];
   checks: AdminReleaseClosureGateCheck[];
+  allowed_statuses?: AdminReleaseClosureRecordStatus[];
+  blocked_status_reasons?: Partial<Record<AdminReleaseClosureRecordStatus, string[]>>;
 }
 
 export interface AdminReleaseClosureLatestRelease {

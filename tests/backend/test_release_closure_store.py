@@ -77,6 +77,92 @@ def make_pair(
     return closure, package
 
 
+def append_artifacts_with_audit(
+    tmp_path: Path,
+    closure: ReleaseClosureRecord,
+    package: ReleaseEvidencePackage,
+    *,
+    timestamp: str,
+) -> None:
+    closures_dir = tmp_path / "closures"
+    packages_dir = tmp_path / "packages"
+    closures_dir.mkdir(parents=True, exist_ok=True)
+    packages_dir.mkdir(parents=True, exist_ok=True)
+    (closures_dir / f"{closure.closure_id}.json").write_text(
+        release_closure_store_module.json.dumps(
+            closure.to_dict(),
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (packages_dir / f"{package.package_id}.json").write_text(
+        release_closure_store_module.json.dumps(
+            package.to_dict(),
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    audit_dir = tmp_path / "audit"
+    audit_path = audit_dir / "release_closure_20260707.jsonl"
+    previous_event_hash = "sha256:GENESIS"
+    if audit_path.exists():
+        audit_lines = [
+            release_closure_store_module.json.loads(line)
+            for line in audit_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        previous_event_hash = audit_lines[-1]["event_hash"]
+    closure_event = build_release_closure_audit_event(
+        event_id=make_release_closure_event_id(
+            closure.release_execution_id,
+            "closure_recorded",
+            f"{timestamp}#{closure.closure_id}",
+        ),
+        intent_id=closure.intent_id,
+        release_execution_id=closure.release_execution_id,
+        event_type="closure_recorded",
+        actor=closure.closed_by,
+        timestamp=timestamp,
+        payload=closure.to_dict(),
+        previous_event_hash=previous_event_hash,
+    )
+    package_event = build_release_closure_audit_event(
+        event_id=make_release_closure_event_id(
+            package.release_execution_id,
+            "evidence_package_generated",
+            f"{timestamp}#{package.package_id}",
+        ),
+        intent_id=package.intent_id,
+        release_execution_id=package.release_execution_id,
+        event_type="evidence_package_generated",
+        actor=package.generated_by,
+        timestamp=timestamp,
+        payload=package.to_dict(),
+        previous_event_hash=closure_event.event_hash,
+    )
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    with audit_path.open("a", encoding="utf-8") as handle:
+        handle.write(
+            release_closure_store_module.json.dumps(
+                closure_event.to_dict(),
+                sort_keys=True,
+            )
+        )
+        handle.write("\n")
+        handle.write(
+            release_closure_store_module.json.dumps(
+                package_event.to_dict(),
+                sort_keys=True,
+            )
+        )
+        handle.write("\n")
+
+
 def test_empty_store_read_is_verified_and_read_only(tmp_path: Path) -> None:
     store = ReleaseClosureStore(tmp_path)
 
@@ -150,6 +236,51 @@ def test_write_rejects_second_closure_for_same_release_with_different_key(
     state = store.read_state()
     assert [item.closure_id for item in state.closures] == [closure.closure_id]
     assert [item.package_id for item in state.evidence_packages] == [package.package_id]
+
+
+def test_read_state_detects_multiple_closure_package_pairs_for_release_execution(
+    tmp_path: Path,
+) -> None:
+    first_closure, first_package = make_pair("close-1")
+    second_closure, second_package = make_pair("close-2")
+    second_closure = ReleaseClosureRecord(
+        **{
+            **second_closure.to_dict(),
+            "closed_at": "2026-07-07T10:05:00+08:00",
+            "rationale": "Duplicate corrupted closure.",
+        }
+    )
+    second_package = ReleaseEvidencePackage(
+        **{
+            **second_package.to_dict(),
+            "generated_at": "2026-07-07T10:05:00+08:00",
+            "summary": "Duplicate corrupted package.",
+        }
+    )
+    append_artifacts_with_audit(
+        tmp_path,
+        first_closure,
+        first_package,
+        timestamp=first_closure.closed_at,
+    )
+    append_artifacts_with_audit(
+        tmp_path,
+        second_closure,
+        second_package,
+        timestamp=second_closure.closed_at,
+    )
+
+    state = ReleaseClosureStore(tmp_path).read_state()
+
+    assert state.integrity["status"] == "failed"
+    assert any(
+        "multiple closure artifacts for release execution" in warning
+        for warning in state.integrity["warnings"]
+    )
+    assert any(
+        "multiple evidence package artifacts for release execution" in warning
+        for warning in state.integrity["warnings"]
+    )
 
 
 def test_audit_tampering_blocks_writes(tmp_path: Path) -> None:

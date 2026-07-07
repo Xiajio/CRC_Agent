@@ -1900,6 +1900,128 @@ describe("AgentAdminView", () => {
     );
   });
 
+  it("uses closure gate eligibility to require accepted_with_observations for acknowledged warnings", async () => {
+    const recordAdminReleaseClosure = vi.fn(async () => makeAdminReleaseClosure({ status: "closed" }));
+    const closureGate = {
+      allowed: true,
+      status: "ready_to_close",
+      reasons: [],
+      checks: [
+        {
+          name: "required_monitoring_checks_complete",
+          status: "warning",
+          reason: "required monitoring checks have acknowledged warnings: governance_drift=warning",
+        },
+      ],
+      allowed_statuses: ["accepted_with_observations"],
+      blocked_status_reasons: {
+        accepted: [
+          "required monitoring checks must pass for accepted closure",
+          "active warning monitoring alerts exist",
+        ],
+      },
+    } as unknown as AdminReleaseClosureResponse["closure_gate"];
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () => makeAdminReleaseExecution()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      getAdminReleaseClosure: vi.fn(async () =>
+        makeAdminReleaseClosure({
+          closure_gate: closureGate,
+        }),
+      ),
+      recordAdminReleaseClosure,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-closure-warning-ack" })}
+        doctor={makeState({ sessionId: "doctor-closure-warning-ack" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    expect(await screen.findByText("Release closure")).toBeInTheDocument();
+    const statusSelect = screen.getByLabelText("Closure status") as HTMLSelectElement;
+    expect(statusSelect).toHaveValue("accepted_with_observations");
+    expect(within(statusSelect).getByRole("option", { name: "accepted" })).toBeDisabled();
+    expect(within(statusSelect).getByRole("option", { name: "accepted_with_observations" })).not.toBeDisabled();
+    expect(within(statusSelect).getByRole("option", { name: "rolled_back" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Closure rationale"), {
+      target: { value: "Warning was acknowledged." },
+    });
+    fireEvent.change(screen.getByLabelText("Closure idempotency key"), {
+      target: { value: "close-warning-observed" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record closure" }));
+
+    await waitFor(() => expect(recordAdminReleaseClosure).toHaveBeenCalledTimes(1));
+    expect(recordAdminReleaseClosure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        closure_status: "accepted_with_observations",
+        idempotency_key: "close-warning-observed",
+      }),
+    );
+  });
+
+  it("disables accepted_with_observations while warning alerts are unacknowledged", async () => {
+    const closureGate = {
+      allowed: false,
+      status: "blocked",
+      reasons: ["accepted_with_observations requires acknowledged active warning alerts"],
+      checks: [
+        {
+          name: "warning_monitoring_alerts_acknowledged",
+          status: "fail",
+          reason: "accepted_with_observations requires acknowledged active warning alerts",
+        },
+      ],
+      allowed_statuses: [],
+      blocked_status_reasons: {
+        accepted: ["active warning monitoring alerts exist"],
+        accepted_with_observations: [
+          "accepted_with_observations requires acknowledged active warning alerts",
+        ],
+      },
+    } as unknown as AdminReleaseClosureResponse["closure_gate"];
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () => makeAdminReleaseExecution()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      getAdminReleaseClosure: vi.fn(async () =>
+        makeAdminReleaseClosure({
+          status: "blocked",
+          closure_gate: closureGate,
+        }),
+      ),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-closure-warning-unack" })}
+        doctor={makeState({ sessionId: "doctor-closure-warning-unack" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    expect(await screen.findByText("Release closure")).toBeInTheDocument();
+    const statusSelect = screen.getByLabelText("Closure status") as HTMLSelectElement;
+    expect(within(statusSelect).getByRole("option", { name: "accepted" })).toBeDisabled();
+    expect(within(statusSelect).getByRole("option", { name: "accepted_with_observations" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Record closure" })).toBeDisabled();
+  });
+
   it("renders blocked release closure gate reasons and disables submit", async () => {
     const apiClient = {
       getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),

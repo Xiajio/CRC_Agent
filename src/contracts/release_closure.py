@@ -345,6 +345,8 @@ class ReleaseClosureGate:
     status: ClosureGateStatus
     reasons: list[str]
     checks: list[ReleaseClosureGateCheck]
+    allowed_statuses: list[ClosureStatus] | None = None
+    blocked_status_reasons: dict[str, list[str]] | None = None
 
     def __post_init__(self) -> None:
         if type(self.allowed) is not bool:
@@ -361,6 +363,29 @@ class ReleaseClosureGate:
             "checks",
             tuple(_require_gate_checks("checks", self.checks)),
         )
+        allowed_statuses = [] if self.allowed_statuses is None else self.allowed_statuses
+        for item in allowed_statuses:
+            _validate_choice("allowed_statuses", item, CLOSURE_STATUSES)
+        object.__setattr__(self, "allowed_statuses", tuple(allowed_statuses))
+        blocked_status_reasons: dict[str, list[str]] = {}
+        if self.blocked_status_reasons is not None:
+            if not isinstance(self.blocked_status_reasons, dict):
+                raise TypeError("blocked_status_reasons must be dict")
+            for status, reasons in self.blocked_status_reasons.items():
+                _validate_choice(
+                    "blocked_status_reasons status",
+                    status,
+                    CLOSURE_STATUSES,
+                )
+                blocked_status_reasons[status] = _require_string_list(
+                    f"blocked_status_reasons[{status}]",
+                    reasons,
+                )
+                _require_sanitized_free_text_list(
+                    f"blocked_status_reasons[{status}]",
+                    blocked_status_reasons[status],
+                )
+        object.__setattr__(self, "blocked_status_reasons", blocked_status_reasons)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -368,6 +393,11 @@ class ReleaseClosureGate:
             "status": self.status,
             "reasons": list(self.reasons),
             "checks": [check.to_dict() for check in self.checks],
+            "allowed_statuses": list(self.allowed_statuses),
+            "blocked_status_reasons": {
+                status: list(reasons)
+                for status, reasons in self.blocked_status_reasons.items()
+            },
         }
 
 

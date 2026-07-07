@@ -69,9 +69,16 @@ class ReleaseClosureService:
             store_state.closures,
             current_release_execution_id,
         )
-        latest_package = self._latest_package_for_release(
-            store_state.evidence_packages,
-            current_release_execution_id,
+        latest_package = (
+            self._package_for_closure(
+                store_state.evidence_packages,
+                latest_closure.evidence_package_id,
+            )
+            if latest_closure is not None
+            else self._latest_package_for_release(
+                store_state.evidence_packages,
+                current_release_execution_id,
+            )
         )
         integrity = self._integrity_model(
             dashboard=dashboard,
@@ -80,11 +87,10 @@ class ReleaseClosureService:
             monitoring=monitoring,
             store_integrity=store_state.integrity,
         )
-        gate = self._derive_gate(
+        gate = self._derive_read_gate(
             latest_release=latest_release,
             monitoring=monitoring,
             integrity=integrity,
-            closure_status="rolled_back" if latest_rollback is not None else None,
             rollback=latest_rollback,
         )
         status = self._status_from_state(
@@ -296,6 +302,64 @@ class ReleaseClosureService:
             "warnings": warnings,
         }
 
+    def _derive_read_gate(
+        self,
+        *,
+        latest_release: dict[str, Any] | None,
+        monitoring: dict[str, Any],
+        integrity: dict[str, Any],
+        rollback: dict[str, Any] | None,
+    ) -> ReleaseClosureGate:
+        if latest_release is None:
+            return self._derive_gate(
+                latest_release=latest_release,
+                monitoring=monitoring,
+                integrity=integrity,
+                closure_status=None,
+                rollback=rollback,
+            )
+
+        candidate_statuses = (
+            ["rolled_back"]
+            if rollback is not None
+            else ["accepted", "accepted_with_observations"]
+        )
+        gates = {
+            status: self._derive_gate(
+                latest_release=latest_release,
+                monitoring=monitoring,
+                integrity=integrity,
+                closure_status=status,
+                rollback=rollback,
+            )
+            for status in candidate_statuses
+        }
+        allowed_statuses = [
+            status for status in candidate_statuses if gates[status].allowed
+        ]
+        blocked_status_reasons = {
+            status: list(gate.reasons)
+            for status, gate in gates.items()
+            if not gate.allowed
+        }
+        if allowed_statuses:
+            chosen_status = allowed_statuses[0]
+        elif rollback is not None:
+            chosen_status = "rolled_back"
+        elif self._warning_alert_ids(monitoring):
+            chosen_status = "accepted_with_observations"
+        else:
+            chosen_status = "accepted"
+        chosen_gate = gates[chosen_status]
+        return ReleaseClosureGate(
+            allowed=bool(allowed_statuses),
+            status="ready_to_close" if allowed_statuses else chosen_gate.status,
+            reasons=list(chosen_gate.reasons),
+            checks=list(chosen_gate.checks),
+            allowed_statuses=allowed_statuses,
+            blocked_status_reasons=blocked_status_reasons,
+        )
+
     def _derive_gate(
         self,
         *,
@@ -373,6 +437,35 @@ class ReleaseClosureService:
         if candidate_blocks:
             reasons.append("rollback trigger candidate exists")
 
+        warning_conflict = (
+            None
+            if closure_status is None
+            else self._warning_alert_conflict(
+                monitoring=monitoring,
+                closure_status=closure_status,
+            )
+        )
+        if warning_conflict is not None:
+            checks.append(
+                ReleaseClosureGateCheck(
+                    name="warning_monitoring_alerts_acknowledged",
+                    status="fail",
+                    reason=warning_conflict,
+                )
+            )
+            reasons.append(warning_conflict)
+        elif (
+            closure_status in {"accepted", "accepted_with_observations"}
+            and self._warning_alert_ids(monitoring)
+        ):
+            checks.append(
+                ReleaseClosureGateCheck(
+                    name="warning_monitoring_alerts_acknowledged",
+                    status="pass",
+                    reason="Warning monitoring alerts are acknowledged for observed closure.",
+                )
+            )
+
         integrity_failed = integrity.get("status") != "verified"
         checks.append(
             ReleaseClosureGateCheck(
@@ -396,6 +489,16 @@ class ReleaseClosureService:
             status=status,
             reasons=reasons,
             checks=checks,
+            allowed_statuses=(
+                [closure_status]
+                if closure_status in CLOSURE_STATUSES and not reasons
+                else []
+            ),
+            blocked_status_reasons=(
+                {closure_status: list(reasons)}
+                if closure_status in CLOSURE_STATUSES and reasons
+                else {}
+            ),
         )
 
     def _build_closure_record(
@@ -511,6 +614,8 @@ class ReleaseClosureService:
             status=status,
             reasons=list(gate.reasons),
             checks=list(gate.checks),
+            allowed_statuses=[],
+            blocked_status_reasons=dict(gate.blocked_status_reasons),
         )
 
     def _latest_successful_release(
@@ -585,6 +690,16 @@ class ReleaseClosureService:
         if not matching:
             return None
         return max(matching, key=lambda item: item.generated_at)
+
+    def _package_for_closure(
+        self,
+        packages: list[ReleaseEvidencePackage],
+        evidence_package_id: str,
+    ) -> ReleaseEvidencePackage | None:
+        for package in packages:
+            if package.package_id == evidence_package_id:
+                return package
+        return None
 
     def _result_sort_key(self, result: dict[str, Any]) -> str:
         return str(
@@ -760,8 +875,9 @@ class ReleaseClosureService:
         monitoring: dict[str, Any],
         closure_status: str,
     ) -> str | None:
+        warning_alert_ids = self._warning_alert_ids(monitoring)
         active_warning_alert_ids = self._active_warning_alert_ids(monitoring)
-        if not active_warning_alert_ids:
+        if not warning_alert_ids:
             return None
         acknowledged_alert_ids = set(self._acknowledged_alert_ids(monitoring))
         unresolved_warning_alert_ids = [
@@ -777,6 +893,23 @@ class ReleaseClosureService:
         ):
             return "accepted_with_observations requires acknowledged active warning alerts"
         return None
+
+    def _warning_alert_ids(self, monitoring: dict[str, Any]) -> list[str]:
+        alerts = monitoring.get("alerts")
+        if not isinstance(alerts, list):
+            return []
+        alert_ids: list[str] = []
+        for item in alerts:
+            if not isinstance(item, dict):
+                continue
+            if item.get("severity") != "warning":
+                continue
+            if item.get("status") not in {"active", "acknowledged"}:
+                continue
+            alert_id = item.get("alert_id")
+            if isinstance(alert_id, str) and alert_id:
+                alert_ids.append(alert_id)
+        return alert_ids
 
     def _active_warning_alert_ids(self, monitoring: dict[str, Any]) -> list[str]:
         alerts = monitoring.get("alerts")
@@ -810,12 +943,12 @@ class ReleaseClosureService:
         self,
         monitoring: dict[str, Any],
     ) -> bool:
-        active_warning_alert_ids = self._active_warning_alert_ids(monitoring)
-        if not active_warning_alert_ids:
+        warning_alert_ids = self._warning_alert_ids(monitoring)
+        if not warning_alert_ids:
             return False
         acknowledged_alert_ids = set(self._acknowledged_alert_ids(monitoring))
         return all(
-            alert_id in acknowledged_alert_ids for alert_id in active_warning_alert_ids
+            alert_id in acknowledged_alert_ids for alert_id in warning_alert_ids
         )
 
 __all__ = [
