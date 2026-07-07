@@ -1831,6 +1831,75 @@ describe("AgentAdminView", () => {
     expect(getAdminReleaseClosure).not.toHaveBeenCalled();
   });
 
+  it("defaults rolled-back release closure to rolled_back and disables accepted statuses", async () => {
+    const recordAdminReleaseClosure = vi.fn(async () => makeAdminReleaseClosure({ status: "rolled_back_closed" }));
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () => makeAdminReleaseExecution()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      getAdminReleaseClosure: vi.fn(async () =>
+        makeAdminReleaseClosure({
+          latest_release: {
+            intent_id: "intent-1",
+            release_execution_id: "release_exec_1",
+            released_at: "2026-07-03T09:00:00+08:00",
+            rollback_execution_id: "rollback_exec_1",
+            rolled_back_at: "2026-07-03T10:00:00+08:00",
+          },
+          closure_gate: {
+            allowed: true,
+            status: "ready_to_close",
+            reasons: [],
+            checks: [
+              {
+                name: "rollback_trigger_candidate",
+                status: "pass",
+                reason: "Successful rollback is available for closure.",
+              },
+            ],
+          },
+        }),
+      ),
+      recordAdminReleaseClosure,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-closure-rollback" })}
+        doctor={makeState({ sessionId: "doctor-closure-rollback" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    expect(await screen.findByText("Release closure")).toBeInTheDocument();
+    const statusSelect = screen.getByLabelText("Closure status") as HTMLSelectElement;
+    expect(statusSelect).toHaveValue("rolled_back");
+    expect(within(statusSelect).getByRole("option", { name: "accepted" })).toBeDisabled();
+    expect(within(statusSelect).getByRole("option", { name: "accepted_with_observations" })).toBeDisabled();
+    expect(within(statusSelect).getByRole("option", { name: "rolled_back" })).not.toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Closure rationale"), {
+      target: { value: "Rollback completed after monitoring trigger." },
+    });
+    fireEvent.change(screen.getByLabelText("Closure idempotency key"), {
+      target: { value: "close-rollback-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record closure" }));
+
+    await waitFor(() => expect(recordAdminReleaseClosure).toHaveBeenCalledTimes(1));
+    expect(recordAdminReleaseClosure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        closure_status: "rolled_back",
+        idempotency_key: "close-rollback-1",
+      }),
+    );
+  });
+
   it("renders blocked release closure gate reasons and disables submit", async () => {
     const apiClient = {
       getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),

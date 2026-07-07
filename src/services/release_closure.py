@@ -84,6 +84,8 @@ class ReleaseClosureService:
             latest_release=latest_release,
             monitoring=monitoring,
             integrity=integrity,
+            closure_status="rolled_back" if latest_rollback is not None else None,
+            rollback=latest_rollback,
         )
         status = self._status_from_state(
             latest_release=latest_release,
@@ -168,12 +170,6 @@ class ReleaseClosureService:
             execution,
             latest_release,
         )
-        warning_conflict = self._warning_alert_conflict(
-            monitoring=monitoring,
-            closure_status=closure_status,
-        )
-        if warning_conflict is not None:
-            raise ReleaseClosureConflictError(warning_conflict)
         if closure_status == "rolled_back":
             if rollback is None:
                 raise ReleaseClosureConflictError(
@@ -193,6 +189,12 @@ class ReleaseClosureService:
         )
         if not gate.allowed:
             raise ReleaseClosureConflictError("; ".join(gate.reasons))
+        warning_conflict = self._warning_alert_conflict(
+            monitoring=monitoring,
+            closure_status=closure_status,
+        )
+        if warning_conflict is not None:
+            raise ReleaseClosureConflictError(warning_conflict)
 
         timestamp = (
             idempotent_match.closure.closed_at
@@ -311,20 +313,21 @@ class ReleaseClosureService:
         if latest_release is None:
             reasons.append("no successful release execution exists")
 
-        missing_required_checks = self._missing_required_checks(monitoring)
+        required_check_assessment = self._required_monitoring_check_assessment(
+            monitoring=monitoring,
+            closure_status=closure_status,
+            rollback=rollback,
+        )
         checks.append(
             ReleaseClosureGateCheck(
                 name="required_monitoring_checks_complete",
-                status="pass" if not missing_required_checks else "fail",
-                reason=(
-                    "All required monitoring checks are present."
-                    if not missing_required_checks
-                    else "required monitoring checks are missing"
-                ),
+                status=required_check_assessment["status"],
+                reason=required_check_assessment["reason"],
             )
         )
-        if missing_required_checks:
-            reasons.append("required monitoring checks are missing")
+        required_check_reason = required_check_assessment["blocking_reason"]
+        if required_check_reason is not None:
+            reasons.append(required_check_reason)
 
         has_active_critical_alerts = self._has_active_critical_alerts(monitoring)
         checks.append(
@@ -600,6 +603,100 @@ class ReleaseClosureService:
             if isinstance(check, dict) and check.get("status") == "missing"
         ]
 
+    def _required_monitoring_check_assessment(
+        self,
+        *,
+        monitoring: dict[str, Any],
+        closure_status: str | None,
+        rollback: dict[str, Any] | None,
+    ) -> dict[str, str | None]:
+        required_checks = monitoring.get("required_checks")
+        if not isinstance(required_checks, list):
+            return {
+                "status": "fail",
+                "reason": "required monitoring checks are missing: required_checks=missing",
+                "blocking_reason": "required monitoring checks are missing",
+            }
+
+        not_passing = [
+            check
+            for check in required_checks
+            if isinstance(check, dict) and check.get("status") != "pass"
+        ]
+        fail_or_missing = [
+            check
+            for check in not_passing
+            if check.get("status") in {"fail", "missing"}
+        ]
+        warnings = [
+            check
+            for check in not_passing
+            if check.get("status") == "warning"
+        ]
+        if fail_or_missing:
+            return {
+                "status": "fail",
+                "reason": (
+                    "required monitoring checks are missing or failed: "
+                    + self._required_check_status_summary(fail_or_missing)
+                ),
+                "blocking_reason": "required monitoring checks are missing",
+            }
+        if not warnings:
+            return {
+                "status": "pass",
+                "reason": "All required monitoring checks passed.",
+                "blocking_reason": None,
+            }
+        if closure_status == "rolled_back" and rollback is not None:
+            return {
+                "status": "warning",
+                "reason": (
+                    "required monitoring checks have warnings during rollback closure: "
+                    + self._required_check_status_summary(warnings)
+                ),
+                "blocking_reason": None,
+            }
+        if (
+            closure_status == "accepted_with_observations"
+            and self._active_warning_alerts_acknowledged(monitoring)
+        ):
+            return {
+                "status": "warning",
+                "reason": (
+                    "required monitoring checks have acknowledged warnings: "
+                    + self._required_check_status_summary(warnings)
+                ),
+                "blocking_reason": None,
+            }
+        if closure_status == "accepted_with_observations":
+            return {
+                "status": "fail",
+                "reason": (
+                    "required monitoring check warnings require acknowledged warning alerts: "
+                    + self._required_check_status_summary(warnings)
+                ),
+                "blocking_reason": (
+                    "required monitoring check warnings require acknowledged warning alerts"
+                ),
+            }
+        return {
+            "status": "fail",
+            "reason": (
+                "required monitoring checks must pass for accepted closure: "
+                + self._required_check_status_summary(warnings)
+            ),
+            "blocking_reason": "required monitoring checks must pass for accepted closure",
+        }
+
+    def _required_check_status_summary(self, checks: list[dict[str, Any]]) -> str:
+        parts: list[str] = []
+        for check in checks:
+            check_type = check.get("check_type")
+            status = check.get("status")
+            parts.append(f"{check_type or 'required_check'}={status or 'missing'}")
+        return ", ".join(parts)
+
     def _has_active_critical_alerts(self, monitoring: dict[str, Any]) -> bool:
         alerts = monitoring.get("alerts")
         if not isinstance(alerts, list):
@@ -697,6 +794,18 @@ class ReleaseClosureService:
             if isinstance(alert_id, str) and alert_id:
                 alert_ids.append(alert_id)
         return alert_ids
+
+    def _active_warning_alerts_acknowledged(
+        self,
+        monitoring: dict[str, Any],
+    ) -> bool:
+        active_warning_alert_ids = self._active_warning_alert_ids(monitoring)
+        if not active_warning_alert_ids:
+            return False
+        acknowledged_alert_ids = set(self._acknowledged_alert_ids(monitoring))
+        return all(
+            alert_id in acknowledged_alert_ids for alert_id in active_warning_alert_ids
+        )
 
 __all__ = [
     "ReleaseClosureConflictError",

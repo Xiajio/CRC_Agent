@@ -85,6 +85,7 @@ def execution_history(
 def monitoring(
     *,
     missing: bool = False,
+    required_status: str | None = None,
     critical: bool = False,
     warning_active: bool = False,
     warning_acknowledged: bool = False,
@@ -111,6 +112,13 @@ def monitoring(
             "status": "missing",
             "latest_check_id": None,
             "reason": "missing",
+        }
+    elif required_status is not None:
+        required_checks[1] = {
+            "check_type": "governance_drift",
+            "status": required_status,
+            "latest_check_id": "check-governance",
+            "reason": f"required check {required_status}",
         }
 
     alerts: list[dict[str, Any]] = []
@@ -218,6 +226,103 @@ def test_closure_blocked_when_required_checks_missing(tmp_path: Path) -> None:
     assert "required monitoring checks are missing" in model["closure_gate"]["reasons"]
 
 
+def test_closure_blocked_when_required_check_fails(tmp_path: Path) -> None:
+    model = service(
+        tmp_path,
+        monitoring_model=monitoring(required_status="fail"),
+    ).read_closure()
+
+    assert model["status"] == "blocked"
+    assert "required monitoring checks are missing" in model["closure_gate"]["reasons"]
+    check = next(
+        item
+        for item in model["closure_gate"]["checks"]
+        if item["name"] == "required_monitoring_checks_complete"
+    )
+    assert check["status"] == "fail"
+    assert "governance_drift=fail" in check["reason"]
+
+
+def test_accepted_closure_rejects_required_check_warning_even_when_alert_acknowledged(
+    tmp_path: Path,
+) -> None:
+    app = service(
+        tmp_path,
+        monitoring_model=monitoring(
+            required_status="warning",
+            warning_active=True,
+            warning_acknowledged=True,
+        ),
+    )
+
+    with pytest.raises(
+        ReleaseClosureConflictError,
+        match="required monitoring checks must pass for accepted closure",
+    ):
+        app.record_closure(
+            intent_id=INTENT_ID,
+            release_execution_id=RELEASE_EXECUTION_ID,
+            closure_status="accepted",
+            closed_by="release_manager",
+            rationale="Close with warning.",
+            idempotency_key="close-required-warning-accepted",
+        )
+
+
+def test_accepted_with_observations_allows_required_check_warning_when_alert_acknowledged(
+    tmp_path: Path,
+) -> None:
+    app = service(
+        tmp_path,
+        monitoring_model=monitoring(
+            required_status="warning",
+            warning_active=True,
+            warning_acknowledged=True,
+        ),
+    )
+
+    model = app.record_closure(
+        intent_id=INTENT_ID,
+        release_execution_id=RELEASE_EXECUTION_ID,
+        closure_status="accepted_with_observations",
+        closed_by="release_manager",
+        rationale="Warning check was reviewed and acknowledged.",
+        idempotency_key="close-required-warning-observed",
+    )
+
+    assert model["status"] == "closed"
+    assert model["latest_closure"]["closure_status"] == "accepted_with_observations"
+    assert model["latest_closure"]["acknowledged_alert_ids"] == [
+        "release_monitor_alert_warning"
+    ]
+
+
+def test_accepted_with_observations_rejects_required_check_fail_even_with_acknowledged_warning(
+    tmp_path: Path,
+) -> None:
+    app = service(
+        tmp_path,
+        monitoring_model=monitoring(
+            required_status="fail",
+            warning_active=True,
+            warning_acknowledged=True,
+        ),
+    )
+
+    with pytest.raises(
+        ReleaseClosureConflictError,
+        match="required monitoring checks are missing",
+    ):
+        app.record_closure(
+            intent_id=INTENT_ID,
+            release_execution_id=RELEASE_EXECUTION_ID,
+            closure_status="accepted_with_observations",
+            closed_by="release_manager",
+            rationale="Close despite failure.",
+            idempotency_key="close-required-fail-observed",
+        )
+
+
 def test_closure_blocked_when_rollback_candidate_exists(tmp_path: Path) -> None:
     model = service(
         tmp_path,
@@ -226,6 +331,21 @@ def test_closure_blocked_when_rollback_candidate_exists(tmp_path: Path) -> None:
 
     assert model["status"] == "blocked"
     assert "rollback trigger candidate exists" in model["closure_gate"]["reasons"]
+
+
+def test_read_closure_allows_rolled_back_gate_after_successful_rollback_with_candidate(
+    tmp_path: Path,
+) -> None:
+    model = service(
+        tmp_path,
+        execution_model=execution(rollback=True),
+        monitoring_model=monitoring(rollback_candidate=True),
+    ).read_closure()
+
+    assert model["status"] == "ready_to_close"
+    assert model["latest_release"]["rollback_execution_id"] == ROLLBACK_EXECUTION_ID
+    assert model["closure_gate"]["allowed"] is True
+    assert "rollback trigger candidate exists" not in model["closure_gate"]["reasons"]
 
 
 def test_closure_blocked_when_integrity_failed(tmp_path: Path) -> None:
