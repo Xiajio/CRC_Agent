@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
+import threading
 from typing import Any
 
 import pytest
@@ -1067,3 +1069,83 @@ def test_idempotent_retry_conflicts_when_source_state_changes(tmp_path: Path) ->
             rationale="Warnings were reviewed.",
             idempotency_key="close-idempotent-2",
         )
+
+
+def test_concurrent_same_key_closure_replays_with_persisted_timestamp(
+    tmp_path: Path,
+) -> None:
+    store = ReleaseClosureStore(tmp_path)
+    idempotency_key = "close-concurrent-same-key"
+    closure_id = make_release_closure_id(RELEASE_EXECUTION_ID, idempotency_key)
+    closure_path = tmp_path / "closures" / f"{closure_id}.json"
+    first_write_started = threading.Event()
+    release_first_write = threading.Event()
+    pause_owner: dict[str, int] = {}
+    pause_owner_lock = threading.Lock()
+    now_values = iter(
+        [
+            "2026-07-07T10:00:00+08:00",
+            "2026-07-07T10:05:00+08:00",
+        ]
+    )
+    now_lock = threading.Lock()
+    original_write_json_once = store._write_json_once
+
+    def next_now() -> str:
+        with now_lock:
+            return next(now_values)
+
+    def pause_first_closure_write(path: Path, payload: dict[str, object]) -> None:
+        if path == closure_path:
+            current_thread_id = threading.get_ident()
+            with pause_owner_lock:
+                pause_owner.setdefault("thread_id", current_thread_id)
+                should_pause = pause_owner["thread_id"] == current_thread_id
+            if should_pause:
+                first_write_started.set()
+                assert release_first_write.wait(timeout=5)
+        original_write_json_once(path, payload)
+
+    store._write_json_once = pause_first_closure_write  # type: ignore[method-assign]
+    app = ReleaseClosureService(
+        store=store,
+        dashboard_loader=dashboard,
+        governance_loader=governance,
+        execution_loader=execution,
+        monitoring_loader=monitoring,
+        now=next_now,
+    )
+
+    def record() -> dict[str, object]:
+        return app.record_closure(
+            intent_id=INTENT_ID,
+            release_execution_id=RELEASE_EXECUTION_ID,
+            closure_status="accepted",
+            closed_by="release_manager",
+            rationale="Required checks passed.",
+            idempotency_key=idempotency_key,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first_future = executor.submit(record)
+        assert first_write_started.wait(timeout=5)
+        second_future = executor.submit(record)
+        try:
+            second_future.result(timeout=0.5)
+        except TimeoutError:
+            pass
+        release_first_write.set()
+
+        first = first_future.result(timeout=5)
+        second = second_future.result(timeout=5)
+
+    state = store.read_state()
+    assert state.integrity == {"status": "verified", "warnings": []}
+    assert len(state.closures) == 1
+    assert len(state.evidence_packages) == 1
+    assert len(state.audit_events) == 2
+    assert first == second
+    assert first["latest_closure"]["closed_at"] == "2026-07-07T10:00:00+08:00"
+    assert first["latest_evidence_package"]["generated_at"] == (
+        "2026-07-07T10:00:00+08:00"
+    )

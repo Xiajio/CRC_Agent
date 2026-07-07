@@ -109,14 +109,44 @@ class ReleaseClosureStore:
         if match is None:
             return
         existing_closure_hash = canonical_closure_payload_hash(match.closure.to_dict())
-        incoming_closure_hash = canonical_closure_payload_hash(closure.to_dict())
+        incoming_closure_hash = canonical_closure_payload_hash(
+            self._closure_payload_for_idempotency_compare(
+                closure,
+                closed_at=match.closure.closed_at,
+            )
+        )
         existing_package_hash = canonical_closure_payload_hash(match.package.to_dict())
-        incoming_package_hash = canonical_closure_payload_hash(package.to_dict())
+        incoming_package_hash = canonical_closure_payload_hash(
+            self._package_payload_for_idempotency_compare(
+                package,
+                generated_at=match.package.generated_at,
+            )
+        )
         if (
             existing_closure_hash != incoming_closure_hash
             or existing_package_hash != incoming_package_hash
         ):
             raise FileExistsError("idempotency payload mismatch")
+
+    def _closure_payload_for_idempotency_compare(
+        self,
+        closure: ReleaseClosureRecord,
+        *,
+        closed_at: str,
+    ) -> dict[str, Any]:
+        payload = closure.to_dict()
+        payload["closed_at"] = closed_at
+        return payload
+
+    def _package_payload_for_idempotency_compare(
+        self,
+        package: ReleaseEvidencePackage,
+        *,
+        generated_at: str,
+    ) -> dict[str, Any]:
+        payload = package.to_dict()
+        payload["generated_at"] = generated_at
+        return payload
 
     def write_closure_with_package(
         self,
