@@ -6,9 +6,11 @@ import type {
   AdminCreateReleaseIntentRequest,
   AdminExecuteReleaseRequest,
   AdminAcknowledgeReleaseMonitoringAlertRequest,
+  AdminRecordReleaseClosureRequest,
   AdminRecordReleaseMonitoringCheckRequest,
   AdminRecordReleaseApprovalRequest,
   AdminRecordReleaseRollbackPlanRequest,
+  AdminReleaseClosureResponse,
   AdminReleaseDashboardResponse,
   AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
@@ -42,6 +44,7 @@ type AgentAdminViewProps = {
       | "getAdminReleaseGovernance"
       | "getAdminReleaseExecution"
       | "getAdminReleaseMonitoring"
+      | "getAdminReleaseClosure"
       | "createAdminReleaseIntent"
       | "recordAdminReleaseApproval"
       | "recordAdminReleaseRollbackPlan"
@@ -50,6 +53,7 @@ type AgentAdminViewProps = {
       | "executeAdminReleaseRollback"
       | "recordAdminReleaseMonitoringCheck"
       | "acknowledgeAdminReleaseMonitoringAlert"
+      | "recordAdminReleaseClosure"
     >
   >;
 };
@@ -84,6 +88,12 @@ export type AgentAdminReleaseMonitoringResource =
   | { status: "success"; data: AdminReleaseMonitoringResponse }
   | { status: "error"; error: { status?: number; message: string } };
 
+export type AgentAdminReleaseClosureResource =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: AdminReleaseClosureResponse }
+  | { status: "error"; error: { status?: number; message: string } };
+
 export type AgentAdminReleaseGovernanceActionState =
   | { status: "idle" }
   | { status: "running"; label: string }
@@ -95,6 +105,11 @@ export type AgentAdminReleaseExecutionActionState =
   | { status: "error"; message: string };
 
 export type AgentAdminReleaseMonitoringActionState =
+  | { status: "idle" }
+  | { status: "running"; label: string }
+  | { status: "error"; message: string };
+
+export type AgentAdminReleaseClosureActionState =
   | { status: "idle" }
   | { status: "running"; label: string }
   | { status: "error"; message: string };
@@ -114,6 +129,10 @@ export type AgentAdminReleaseExecutionActions = {
 export type AgentAdminReleaseMonitoringActions = {
   recordCheck: (request: AdminRecordReleaseMonitoringCheckRequest) => Promise<void>;
   acknowledgeAlert: (alertId: string, request: AdminAcknowledgeReleaseMonitoringAlertRequest) => Promise<void>;
+};
+
+export type AgentAdminReleaseClosureActions = {
+  recordReleaseClosure: (request: AdminRecordReleaseClosureRequest) => Promise<void>;
 };
 
 function apiErrorDetails(error: unknown, fallbackMessage: string): { status?: number; message: string } {
@@ -139,10 +158,13 @@ export function AgentAdminView({
   const [releaseGovernanceResource, setReleaseGovernanceResource] = useState<AgentAdminReleaseGovernanceResource>({ status: "idle" });
   const [releaseExecutionResource, setReleaseExecutionResource] = useState<AgentAdminReleaseExecutionResource>({ status: "idle" });
   const [releaseMonitoringResource, setReleaseMonitoringResource] = useState<AgentAdminReleaseMonitoringResource>({ status: "idle" });
+  const [releaseClosureResource, setReleaseClosureResource] = useState<AgentAdminReleaseClosureResource>({ status: "idle" });
   const [releaseGovernanceActionState, setReleaseGovernanceActionState] = useState<AgentAdminReleaseGovernanceActionState>({ status: "idle" });
   const [releaseExecutionActionState, setReleaseExecutionActionState] = useState<AgentAdminReleaseExecutionActionState>({ status: "idle" });
   const [releaseMonitoringActionState, setReleaseMonitoringActionState] = useState<AgentAdminReleaseMonitoringActionState>({ status: "idle" });
+  const [releaseClosureActionState, setReleaseClosureActionState] = useState<AgentAdminReleaseClosureActionState>({ status: "idle" });
   const releaseMonitoringRequestSeq = useRef(0);
+  const releaseClosureRequestSeq = useRef(0);
   const watchedState = activeScene === "doctor" ? doctor : patient;
   const watchedSceneLabel = activeScene === "doctor" ? "医生会话" : "患者会话";
 
@@ -170,6 +192,34 @@ export function AgentAdminView({
       setReleaseMonitoringResource({
         status: "error",
         error: apiErrorDetails(error, "Unknown admin release monitoring error"),
+      });
+    }
+  }
+
+  async function refreshReleaseClosureResource(options: { setLoading?: boolean } = {}) {
+    if (!apiClient || typeof apiClient.getAdminReleaseClosure !== "function") {
+      return;
+    }
+
+    const requestSeq = releaseClosureRequestSeq.current + 1;
+    releaseClosureRequestSeq.current = requestSeq;
+    if (options.setLoading) {
+      setReleaseClosureResource({ status: "loading" });
+    }
+
+    try {
+      const data = await apiClient.getAdminReleaseClosure();
+      if (releaseClosureRequestSeq.current !== requestSeq) {
+        return;
+      }
+      setReleaseClosureResource({ status: "success", data });
+    } catch (error) {
+      if (releaseClosureRequestSeq.current !== requestSeq) {
+        return;
+      }
+      setReleaseClosureResource({
+        status: "error",
+        error: apiErrorDetails(error, "Unknown admin release closure error"),
       });
     }
   }
@@ -288,6 +338,23 @@ export function AgentAdminView({
       return;
     }
 
+    if (!apiClient || typeof apiClient.getAdminReleaseClosure !== "function") {
+      setReleaseClosureResource({ status: "idle" });
+      return;
+    }
+
+    void refreshReleaseClosureResource({ setLoading: true });
+
+    return () => {
+      releaseClosureRequestSeq.current += 1;
+    };
+  }, [activeTaskId, apiClient]);
+
+  useEffect(() => {
+    if (activeTaskId !== "release") {
+      return;
+    }
+
     if (!apiClient || typeof apiClient.getAdminReleaseGovernance !== "function") {
       setReleaseGovernanceResource({ status: "idle" });
       return;
@@ -367,6 +434,7 @@ export function AgentAdminView({
         const data = await apiClient.createAdminReleaseIntent(request);
         setReleaseGovernanceResource({ status: "success", data });
         setReleaseGovernanceActionState({ status: "idle" });
+        await refreshReleaseClosureResource();
       } catch (error) {
         setReleaseGovernanceActionState({
           status: "error",
@@ -386,6 +454,7 @@ export function AgentAdminView({
         const data = await apiClient.recordAdminReleaseApproval(intentId, request);
         setReleaseGovernanceResource({ status: "success", data });
         setReleaseGovernanceActionState({ status: "idle" });
+        await refreshReleaseClosureResource();
       } catch (error) {
         setReleaseGovernanceActionState({
           status: "error",
@@ -405,6 +474,7 @@ export function AgentAdminView({
         const data = await apiClient.recordAdminReleaseRollbackPlan(intentId, request);
         setReleaseGovernanceResource({ status: "success", data });
         setReleaseGovernanceActionState({ status: "idle" });
+        await refreshReleaseClosureResource();
       } catch (error) {
         setReleaseGovernanceActionState({
           status: "error",
@@ -424,6 +494,7 @@ export function AgentAdminView({
         const data = await apiClient.cancelAdminReleaseIntent(intentId, request);
         setReleaseGovernanceResource({ status: "success", data });
         setReleaseGovernanceActionState({ status: "idle" });
+        await refreshReleaseClosureResource();
       } catch (error) {
         setReleaseGovernanceActionState({
           status: "error",
@@ -446,6 +517,7 @@ export function AgentAdminView({
         setReleaseExecutionResource({ status: "success", data });
         setReleaseExecutionActionState({ status: "idle" });
         await refreshReleaseMonitoringResource();
+        await refreshReleaseClosureResource();
       } catch (error) {
         setReleaseExecutionActionState({
           status: "error",
@@ -466,6 +538,7 @@ export function AgentAdminView({
         setReleaseExecutionResource({ status: "success", data });
         setReleaseExecutionActionState({ status: "idle" });
         await refreshReleaseMonitoringResource();
+        await refreshReleaseClosureResource();
       } catch (error) {
         setReleaseExecutionActionState({
           status: "error",
@@ -487,6 +560,7 @@ export function AgentAdminView({
         const data = await apiClient.recordAdminReleaseMonitoringCheck(request);
         setReleaseMonitoringResource({ status: "success", data });
         setReleaseMonitoringActionState({ status: "idle" });
+        await refreshReleaseClosureResource();
       } catch (error) {
         setReleaseMonitoringActionState({
           status: "error",
@@ -506,10 +580,33 @@ export function AgentAdminView({
         const data = await apiClient.acknowledgeAdminReleaseMonitoringAlert(alertId, request);
         setReleaseMonitoringResource({ status: "success", data });
         setReleaseMonitoringActionState({ status: "idle" });
+        await refreshReleaseClosureResource();
       } catch (error) {
         setReleaseMonitoringActionState({
           status: "error",
           message: apiErrorDetails(error, "Unknown release monitoring acknowledgement error").message,
+        });
+      }
+    },
+  };
+
+  const releaseClosureActions: AgentAdminReleaseClosureActions = {
+    async recordReleaseClosure(request) {
+      if (!apiClient || typeof apiClient.recordAdminReleaseClosure !== "function") {
+        setReleaseClosureActionState({ status: "error", message: "Release closure API is unavailable" });
+        return;
+      }
+
+      setReleaseClosureActionState({ status: "running", label: "Record closure" });
+      try {
+        const data = await apiClient.recordAdminReleaseClosure(request);
+        setReleaseClosureResource({ status: "success", data });
+        setReleaseClosureActionState({ status: "idle" });
+        await refreshReleaseClosureResource();
+      } catch (error) {
+        setReleaseClosureActionState({
+          status: "error",
+          message: apiErrorDetails(error, "Unknown release closure error").message,
         });
       }
     },
@@ -530,6 +627,9 @@ export function AgentAdminView({
     }
     if (taskId === "release" && activeTaskId !== "release" && apiClient && typeof apiClient.getAdminReleaseMonitoring === "function") {
       setReleaseMonitoringResource({ status: "loading" });
+    }
+    if (taskId === "release" && activeTaskId !== "release" && apiClient && typeof apiClient.getAdminReleaseClosure === "function") {
+      setReleaseClosureResource({ status: "loading" });
     }
     setActiveTaskId(taskId);
   }
@@ -624,12 +724,15 @@ export function AgentAdminView({
           releaseGovernanceResource={releaseGovernanceResource}
           releaseExecutionResource={releaseExecutionResource}
           releaseMonitoringResource={releaseMonitoringResource}
+          releaseClosureResource={releaseClosureResource}
           releaseGovernanceActionState={releaseGovernanceActionState}
           releaseExecutionActionState={releaseExecutionActionState}
           releaseMonitoringActionState={releaseMonitoringActionState}
+          releaseClosureActionState={releaseClosureActionState}
           releaseGovernanceActions={releaseGovernanceActions}
           releaseExecutionActions={releaseExecutionActions}
           releaseMonitoringActions={releaseMonitoringActions}
+          releaseClosureActions={releaseClosureActions}
         />
       </div>
     </main>

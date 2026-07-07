@@ -20,8 +20,11 @@ import {
 import type {
   AdminReleaseApprovalDecision,
   AdminReleaseApprovalStatus,
+  AdminReleaseClosureRecordStatus,
+  AdminReleaseClosureResponse,
   AdminReleaseApproverRole,
   AdminReleaseCreateIntentStatus,
+  AdminRecordReleaseClosureRequest,
   AdminReleaseDashboardResponse,
   AdminExecuteReleaseRequest,
   AdminReleaseExecutionResponse,
@@ -72,6 +75,9 @@ import {
 } from "./agent-admin-model";
 import type { AgentAdminReleaseDashboardResource, AgentAdminToolsResource } from "./agent-admin-view";
 import type {
+  AgentAdminReleaseClosureActions,
+  AgentAdminReleaseClosureActionState,
+  AgentAdminReleaseClosureResource,
   AgentAdminReleaseExecutionActions,
   AgentAdminReleaseExecutionActionState,
   AgentAdminReleaseExecutionResource,
@@ -94,12 +100,15 @@ type AgentAdminPagesProps = {
   releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
   releaseExecutionResource: AgentAdminReleaseExecutionResource;
   releaseMonitoringResource: AgentAdminReleaseMonitoringResource;
+  releaseClosureResource: AgentAdminReleaseClosureResource;
   releaseGovernanceActionState: AgentAdminReleaseGovernanceActionState;
   releaseExecutionActionState: AgentAdminReleaseExecutionActionState;
   releaseMonitoringActionState: AgentAdminReleaseMonitoringActionState;
+  releaseClosureActionState: AgentAdminReleaseClosureActionState;
   releaseGovernanceActions: AgentAdminReleaseGovernanceActions;
   releaseExecutionActions: AgentAdminReleaseExecutionActions;
   releaseMonitoringActions: AgentAdminReleaseMonitoringActions;
+  releaseClosureActions: AgentAdminReleaseClosureActions;
 };
 
 function watchedSession(activeScene: Scene, patient: SessionState, doctor: SessionState) {
@@ -117,12 +126,15 @@ export function AgentAdminTaskPages({
   releaseGovernanceResource,
   releaseExecutionResource,
   releaseMonitoringResource,
+  releaseClosureResource,
   releaseGovernanceActionState,
   releaseExecutionActionState,
   releaseMonitoringActionState,
+  releaseClosureActionState,
   releaseGovernanceActions,
   releaseExecutionActions,
   releaseMonitoringActions,
+  releaseClosureActions,
 }: AgentAdminPagesProps) {
   const activeTask = AGENT_ADMIN_TASKS.find((task) => task.id === activeTaskId) ?? AGENT_ADMIN_TASKS[0];
   const ActiveTaskIcon = activeTask.icon;
@@ -169,12 +181,15 @@ export function AgentAdminTaskPages({
           releaseGovernanceResource={releaseGovernanceResource}
           releaseExecutionResource={releaseExecutionResource}
           releaseMonitoringResource={releaseMonitoringResource}
+          releaseClosureResource={releaseClosureResource}
           releaseGovernanceActionState={releaseGovernanceActionState}
           releaseExecutionActionState={releaseExecutionActionState}
           releaseMonitoringActionState={releaseMonitoringActionState}
+          releaseClosureActionState={releaseClosureActionState}
           releaseGovernanceActions={releaseGovernanceActions}
           releaseExecutionActions={releaseExecutionActions}
           releaseMonitoringActions={releaseMonitoringActions}
+          releaseClosureActions={releaseClosureActions}
         />
       ) : activeTaskId === "read-only" ? (
         <ReadOnlyPage activeScene={activeScene} patient={patient} doctor={doctor} />
@@ -198,12 +213,15 @@ function AgentAdminOverviewPage({
   | "releaseGovernanceResource"
   | "releaseExecutionResource"
   | "releaseMonitoringResource"
+  | "releaseClosureResource"
   | "releaseGovernanceActionState"
   | "releaseExecutionActionState"
   | "releaseMonitoringActionState"
+  | "releaseClosureActionState"
   | "releaseGovernanceActions"
   | "releaseExecutionActions"
   | "releaseMonitoringActions"
+  | "releaseClosureActions"
 >) {
   const watchedState = watchedSession(activeScene, patient, doctor);
   const patientSession = buildSessionSummary("患者", patient);
@@ -880,23 +898,29 @@ function ReleasePage({
   releaseGovernanceResource,
   releaseExecutionResource,
   releaseMonitoringResource,
+  releaseClosureResource,
   releaseGovernanceActionState,
   releaseExecutionActionState,
   releaseMonitoringActionState,
+  releaseClosureActionState,
   releaseGovernanceActions,
   releaseExecutionActions,
   releaseMonitoringActions,
+  releaseClosureActions,
 }: {
   releaseDashboardResource: AgentAdminReleaseDashboardResource;
   releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
   releaseExecutionResource: AgentAdminReleaseExecutionResource;
   releaseMonitoringResource: AgentAdminReleaseMonitoringResource;
+  releaseClosureResource: AgentAdminReleaseClosureResource;
   releaseGovernanceActionState: AgentAdminReleaseGovernanceActionState;
   releaseExecutionActionState: AgentAdminReleaseExecutionActionState;
   releaseMonitoringActionState: AgentAdminReleaseMonitoringActionState;
+  releaseClosureActionState: AgentAdminReleaseClosureActionState;
   releaseGovernanceActions: AgentAdminReleaseGovernanceActions;
   releaseExecutionActions: AgentAdminReleaseExecutionActions;
   releaseMonitoringActions: AgentAdminReleaseMonitoringActions;
+  releaseClosureActions: AgentAdminReleaseClosureActions;
 }) {
   if (releaseDashboardResource.status === "loading") {
     return (
@@ -928,12 +952,15 @@ function ReleasePage({
         releaseGovernanceResource={releaseGovernanceResource}
         releaseExecutionResource={releaseExecutionResource}
         releaseMonitoringResource={releaseMonitoringResource}
+        releaseClosureResource={releaseClosureResource}
         releaseGovernanceActionState={releaseGovernanceActionState}
         releaseExecutionActionState={releaseExecutionActionState}
         releaseMonitoringActionState={releaseMonitoringActionState}
+        releaseClosureActionState={releaseClosureActionState}
         releaseGovernanceActions={releaseGovernanceActions}
         releaseExecutionActions={releaseExecutionActions}
         releaseMonitoringActions={releaseMonitoringActions}
+        releaseClosureActions={releaseClosureActions}
       />
     );
   }
@@ -952,23 +979,29 @@ function ReleaseSuccessPage({
   releaseGovernanceResource,
   releaseExecutionResource,
   releaseMonitoringResource,
+  releaseClosureResource,
   releaseGovernanceActionState,
   releaseExecutionActionState,
   releaseMonitoringActionState,
+  releaseClosureActionState,
   releaseGovernanceActions,
   releaseExecutionActions,
   releaseMonitoringActions,
+  releaseClosureActions,
 }: {
   dashboard: AdminReleaseDashboardResponse;
   releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
   releaseExecutionResource: AgentAdminReleaseExecutionResource;
   releaseMonitoringResource: AgentAdminReleaseMonitoringResource;
+  releaseClosureResource: AgentAdminReleaseClosureResource;
   releaseGovernanceActionState: AgentAdminReleaseGovernanceActionState;
   releaseExecutionActionState: AgentAdminReleaseExecutionActionState;
   releaseMonitoringActionState: AgentAdminReleaseMonitoringActionState;
+  releaseClosureActionState: AgentAdminReleaseClosureActionState;
   releaseGovernanceActions: AgentAdminReleaseGovernanceActions;
   releaseExecutionActions: AgentAdminReleaseExecutionActions;
   releaseMonitoringActions: AgentAdminReleaseMonitoringActions;
+  releaseClosureActions: AgentAdminReleaseClosureActions;
 }) {
   const versionRows = Object.entries(dashboard.version_chain);
   const summary = dashboard.summary;
@@ -1111,6 +1144,12 @@ function ReleaseSuccessPage({
         actionState={releaseMonitoringActionState}
         actions={releaseMonitoringActions}
       />
+
+      <ReleaseClosureSection
+        resource={releaseClosureResource}
+        actionState={releaseClosureActionState}
+        actions={releaseClosureActions}
+      />
     </>
   );
 }
@@ -1153,6 +1192,12 @@ const releaseMonitoringAcknowledgementDispositions: AdminReleaseMonitoringAcknow
   "accepted_risk",
   "rollback_started_elsewhere",
   "false_positive",
+];
+
+const releaseClosureStatuses: AdminReleaseClosureRecordStatus[] = [
+  "accepted",
+  "accepted_with_observations",
+  "rolled_back",
 ];
 
 function releaseMonitoringCheckState(
@@ -1618,6 +1663,302 @@ function ReleaseMonitoringForms({
           <button type="submit" disabled={!canAcknowledge}>Acknowledge alert</button>
         </form>
       </div>
+    </AgentAdminPanel>
+  );
+}
+
+function releaseClosureState(status: AdminReleaseClosureResponse["status"]): "success" | "warning" | "ready" | "active" {
+  if (status === "closed" || status === "rolled_back_closed") {
+    return "success";
+  }
+  if (status === "blocked") {
+    return "warning";
+  }
+  if (status === "ready_to_close") {
+    return "active";
+  }
+  return "ready";
+}
+
+function releaseClosureStatusSummary(status: AdminReleaseClosureResponse["status"]): string {
+  switch (status) {
+    case "ready_to_close":
+      return "Closure gate is ready for an audited close-out record.";
+    case "blocked":
+      return "Closure remains blocked until the gate reasons are resolved.";
+    case "closed":
+      return "Release is closed and the latest evidence package is available.";
+    case "rolled_back_closed":
+      return "Rollback closure is recorded and the evidence package is sealed.";
+    default:
+      return "Closure is idle until a releasable execution exists.";
+  }
+}
+
+function ReleaseClosureSection({
+  resource,
+  actionState,
+  actions,
+}: {
+  resource: AgentAdminReleaseClosureResource;
+  actionState: AgentAdminReleaseClosureActionState;
+  actions: AgentAdminReleaseClosureActions;
+}) {
+  if (resource.status === "loading") {
+    return (
+      <AgentAdminPanel eyebrow="post-release closure" title="Release closure" icon={BookOpenCheck}>
+        <div className="agent-admin-detail-list">
+          <span>reading release closure</span>
+          <span>closure gate and evidence package summaries are loading from reports/release_closure</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  if (resource.status === "error") {
+    const status = resource.error.status ? ` (${resource.error.status})` : "";
+    return (
+      <AgentAdminPanel eyebrow="post-release closure" title="Release closure" icon={AlertTriangle}>
+        <div className="agent-admin-detail-list">
+          <span>release closure unavailable{status}: {resource.error.message}</span>
+          <span>monitoring remains available while closure reports are unavailable</span>
+        </div>
+      </AgentAdminPanel>
+    );
+  }
+
+  if (resource.status === "success") {
+    return <ReleaseClosurePanel closure={resource.data} actionState={actionState} actions={actions} />;
+  }
+
+  return (
+    <AgentAdminPanel eyebrow="post-release closure" title="Release closure" icon={BookOpenCheck}>
+      <div className="agent-admin-detail-list">
+        <span>release closure idle</span>
+        <span>closure API is unavailable for this admin surface</span>
+      </div>
+    </AgentAdminPanel>
+  );
+}
+
+function ReleaseClosurePanel({
+  closure,
+  actionState,
+  actions,
+}: {
+  closure: AdminReleaseClosureResponse;
+  actionState: AgentAdminReleaseClosureActionState;
+  actions: AgentAdminReleaseClosureActions;
+}) {
+  const latestRelease = closure.latest_release;
+  const latestClosure = closure.latest_closure;
+  const latestEvidencePackage = closure.latest_evidence_package;
+  const closureState = releaseClosureState(closure.status);
+  const actionRunning = actionState.status === "running";
+  const canSubmit = closure.closure_gate.allowed && latestRelease !== null && closure.integrity.status === "verified" && !actionRunning;
+  const integrityWarnings = closure.integrity.warnings.length > 0 ? closure.integrity.warnings : ["no integrity warnings"];
+
+  return (
+    <>
+      <AgentAdminPanel eyebrow="post-release closure" title="Release closure" icon={BookOpenCheck}>
+        {actionState.status === "running" ? (
+          <span className="agent-admin-action-status">{actionState.label} in progress</span>
+        ) : null}
+        {actionState.status === "error" ? (
+          <span className="agent-admin-action-status agent-admin-action-status-error">{actionState.message}</span>
+        ) : null}
+
+        <AgentAdminSplitWorkbench
+          primary={
+            <div className="agent-admin-detail-list">
+              <span>closure status / {closure.status}</span>
+              <strong>{closure.status}</strong>
+              <span>closure gate / {closure.closure_gate.status}</span>
+              <span className={`agent-admin-release-closure-status agent-admin-release-closure-status-${closureState}`}>
+                {releaseClosureStatusSummary(closure.status)}
+              </span>
+              <span>latest release / {latestRelease ? `${latestRelease.intent_id} / ${latestRelease.release_execution_id}` : "none"}</span>
+              <span>released at / {latestRelease?.released_at ?? "not released"}</span>
+              <span>rollback execution / {latestRelease?.rollback_execution_id ?? "none"}</span>
+              <span>rolled back at / {latestRelease?.rolled_back_at ?? "not rolled back"}</span>
+              <span>runtime / {closure.runtime.auth} / {closure.runtime.source} / {closure.runtime.mode}</span>
+            </div>
+          }
+          secondary={
+            <div className="agent-admin-detail-list">
+              <span>gate allowed / {String(closure.closure_gate.allowed)}</span>
+              <span>integrity status / {closure.integrity.status}</span>
+              {integrityWarnings.map((warning) => (
+                <span key={warning}>integrity warning / {warning}</span>
+              ))}
+            </div>
+          }
+        />
+      </AgentAdminPanel>
+
+      <AgentAdminSplitWorkbench
+        primary={
+          <AgentAdminPanel eyebrow="closure gate" title="Closure gate checks" icon={ListChecks}>
+            <div className="agent-admin-release-closure-gate">
+              {closure.closure_gate.checks.length > 0 ? (
+                closure.closure_gate.checks.map((check) => {
+                  const rowState =
+                    check.status === "pass" ? "success" : check.status === "warning" ? "active" : "warning";
+                  return (
+                    <article key={check.name} className={`agent-admin-timeline-row agent-admin-timeline-row-${rowState}`}>
+                      <span className="agent-admin-timeline-node">
+                        <AgentAdminStateIcon state={rowState} />
+                        {check.name}
+                      </span>
+                      <span>{check.reason}</span>
+                      <strong>{check.status}</strong>
+                    </article>
+                  );
+                })
+              ) : (
+                <article className="agent-admin-timeline-row agent-admin-timeline-row-ready">
+                  <span className="agent-admin-timeline-node">
+                    <AgentAdminStateIcon state="ready" />
+                    no closure gate checks
+                  </span>
+                  <span>closure gate has no recorded checks yet</span>
+                  <strong>idle</strong>
+                </article>
+              )}
+            </div>
+          </AgentAdminPanel>
+        }
+        secondary={
+          <AgentAdminPanel eyebrow="gate reasons" title="Closure gate reasons" icon={AlertTriangle}>
+            <div className="agent-admin-detail-list">
+              {(closure.closure_gate.reasons.length > 0 ? closure.closure_gate.reasons : ["closure gate clear"]).map((reason) => (
+                <span key={reason}>{reason}</span>
+              ))}
+            </div>
+          </AgentAdminPanel>
+        }
+      />
+
+      <AgentAdminSplitWorkbench
+        primary={<ReleaseClosureForms closure={closure} canSubmit={canSubmit} actions={actions} />}
+        secondary={
+          <AgentAdminPanel eyebrow="latest closure" title="Latest closure and evidence" icon={FileText}>
+            <div className="agent-admin-release-closure-package">
+              {latestClosure ? (
+                <>
+                  <span>latest closure / {latestClosure.closure_status} / {latestClosure.closed_by}</span>
+                  <span>closed at / {latestClosure.closed_at}</span>
+                  <span>rationale / {latestClosure.rationale}</span>
+                  <span>evidence package / {latestClosure.evidence_package_id}</span>
+                  <span>idempotency key / {latestClosure.idempotency_key}</span>
+                </>
+              ) : (
+                <span>no closure recorded</span>
+              )}
+              {latestEvidencePackage ? (
+                <>
+                  <span>package id / {latestEvidencePackage.package_id}</span>
+                  <span>generated by / {latestEvidencePackage.generated_by}</span>
+                  <span>generated at / {latestEvidencePackage.generated_at}</span>
+                  <span>{latestEvidencePackage.summary}</span>
+                  {latestEvidencePackage.source_refs.map((ref) => (
+                    <span key={ref}>source ref / {ref}</span>
+                  ))}
+                  {latestEvidencePackage.artifact_refs.map((ref) => (
+                    <span key={ref}>artifact ref / {ref}</span>
+                  ))}
+                  {Object.entries(latestEvidencePackage.snapshot_hashes).map(([name, hash]) => (
+                    <span key={name}>{name} / {hash}</span>
+                  ))}
+                </>
+              ) : (
+                <span>no evidence package generated</span>
+              )}
+            </div>
+          </AgentAdminPanel>
+        }
+      />
+    </>
+  );
+}
+
+function ReleaseClosureForms({
+  closure,
+  canSubmit,
+  actions,
+}: {
+  closure: AdminReleaseClosureResponse;
+  canSubmit: boolean;
+  actions: AgentAdminReleaseClosureActions;
+}) {
+  const [closureActor, setClosureActor] = useState("release_manager");
+  const [closureStatus, setClosureStatus] = useState<AdminReleaseClosureRecordStatus>("accepted");
+  const [closureRationale, setClosureRationale] = useState("");
+  const [closureIdempotencyKey, setClosureIdempotencyKey] = useState("");
+  const latestRelease = closure.latest_release;
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canSubmit || !latestRelease) {
+      return;
+    }
+
+    const request: AdminRecordReleaseClosureRequest = {
+      intent_id: latestRelease.intent_id,
+      release_execution_id: latestRelease.release_execution_id,
+      closure_status: closureStatus,
+      closed_by: closureActor.trim(),
+      rationale: closureRationale.trim(),
+      idempotency_key: closureIdempotencyKey.trim(),
+    };
+    await actions.recordReleaseClosure(request);
+  }
+
+  return (
+    <AgentAdminPanel eyebrow="closure writes" title="Closure actions" icon={KeyRound}>
+      <form className="agent-admin-governance-form" onSubmit={handleSubmit}>
+        <h3>Record closure</h3>
+        <label htmlFor="release-closure-actor">
+          <span>Closure actor</span>
+          <input
+            id="release-closure-actor"
+            value={closureActor}
+            onChange={(event) => setClosureActor(event.target.value)}
+            required
+          />
+        </label>
+        <label htmlFor="release-closure-status">
+          <span>Closure status</span>
+          <select
+            id="release-closure-status"
+            value={closureStatus}
+            onChange={(event) => setClosureStatus(event.target.value as AdminReleaseClosureRecordStatus)}
+          >
+            {releaseClosureStatuses.map((status) => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
+        </label>
+        <label htmlFor="release-closure-rationale">
+          <span>Closure rationale</span>
+          <textarea
+            id="release-closure-rationale"
+            value={closureRationale}
+            onChange={(event) => setClosureRationale(event.target.value)}
+            required
+          />
+        </label>
+        <label htmlFor="release-closure-idempotency-key">
+          <span>Closure idempotency key</span>
+          <input
+            id="release-closure-idempotency-key"
+            value={closureIdempotencyKey}
+            onChange={(event) => setClosureIdempotencyKey(event.target.value)}
+            required
+          />
+        </label>
+        <button type="submit" disabled={!canSubmit}>Record closure</button>
+      </form>
     </AgentAdminPanel>
   );
 }

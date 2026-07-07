@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 
 import type {
+  AdminReleaseClosureResponse,
   AdminReleaseDashboardResponse,
   AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
@@ -295,6 +296,43 @@ function makeAdminReleaseMonitoring(
       auth: "admin",
       source: "reports/release_monitoring",
       mode: "post_release_monitoring",
+    },
+  };
+}
+
+function makeAdminReleaseClosure(
+  overrides: Partial<AdminReleaseClosureResponse> = {},
+): AdminReleaseClosureResponse {
+  return {
+    status: overrides.status ?? "ready_to_close",
+    latest_release: "latest_release" in overrides ? overrides.latest_release! : {
+      intent_id: "intent-1",
+      release_execution_id: "release_exec_1",
+      released_at: "2026-07-03T09:00:00+08:00",
+      rollback_execution_id: null,
+      rolled_back_at: null,
+    },
+    closure_gate: overrides.closure_gate ?? {
+      allowed: true,
+      status: "ready_to_close",
+      reasons: [],
+      checks: [
+        {
+          name: "monitoring_window_complete",
+          status: "pass",
+          reason: "Required monitoring checks passed.",
+        },
+      ],
+    },
+    latest_closure: "latest_closure" in overrides ? overrides.latest_closure! : null,
+    latest_evidence_package: "latest_evidence_package" in overrides ? overrides.latest_evidence_package! : null,
+    closures: overrides.closures ?? [],
+    evidence_packages: overrides.evidence_packages ?? [],
+    integrity: overrides.integrity ?? { status: "verified", warnings: [] },
+    runtime: overrides.runtime ?? {
+      auth: "admin",
+      source: "reports/release_closure",
+      mode: "post_release_closure",
     },
   };
 }
@@ -1710,6 +1748,226 @@ describe("AgentAdminView", () => {
     expect(page).toHaveTextContent("Release governance");
     expect(page).toHaveTextContent("Release execution");
     expect(page).toHaveTextContent("monitoring reports unavailable");
+  });
+
+  it("renders release closure gate and submits closure request", async () => {
+    const recordAdminReleaseClosure = vi.fn(async () =>
+      makeAdminReleaseClosure({
+        status: "closed",
+        closure_gate: {
+          allowed: false,
+          status: "closed",
+          reasons: ["release already closed"],
+          checks: [
+            {
+              name: "monitoring_window_complete",
+              status: "pass",
+              reason: "Required monitoring checks passed.",
+            },
+          ],
+        },
+        latest_closure: {
+          closure_id: "closure-1",
+          intent_id: "intent-1",
+          release_execution_id: "release_exec_1",
+          rollback_execution_id: null,
+          closure_status: "accepted",
+          closed_by: "release_manager",
+          closed_at: "2026-07-04T12:00:00+08:00",
+          rationale: "Required checks passed.",
+          evidence_package_id: "pkg-1",
+          idempotency_key: "close-1",
+        },
+      }),
+    );
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () => makeAdminReleaseExecution()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      getAdminReleaseClosure: vi.fn(async () => makeAdminReleaseClosure()),
+      recordAdminReleaseClosure,
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-closure-submit" })}
+        doctor={makeState({ sessionId: "doctor-closure-submit" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    expect(await screen.findByText("Release closure")).toBeInTheDocument();
+    expect(screen.getByText("ready_to_close")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Closure actor"), {
+      target: { value: "release_manager" },
+    });
+    fireEvent.change(screen.getByLabelText("Closure rationale"), {
+      target: { value: "Required checks passed." },
+    });
+    fireEvent.change(screen.getByLabelText("Closure idempotency key"), {
+      target: { value: "close-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record closure" }));
+
+    await waitFor(() => expect(recordAdminReleaseClosure).toHaveBeenCalledTimes(1));
+    expect(recordAdminReleaseClosure).toHaveBeenCalledWith({
+      intent_id: "intent-1",
+      release_execution_id: "release_exec_1",
+      closure_status: "accepted",
+      closed_by: "release_manager",
+      rationale: "Required checks passed.",
+      idempotency_key: "close-1",
+    });
+  });
+
+  it("renders blocked release closure gate reasons and disables submit", async () => {
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () => makeAdminReleaseExecution()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      getAdminReleaseClosure: vi.fn(async () =>
+        makeAdminReleaseClosure({
+          status: "blocked",
+          closure_gate: {
+            allowed: false,
+            status: "blocked",
+            reasons: ["manual doctor review smoke check is still missing"],
+            checks: [
+              {
+                name: "manual_doctor_review_smoke",
+                status: "fail",
+                reason: "Doctor review smoke check is still missing.",
+              },
+            ],
+          },
+        }),
+      ),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-closure-blocked" })}
+        doctor={makeState({ sessionId: "doctor-closure-blocked" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    expect(await screen.findByText("Release closure")).toBeInTheDocument();
+    expect(screen.getByText("manual doctor review smoke check is still missing")).toBeInTheDocument();
+    expect(screen.getByText("Doctor review smoke check is still missing.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Record closure" })).toBeDisabled();
+  });
+
+  it("renders the latest closed evidence package summary", async () => {
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () => makeAdminReleaseExecution()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      getAdminReleaseClosure: vi.fn(async () =>
+        makeAdminReleaseClosure({
+          status: "closed",
+          closure_gate: {
+            allowed: false,
+            status: "closed",
+            reasons: ["release already closed"],
+            checks: [
+              {
+                name: "closure_recorded",
+                status: "pass",
+                reason: "Closure record is already present.",
+              },
+            ],
+          },
+          latest_closure: {
+            closure_id: "closure-closed-1",
+            intent_id: "intent-1",
+            release_execution_id: "release_exec_1",
+            rollback_execution_id: null,
+            closure_status: "accepted",
+            closed_by: "release_manager",
+            closed_at: "2026-07-04T12:00:00+08:00",
+            rationale: "All checks passed.",
+            evidence_package_id: "pkg-closed-1",
+            idempotency_key: "close-closed-1",
+          },
+          latest_evidence_package: {
+            package_id: "pkg-closed-1",
+            closure_id: "closure-closed-1",
+            intent_id: "intent-1",
+            release_execution_id: "release_exec_1",
+            rollback_execution_id: null,
+            generated_by: "release_manager",
+            generated_at: "2026-07-04T12:00:02+08:00",
+            closure_status: "accepted",
+            summary: "Release closed after monitoring window completed cleanly.",
+            source_refs: ["reports/release_monitoring/latest.json"],
+            artifact_refs: ["reports/release_closure/pkg-closed-1.json"],
+            snapshot_hashes: {
+              release_monitoring: "sha256:monitoring",
+              release_execution: "sha256:execution",
+            },
+          },
+        }),
+      ),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-closure-summary" })}
+        doctor={makeState({ sessionId: "doctor-closure-summary" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    expect(await screen.findByText("Release closure")).toBeInTheDocument();
+    expect(screen.getByText("latest closure / accepted / release_manager")).toBeInTheDocument();
+    expect(screen.getByText("Release closed after monitoring window completed cleanly.")).toBeInTheDocument();
+    expect(screen.getByText("release_monitoring / sha256:monitoring")).toBeInTheDocument();
+  });
+
+  it("renders release closure API errors without hiding the monitoring panel", async () => {
+    const apiClient = {
+      getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+      getAdminReleaseGovernance: vi.fn(async () => makeAdminReleaseGovernance()),
+      getAdminReleaseExecution: vi.fn(async () => makeAdminReleaseExecution()),
+      getAdminReleaseMonitoring: vi.fn(async () => makeAdminReleaseMonitoring()),
+      getAdminReleaseClosure: vi.fn(async () => {
+        throw new Error("closure reports unavailable");
+      }),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-closure-error" })}
+        doctor={makeState({ sessionId: "doctor-closure-error" })}
+        surfaceSwitcher={<button type="button">admin surface switcher</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    clickReleaseTask();
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("release closure unavailable"));
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("Post-release monitoring");
+    expect(page).toHaveTextContent("closure reports unavailable");
   });
 
   it("shows a local error for invalid monitoring metrics JSON without calling the record API", async () => {
