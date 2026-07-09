@@ -58,6 +58,9 @@ tests/backend/*
 !tests/backend/test_crc_triage_patient_commands.py
 !tests/backend/test_crc_triage_flow.py
 !tests/backend/test_crc_triage_routing_scope.py
+!tests/backend/test_research_asset_contract.py
+!tests/backend/test_cohort_feasibility_service.py
+!tests/backend/test_research_api.py
 !tests/backend/test_intended_use_profiles.py
 !tests/backend/test_clinical_safety_policy.py
 !tests/backend/test_crc_triage_mutation_pack.py
