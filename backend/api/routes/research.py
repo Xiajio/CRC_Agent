@@ -30,6 +30,10 @@ async def evaluate_cohort_feasibility(
 ) -> dict[str, Any]:
     try:
         feasibility_request = CohortFeasibilityRequest(**payload.model_dump())
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    try:
         service = CohortFeasibilityService()
         if feasibility_request.patient_level_export_requested:
             result = service.evaluate(feasibility_request, ())
@@ -46,7 +50,5 @@ async def evaluate_cohort_feasibility(
         return response
     except HTTPException:
         raise
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except OSError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

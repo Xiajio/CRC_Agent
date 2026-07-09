@@ -6,6 +6,8 @@ from typing import Any
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from backend.api.services.settings import RuntimeSettings
+from backend.app import BearerAuthMiddleware
 from backend.api.routes import research
 
 
@@ -51,6 +53,21 @@ def _client_with_registry(registry: object | None) -> TestClient:
     else:
         app.state.runtime = SimpleNamespace(patient_registry_service=registry)
     app.include_router(research.router)
+    return TestClient(app)
+
+
+def _auth_client_with_registry(registry: object) -> TestClient:
+    app = FastAPI()
+    app.state.runtime = SimpleNamespace(patient_registry_service=registry)
+    app.include_router(research.router)
+    app.add_middleware(
+        BearerAuthMiddleware,
+        settings=RuntimeSettings(
+            auth_mode="bearer",
+            api_bearer_token="user-token",
+            api_admin_bearer_token="admin-token",
+        ),
+    )
     return TestClient(app)
 
 
@@ -122,5 +139,120 @@ def test_cohort_feasibility_api_returns_503_without_registry() -> None:
 
         assert response.status_code == 503
         assert response.json()["detail"] == "Patient registry is not initialized"
+    finally:
+        client.close()
+
+
+def test_cohort_feasibility_api_returns_422_for_contract_validation_failure() -> None:
+    class RegistryStub:
+        def list_research_projection_records(
+            self,
+            limit: int = 1000,
+        ) -> list[dict[str, Any]]:
+            raise AssertionError("registry must not be called for invalid requests")
+
+    payload = _request_payload()
+    payload["cohort_criteria"] = {
+        "required_features": ["rectal_bleeding"],
+        "patient_ids": [1],
+    }
+    client = _client_with_registry(RegistryStub())
+
+    try:
+        response = client.post(
+            "/api/admin/research/cohort-feasibility",
+            json=payload,
+        )
+
+        assert response.status_code == 422
+        assert response.json()["detail"] == "patient identifiers are not allowed"
+    finally:
+        client.close()
+
+
+def test_cohort_feasibility_api_returns_500_for_registry_os_error() -> None:
+    class RegistryStub:
+        def list_research_projection_records(
+            self,
+            limit: int = 1000,
+        ) -> list[dict[str, Any]]:
+            raise OSError("registry unavailable")
+
+    client = _client_with_registry(RegistryStub())
+
+    try:
+        response = client.post(
+            "/api/admin/research/cohort-feasibility",
+            json=_request_payload(),
+        )
+
+        assert response.status_code == 500
+        assert response.json()["detail"] == "registry unavailable"
+    finally:
+        client.close()
+
+
+def test_cohort_feasibility_api_does_not_map_service_value_error_to_422(
+    monkeypatch,
+) -> None:
+    class RegistryStub:
+        def list_research_projection_records(
+            self,
+            limit: int = 1000,
+        ) -> list[dict[str, Any]]:
+            return [_triage_record()]
+
+    class FailingFeasibilityService:
+        def evaluate(self, request, records):
+            raise ValueError("service invariant failed")
+
+    monkeypatch.setattr(
+        research,
+        "CohortFeasibilityService",
+        FailingFeasibilityService,
+    )
+    app = FastAPI()
+    app.state.runtime = SimpleNamespace(patient_registry_service=RegistryStub())
+    app.include_router(research.router)
+    client = TestClient(app, raise_server_exceptions=False)
+
+    try:
+        response = client.post(
+            "/api/admin/research/cohort-feasibility",
+            json=_request_payload(),
+        )
+
+        assert response.status_code == 500
+        assert response.text == "Internal Server Error"
+    finally:
+        client.close()
+
+
+def test_cohort_feasibility_api_requires_admin_token_with_real_router() -> None:
+    class RegistryStub:
+        def list_research_projection_records(
+            self,
+            limit: int = 1000,
+        ) -> list[dict[str, Any]]:
+            return [_triage_record()]
+
+    client = _auth_client_with_registry(RegistryStub())
+
+    try:
+        user_response = client.post(
+            "/api/admin/research/cohort-feasibility",
+            json=_request_payload(),
+            headers={"Authorization": "Bearer user-token"},
+        )
+        admin_response = client.post(
+            "/api/admin/research/cohort-feasibility",
+            json=_request_payload(),
+            headers={"Authorization": "Bearer admin-token"},
+        )
+
+        assert user_response.status_code == 403
+        assert user_response.json()["detail"] == "Forbidden"
+        assert admin_response.status_code == 200
+        assert admin_response.json()["estimated_count"] == 1
     finally:
         client.close()
