@@ -66,6 +66,9 @@ def test_learning_job_create_writes_only_shadow_artifacts_and_preserves_runtime_
         "patient_state": tmp_path / "runtime" / "patient_state" / "current.json",
         "doctor_state": tmp_path / "runtime" / "doctor_state" / "current.json",
         "training_data": tmp_path / "training_data" / "crc_shadow_candidates.jsonl",
+        "model_files": tmp_path / "models" / "crc_shadow_model.bin",
+        "tool_manifests": tmp_path / "tools" / "crc_tool_manifest.json",
+        "crc_client": tmp_path / "CRC-client" / "package.json",
     }
     for label, path in protected_paths.items():
         _write_sentinel(path, label)
