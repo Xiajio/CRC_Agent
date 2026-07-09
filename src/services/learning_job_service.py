@@ -24,7 +24,22 @@ _STRONG_REASON_MARKERS = (
     "gap",
     "alert",
 )
+_STRONG_REASON_CODES = frozenset(
+    {
+        "unsafe_disposition",
+        "citation_not_traceable",
+        "evidence_conflict",
+        "safety_signal",
+        "harness_hard_fail",
+        "missing_variable",
+        "monitoring_alert",
+    }
+)
 _NON_MUTATION_REASON = "shadow_learning_jobs_only"
+
+
+class LearningJobValidationError(ValueError):
+    """Raised when a learning job create request is invalid."""
 
 
 class LearningJobService:
@@ -44,7 +59,7 @@ class LearningJobService:
             "candidates": [candidate.to_dict() for candidate in state.candidates],
             "integrity": state.integrity,
             "disabled_actions": disabled_actions,
-            "actions": disabled_actions,
+            "actions": _actions_compat(disabled_actions),
             "runtime": _runtime_metadata(),
         }
 
@@ -84,7 +99,7 @@ class LearningJobService:
             "candidates": [candidate.to_dict() for candidate in candidates],
             "integrity": self.store.read_state().integrity,
             "disabled_actions": disabled_actions,
-            "actions": disabled_actions,
+            "actions": _actions_compat(disabled_actions),
             "runtime": _runtime_metadata(),
         }
 
@@ -159,18 +174,20 @@ def _validate_create_inputs(
     idempotency_key: str,
 ) -> None:
     if not isinstance(signals, list) or not signals:
-        raise ValueError("signals must not be empty")
+        raise LearningJobValidationError("signals must not be empty")
     if not all(isinstance(signal, LearningSignal) for signal in signals):
         raise TypeError("signals must contain LearningSignal values")
     if not isinstance(requested_by, str) or not requested_by.strip():
-        raise ValueError("requested_by must be a non-empty string")
+        raise LearningJobValidationError("requested_by must be a non-empty string")
     if not isinstance(idempotency_key, str) or not idempotency_key.strip():
-        raise ValueError("idempotency_key must be a non-empty string")
+        raise LearningJobValidationError("idempotency_key must be a non-empty string")
 
 
 def _is_strong_signal(signal: LearningSignal) -> bool:
     reason = signal.reason_code.lower()
-    return any(marker in reason for marker in _STRONG_REASON_MARKERS)
+    return reason in _STRONG_REASON_CODES or any(
+        marker in reason for marker in _STRONG_REASON_MARKERS
+    )
 
 
 def _target_kind(patch_type: str) -> str:
@@ -213,10 +230,32 @@ def _human_review_requirement(target_areas: set[str]) -> HumanReviewRequirement:
     )
 
 
-def _disabled_actions() -> dict[str, dict[str, object]]:
+def _disabled_actions() -> list[dict[str, object]]:
+    return [
+        {
+            "id": "apply",
+            "label": "Apply",
+            "disabled": True,
+            "reason": _NON_MUTATION_REASON,
+        },
+        {
+            "id": "train",
+            "label": "Train",
+            "disabled": True,
+            "reason": _NON_MUTATION_REASON,
+        },
+    ]
+
+
+def _actions_compat(
+    disabled_actions: list[dict[str, object]],
+) -> dict[str, dict[str, object]]:
     return {
-        "apply": {"enabled": False, "reason": _NON_MUTATION_REASON},
-        "train": {"enabled": False, "reason": _NON_MUTATION_REASON},
+        str(action["id"]): {
+            "enabled": not bool(action["disabled"]),
+            "reason": action["reason"],
+        }
+        for action in disabled_actions
     }
 
 
@@ -239,4 +278,4 @@ def _unique(values: list[str]) -> list[str]:
     return result
 
 
-__all__ = ["LearningJobService"]
+__all__ = ["LearningJobService", "LearningJobValidationError"]

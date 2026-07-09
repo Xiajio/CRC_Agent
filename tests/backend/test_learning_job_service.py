@@ -6,7 +6,10 @@ import pytest
 
 from backend.api.services.learning_job_store import LearningJobStore
 from src.contracts.learning_job import LearningSignal, make_learning_signal_id
-from src.services.learning_job_service import LearningJobService
+from src.services.learning_job_service import (
+    LearningJobService,
+    LearningJobValidationError,
+)
 
 
 def make_signal(
@@ -51,10 +54,20 @@ def test_read_jobs_returns_shadow_runtime_metadata_and_disabled_actions(
     assert payload["jobs"] == []
     assert payload["candidates"] == []
     assert payload["integrity"] == {"status": "verified", "warnings": []}
-    assert payload["disabled_actions"] == {
-        "apply": {"enabled": False, "reason": "shadow_learning_jobs_only"},
-        "train": {"enabled": False, "reason": "shadow_learning_jobs_only"},
-    }
+    assert payload["disabled_actions"] == [
+        {
+            "id": "apply",
+            "label": "Apply",
+            "disabled": True,
+            "reason": "shadow_learning_jobs_only",
+        },
+        {
+            "id": "train",
+            "label": "Train",
+            "disabled": True,
+            "reason": "shadow_learning_jobs_only",
+        },
+    ]
     assert payload["actions"] == {
         "apply": {"enabled": False, "reason": "shadow_learning_jobs_only"},
         "train": {"enabled": False, "reason": "shadow_learning_jobs_only"},
@@ -175,6 +188,35 @@ def test_evidence_ingest_candidate_requires_evidence_reviewer_and_harness(
     assert "literature_shadow" in job["required_harness"]["required_levels"]
 
 
+@pytest.mark.parametrize(
+    "reason_code",
+    [
+        "unsafe_disposition",
+        "citation_not_traceable",
+        "evidence_conflict",
+        "safety_signal",
+        "harness_hard_fail",
+        "missing_variable",
+        "monitoring_alert",
+    ],
+)
+def test_plan_strong_reason_codes_create_candidates(
+    tmp_path: Path,
+    reason_code: str,
+) -> None:
+    service = make_service(tmp_path / reason_code / "reports" / "learning_jobs")
+    signal = make_signal(reason_code=reason_code, target_area="prompt")
+
+    result = service.create_job(
+        [signal],
+        requested_by="admin_user",
+        idempotency_key=f"{reason_code}-job-001",
+    )
+
+    assert len(result["candidates"]) == 1
+    assert result["candidates"][0]["source_signal_ids"] == [signal.signal_id]
+
+
 @pytest.mark.parametrize("target_area", ["rubric", "route", "template", "test_case"])
 def test_non_evidence_candidates_require_clinical_safety_reviewer(
     tmp_path: Path,
@@ -215,7 +257,7 @@ def test_create_job_validates_required_inputs(
     idempotency_key: str,
     match: str,
 ) -> None:
-    with pytest.raises(ValueError, match=match):
+    with pytest.raises(LearningJobValidationError, match=match):
         make_service(tmp_path / "reports" / "learning_jobs").create_job(
             signals,
             requested_by=requested_by,
@@ -283,8 +325,10 @@ def test_service_exposes_only_shadow_disabled_actions_after_create(
 
     payload = service.read_jobs()
 
-    assert payload["disabled_actions"]["apply"]["enabled"] is False
-    assert payload["disabled_actions"]["train"]["enabled"] is False
+    assert payload["disabled_actions"][0]["id"] == "apply"
+    assert payload["disabled_actions"][0]["disabled"] is True
+    assert payload["disabled_actions"][1]["id"] == "train"
+    assert payload["disabled_actions"][1]["disabled"] is True
     assert payload["actions"]["apply"]["enabled"] is False
     assert payload["actions"]["train"]["enabled"] is False
     assert payload["runtime"]["mode"] == "shadow_learning_jobs"
