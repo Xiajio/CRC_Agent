@@ -1165,7 +1165,7 @@ class PatientRegistryService:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def list_research_projection_records(self, *, limit: int = 1000) -> list[dict[str, Any]]:
+    def list_research_projection_records(self, limit: int = 1000) -> list[dict[str, Any]]:
         bounded_limit = max(1, min(int(limit), 5000))
         with self._connect() as connection:
             rows = connection.execute(

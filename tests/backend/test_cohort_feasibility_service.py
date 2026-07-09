@@ -114,6 +114,17 @@ def test_service_marks_unmapped_features_without_crashing() -> None:
     assert result.variable_coverage["unknown_feature"].covered_count == 0
 
 
+def test_service_accepts_positional_request_and_records() -> None:
+    result = CohortFeasibilityService().evaluate(
+        _request(["rectal_bleeding"]),
+        [_triage_record(1, rectal_bleeding=True)],
+    )
+
+    assert result.status == "needs_review"
+    assert result.estimated_count == 1
+    assert result.variable_coverage["rectal_bleeding"].covered_count == 1
+
+
 def test_service_returns_insufficient_data_for_empty_registry() -> None:
     result = CohortFeasibilityService().evaluate(
         request=_request(["rectal_bleeding"]),
@@ -162,7 +173,7 @@ def test_registry_exposes_read_only_research_projection_records(tmp_path: Path) 
     )
     before = registry.get_patient_detail(patient_id)
 
-    rows = registry.list_research_projection_records(limit=10)
+    rows = registry.list_research_projection_records(10)
 
     after = registry.get_patient_detail(patient_id)
     assert len(rows) == 1

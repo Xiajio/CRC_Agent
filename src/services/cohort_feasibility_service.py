@@ -60,7 +60,6 @@ class _Observation:
 class CohortFeasibilityService:
     def evaluate(
         self,
-        *,
         request: CohortFeasibilityRequest,
         records: Iterable[Mapping[str, Any]],
     ) -> CohortFeasibilityResult:
