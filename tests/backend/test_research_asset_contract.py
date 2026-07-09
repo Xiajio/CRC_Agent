@@ -270,6 +270,12 @@ def test_review_queue_item_rejects_bad_status() -> None:
         make_review_item(status="done")
 
 
+def test_review_queue_item_accepts_reviewed_status() -> None:
+    review_item = make_review_item(status="reviewed")
+
+    assert review_item.to_dict()["status"] == "reviewed"
+
+
 @pytest.mark.parametrize("required_checks", [["authorization_basis", ""], "check"])
 def test_review_queue_item_rejects_bad_required_checks(
     required_checks: object,

@@ -58,6 +58,7 @@ REVIEW_ITEM_STATUSES = (
     "approved",
     "rejected",
     "blocked",
+    "reviewed",
 )
 PATIENT_IDENTIFIER_KEYS = frozenset(
     {
