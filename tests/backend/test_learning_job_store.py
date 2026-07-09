@@ -213,6 +213,51 @@ def test_write_job_rejects_unsafe_artifact_ids(
         )
 
 
+def test_write_job_rejects_symlink_root(tmp_path: Path) -> None:
+    target = tmp_path / "outside_target"
+    target.mkdir()
+    root = tmp_path / "reports" / "learning_jobs"
+    root.parent.mkdir(parents=True)
+    try:
+        root.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is not available")
+        raise
+    candidate = make_candidate()
+    job = make_job(candidate_patch_ids=[candidate.patch_id])
+
+    with pytest.raises(LearningJobIntegrityError, match="symlink"):
+        LearningJobStore(root).write_job(job, [candidate])
+
+    assert not (target / "jobs").exists()
+    assert not (target / "candidates").exists()
+
+
+@pytest.mark.parametrize("symlink_dir_name", ["jobs", "candidates"])
+def test_write_job_rejects_symlink_artifact_directories(
+    tmp_path: Path,
+    symlink_dir_name: str,
+) -> None:
+    root = tmp_path / "reports" / "learning_jobs"
+    root.mkdir(parents=True)
+    target = tmp_path / f"{symlink_dir_name}_outside_target"
+    target.mkdir()
+    try:
+        (root / symlink_dir_name).symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        if getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is not available")
+        raise
+    candidate = make_candidate()
+    job = make_job(candidate_patch_ids=[candidate.patch_id])
+
+    with pytest.raises(LearningJobIntegrityError, match="symlink"):
+        LearningJobStore(root).write_job(job, [candidate])
+
+    assert list(target.iterdir()) == []
+
+
 def test_write_job_validates_candidate_ids_match_job_ids(tmp_path: Path) -> None:
     candidate = make_candidate()
     job = make_job(candidate_patch_ids=["candidate_patch_missing"])
@@ -222,6 +267,48 @@ def test_write_job_validates_candidate_ids_match_job_ids(tmp_path: Path) -> None
             job,
             [candidate],
         )
+
+
+def test_write_job_rejects_duplicate_candidate_refs_in_job(tmp_path: Path) -> None:
+    candidate = make_candidate()
+    job = make_job(candidate_patch_ids=[candidate.patch_id])
+    job.candidate_patch_ids.append(candidate.patch_id)
+
+    with pytest.raises(ValueError, match="duplicate candidate_patch_ids"):
+        LearningJobStore(tmp_path / "reports" / "learning_jobs").write_job(
+            job,
+            [candidate],
+        )
+
+
+def test_read_state_warns_on_job_with_duplicate_candidate_refs(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "reports" / "learning_jobs"
+    jobs_dir = root / "jobs"
+    candidates_dir = root / "candidates"
+    jobs_dir.mkdir(parents=True)
+    candidates_dir.mkdir(parents=True)
+    candidate = make_candidate()
+    job = make_job(candidate_patch_ids=[candidate.patch_id])
+    job_payload = job.to_dict()
+    job_payload["candidate_patch_ids"] = [candidate.patch_id, candidate.patch_id]
+    (jobs_dir / f"{job.job_id}.json").write_text(
+        json.dumps(job_payload, sort_keys=True),
+        encoding="utf-8",
+    )
+    (candidates_dir / f"{candidate.patch_id}.json").write_text(
+        json.dumps(candidate.to_dict(), sort_keys=True),
+        encoding="utf-8",
+    )
+
+    state = LearningJobStore(root).read_state()
+
+    assert state.integrity["status"] == "warning"
+    assert any(
+        "duplicate candidate_patch_ids" in warning
+        for warning in state.integrity["warnings"]
+    )
 
 
 def test_write_job_rolls_back_files_written_in_same_call(
@@ -245,6 +332,30 @@ def test_write_job_rolls_back_files_written_in_same_call(
     monkeypatch.setattr(store, "_write_json_once", fail_after_candidate)
 
     with pytest.raises(OSError, match="simulated job write failure"):
+        store.write_job(job, [candidate])
+
+    assert not (root / "candidates" / f"{candidate.patch_id}.json").exists()
+    assert not (root / "jobs" / f"{job.job_id}.json").exists()
+
+
+def test_write_json_once_removes_partial_file_when_dump_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "reports" / "learning_jobs"
+    store = LearningJobStore(root)
+    candidate = make_candidate()
+    job = make_job(candidate_patch_ids=[candidate.patch_id])
+
+    def fail_dump(*args: object, **kwargs: object) -> None:
+        raise OSError("simulated dump failure")
+
+    monkeypatch.setattr(
+        "backend.api.services.learning_job_store.json.dump",
+        fail_dump,
+    )
+
+    with pytest.raises(OSError, match="simulated dump failure"):
         store.write_job(job, [candidate])
 
     assert not (root / "candidates" / f"{candidate.patch_id}.json").exists()

@@ -85,6 +85,7 @@ class LearningJobStore:
         )
 
     def write_job(self, job: LearningJob, candidates: list[CandidatePatch]) -> None:
+        self._raise_if_write_layout_unsafe()
         self._validate_candidate_consistency(job, candidates)
         job_path = self._artifact_path(self.jobs_dir, job.job_id)
         candidate_paths = [
@@ -184,6 +185,8 @@ class LearningJobStore:
         candidate_ids = [candidate.patch_id for candidate in candidates]
         if len(candidate_ids) != len(set(candidate_ids)):
             raise FileExistsError("candidate_patch_ids must be unique")
+        if len(job.candidate_patch_ids) != len(set(job.candidate_patch_ids)):
+            raise ValueError("duplicate candidate_patch_ids are not allowed")
         if set(candidate_ids) != set(job.candidate_patch_ids):
             raise ValueError("candidate_patch_ids must match candidates")
 
@@ -196,6 +199,10 @@ class LearningJobStore:
         candidate_ids = {candidate.patch_id for candidate in candidates}
         warnings: list[str] = []
         for job in jobs:
+            if len(job.candidate_patch_ids) != len(set(job.candidate_patch_ids)):
+                warnings.append(
+                    f"{job.job_id} contains duplicate candidate_patch_ids"
+                )
             missing = sorted(set(job.candidate_patch_ids) - candidate_ids)
             if missing:
                 warnings.append(
@@ -209,9 +216,16 @@ class LearningJobStore:
         if path.exists():
             raise FileExistsError(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("x", encoding="utf-8") as handle:
-            json.dump(payload, handle, sort_keys=True, indent=2)
-            handle.write("\n")
+        created = False
+        try:
+            with path.open("x", encoding="utf-8") as handle:
+                created = True
+                json.dump(payload, handle, sort_keys=True, indent=2)
+                handle.write("\n")
+        except Exception:
+            if created:
+                path.unlink(missing_ok=True)
+            raise
 
     def _artifact_path(self, directory: Path, artifact_id: str) -> Path:
         self._validate_artifact_id(artifact_id)
@@ -228,6 +242,21 @@ class LearningJobStore:
         if not self.root.is_dir():
             return f"{self.root} must be a directory"
         return None
+
+    def _raise_if_write_layout_unsafe(self) -> None:
+        root_warning = self._root_layout_warning()
+        if root_warning is not None:
+            raise LearningJobIntegrityError(root_warning)
+        for directory, artifact_name in (
+            (self.jobs_dir, "job"),
+            (self.candidates_dir, "candidate"),
+        ):
+            directory_warning = self._directory_layout_warning(
+                directory,
+                artifact_name,
+            )
+            if directory_warning is not None:
+                raise LearningJobIntegrityError(directory_warning)
 
     def _directory_layout_warning(
         self,
