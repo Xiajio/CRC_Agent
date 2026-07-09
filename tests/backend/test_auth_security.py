@@ -113,6 +113,14 @@ def _auth_client(*, user_token: str = "user-token", admin_token: str | None = "a
     async def admin_research_cohort_feasibility() -> dict[str, object]:
         return {"runtime": {"auth": "admin", "mode": "shadow_cohort_feasibility"}}
 
+    @app.get("/api/admin/learning-jobs")
+    async def admin_learning_jobs_read() -> dict[str, object]:
+        return {"runtime": {"auth": "admin", "mode": "shadow_learning_jobs"}}
+
+    @app.post("/api/admin/learning-jobs")
+    async def admin_learning_jobs_create() -> dict[str, object]:
+        return {"runtime": {"auth": "admin", "mode": "shadow_learning_jobs"}}
+
     app.add_middleware(
         BearerAuthMiddleware,
         settings=RuntimeSettings(
@@ -156,6 +164,8 @@ def test_bearer_auth_required_for_api_routes() -> None:
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
         ("post", "/api/admin/release-closure/closures"),
         ("post", "/api/admin/research/cohort-feasibility"),
+        ("get", "/api/admin/learning-jobs"),
+        ("post", "/api/admin/learning-jobs"),
     ],
 )
 def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: str, path: str) -> None:
@@ -192,6 +202,8 @@ def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: 
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
         ("post", "/api/admin/release-closure/closures"),
         ("post", "/api/admin/research/cohort-feasibility"),
+        ("get", "/api/admin/learning-jobs"),
+        ("post", "/api/admin/learning-jobs"),
     ],
 )
 def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
@@ -227,6 +239,8 @@ def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
         ("post", "/api/admin/release-closure/closures"),
         ("post", "/api/admin/research/cohort-feasibility"),
+        ("get", "/api/admin/learning-jobs"),
+        ("post", "/api/admin/learning-jobs"),
     ],
 )
 def test_admin_endpoints_use_user_token_when_no_separate_admin_token(method: str, path: str) -> None:
