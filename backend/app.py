@@ -18,6 +18,7 @@ from backend.api.routes import crc_triage as crc_triage_routes
 from backend.api.routes import database as database_routes
 from backend.api.routes import doctor_review as doctor_review_routes
 from backend.api.routes import patient_registry as patient_registry_routes
+from backend.api.routes import research as research_routes
 from backend.api.routes import sessions as session_routes
 from backend.api.routes import uploads as upload_routes
 from backend.api.services.context_maintenance import create_context_maintenance_service
@@ -111,6 +112,8 @@ def _requires_admin_token(request: Request) -> bool:
     if method == "GET" and path == "/api/admin/release-closure":
         return True
     if method == "POST" and path == "/api/admin/release-closure/closures":
+        return True
+    if method == "POST" and path == "/api/admin/research/cohort-feasibility":
         return True
     return False
 
@@ -235,6 +238,7 @@ def create_app() -> FastAPI:
     app.include_router(upload_routes.router)
     app.include_router(asset_routes.router)
     app.include_router(admin_routes.router)
+    app.include_router(research_routes.router)
     return app
 
 

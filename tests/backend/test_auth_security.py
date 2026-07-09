@@ -109,6 +109,10 @@ def _auth_client(*, user_token: str = "user-token", admin_token: str | None = "a
     async def acknowledge_release_monitoring_alert(alert_id: str) -> dict[str, bool | str]:
         return {"ok": True, "alert_id": alert_id}
 
+    @app.post("/api/admin/research/cohort-feasibility")
+    async def admin_research_cohort_feasibility() -> dict[str, object]:
+        return {"runtime": {"auth": "admin", "mode": "shadow_cohort_feasibility"}}
+
     app.add_middleware(
         BearerAuthMiddleware,
         settings=RuntimeSettings(
@@ -151,6 +155,7 @@ def test_bearer_auth_required_for_api_routes() -> None:
         ("post", "/api/admin/release-monitoring/checks"),
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
         ("post", "/api/admin/release-closure/closures"),
+        ("post", "/api/admin/research/cohort-feasibility"),
     ],
 )
 def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: str, path: str) -> None:
@@ -186,6 +191,7 @@ def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: 
         ("post", "/api/admin/release-monitoring/checks"),
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
         ("post", "/api/admin/release-closure/closures"),
+        ("post", "/api/admin/research/cohort-feasibility"),
     ],
 )
 def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
@@ -220,6 +226,7 @@ def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
         ("post", "/api/admin/release-monitoring/checks"),
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
         ("post", "/api/admin/release-closure/closures"),
+        ("post", "/api/admin/research/cohort-feasibility"),
     ],
 )
 def test_admin_endpoints_use_user_token_when_no_separate_admin_token(method: str, path: str) -> None:
