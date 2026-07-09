@@ -277,13 +277,17 @@ class CandidatePatch:
         target_ref = _validated_safe_dict("target_ref", self.target_ref)
         _reject_clinical_safety_policy_target(target_ref)
         proposed_diff = _validated_safe_dict("proposed_diff", self.proposed_diff)
+        source_signal_ids = _require_string_list(
+            "source_signal_ids",
+            self.source_signal_ids,
+        )
         return {
             "patch_id": self.patch_id,
             "patch_type": self.patch_type,
             "target_ref": target_ref,
             "change_summary": self.change_summary,
             "proposed_diff": proposed_diff,
-            "source_signal_ids": list(self.source_signal_ids),
+            "source_signal_ids": source_signal_ids,
             "status": self.status,
             "applies_automatically": self.applies_automatically,
         }
@@ -291,10 +295,10 @@ class CandidatePatch:
 
 @dataclass(frozen=True)
 class HarnessRequirement:
-    required: bool
     case_pack_version: str
     required_levels: list[str]
     hard_fail_policy: str
+    required: bool = True
 
     def __post_init__(self) -> None:
         if self.required is not True:
@@ -312,34 +316,61 @@ class HarnessRequirement:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        required_levels = _require_string_list(
+            "required_levels",
+            self.required_levels,
+        )
         return {
             "required": self.required,
             "case_pack_version": self.case_pack_version,
-            "required_levels": list(self.required_levels),
+            "required_levels": required_levels,
             "hard_fail_policy": self.hard_fail_policy,
         }
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class HumanReviewRequirement:
     required: bool
-    roles: list[str]
+    required_roles: list[str]
     status: str
+
+    def __init__(
+        self,
+        *,
+        required: bool,
+        required_roles: list[str] | None = None,
+        status: str,
+        roles: list[str] | None = None,
+    ) -> None:
+        if required_roles is None:
+            required_roles = roles
+        object.__setattr__(self, "required", required)
+        object.__setattr__(self, "required_roles", required_roles)
+        object.__setattr__(self, "status", status)
+        self.__post_init__()
 
     def __post_init__(self) -> None:
         if self.required is not True:
             raise ValueError("required must be true")
         object.__setattr__(
             self,
-            "roles",
-            _require_string_list("roles", self.roles),
+            "required_roles",
+            _require_string_list("required_roles", self.required_roles),
         )
         _require_non_empty("status", self.status)
 
+    @property
+    def roles(self) -> list[str]:
+        return list(self.required_roles)
+
     def to_dict(self) -> dict[str, Any]:
+        required_roles = _require_string_list(
+            "required_roles",
+            self.required_roles,
+        )
         return {
             "required": self.required,
-            "roles": list(self.roles),
+            "required_roles": required_roles,
             "status": self.status,
         }
 
@@ -354,7 +385,7 @@ class LearningJob:
     candidate_patch_ids: list[str]
     required_harness: HarnessRequirement | dict[str, Any]
     human_review: HumanReviewRequirement | dict[str, Any]
-    release_governance_ref: dict[str, JsonValue]
+    release_governance_ref: dict[str, JsonValue] | None
     idempotency_key: str
 
     def __post_init__(self) -> None:
@@ -389,10 +420,10 @@ class LearningJob:
         object.__setattr__(
             self,
             "release_governance_ref",
-            _validated_safe_dict(
+            _coerce_optional_safe_dict(
                 "release_governance_ref",
                 self.release_governance_ref,
-            ),
+            )
         )
         _require_non_empty("idempotency_key", self.idempotency_key)
 
@@ -409,7 +440,16 @@ class LearningJob:
         return self.human_review
 
     def to_dict(self) -> dict[str, Any]:
-        release_governance_ref = _validated_safe_dict(
+        source_signal_ids = _require_string_list(
+            "source_signal_ids",
+            self.source_signal_ids,
+        )
+        candidate_patch_ids = _require_string_list(
+            "candidate_patch_ids",
+            self.candidate_patch_ids,
+            allow_empty=True,
+        )
+        release_governance_ref = _coerce_optional_safe_dict(
             "release_governance_ref",
             self.release_governance_ref,
         )
@@ -418,8 +458,8 @@ class LearningJob:
             "job_type": self.job_type,
             "status": self.status,
             "created_at": self.created_at,
-            "source_signal_ids": list(self.source_signal_ids),
-            "candidate_patch_ids": list(self.candidate_patch_ids),
+            "source_signal_ids": source_signal_ids,
+            "candidate_patch_ids": candidate_patch_ids,
             "required_harness": self.required_harness.to_dict(),
             "human_review": self.human_review.to_dict(),
             "release_governance_ref": release_governance_ref,
@@ -452,7 +492,7 @@ def make_learning_job_id(
     source_signal_ids: list[str],
     idempotency_key: str,
 ) -> str:
-    signal_ids = _require_string_list("source_signal_ids", source_signal_ids)
+    signal_ids = sorted(_require_string_list("source_signal_ids", source_signal_ids))
     _require_non_empty("idempotency_key", idempotency_key)
     stable_suffix = _stable_hash(
         {"source_signal_ids": signal_ids, "idempotency_key": idempotency_key}
@@ -487,6 +527,15 @@ def _validated_safe_dict(field_name: str, value: Any) -> dict[str, JsonValue]:
     _reject_forbidden_payload_keys(value_copy)
     _reject_forbidden_payload_values(value_copy, path=field_name)
     return value_copy
+
+
+def _coerce_optional_safe_dict(
+    field_name: str,
+    value: Any,
+) -> dict[str, JsonValue] | None:
+    if value is None:
+        return None
+    return _validated_safe_dict(field_name, value)
 
 
 def _copy_json_safe(value: JsonValue, *, path: str) -> JsonValue:
@@ -629,6 +678,7 @@ def _find_forbidden_payload_value_marker(value: str) -> str | None:
             r"\braw[\s_-]*patient[\s_-]*identifier(?:s)?\b\s*[:=]\s*\S+",
             "raw patient identifier",
         ),
+        (r"\bpatient[\s_-]*id(?:s)?\b\s*[:=]\s*\S+", "patient id"),
         (r"\btraining[\s_-]*row(?:s)?\b\s*[:=]\s*\S+", "training rows"),
     )
     for pattern, marker in patterns:
@@ -656,6 +706,7 @@ def _require_string_list(
         raise ValueError(f"{field_name} must not be empty")
     for item in value:
         _require_non_empty(field_name, item)
+        _reject_forbidden_payload_values(item, path=field_name)
     return list(value)
 
 

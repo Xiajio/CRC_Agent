@@ -83,7 +83,7 @@ def make_harness(**overrides: object) -> HarnessRequirement:
 def make_review(**overrides: object) -> HumanReviewRequirement:
     payload = {
         "required": True,
-        "roles": ["clinical_safety_reviewer", "release_manager"],
+        "required_roles": ["clinical_safety_reviewer", "release_manager"],
         "status": "pending",
     }
     payload.update(overrides)
@@ -144,6 +144,10 @@ def test_learning_job_contracts_round_trip() -> None:
         job.to_dict()["release_governance_ref"]["kind"]
         == "release_governance_intent"
     )
+    assert job.to_dict()["human_review"]["required_roles"] == [
+        "clinical_safety_reviewer",
+        "release_manager",
+    ]
     json.dumps(signal.to_dict())
     json.dumps(patch.to_dict())
     json.dumps(job.to_dict())
@@ -252,9 +256,51 @@ def test_payload_hash_is_deterministic_and_json_safe() -> None:
     assert left.startswith("sha256:")
 
 
+def test_learning_job_id_is_deterministic_for_signal_sets() -> None:
+    left = make_learning_job_id(["learning_signal_b", "learning_signal_a"], "idem-1")
+    right = make_learning_job_id(["learning_signal_a", "learning_signal_b"], "idem-1")
+
+    assert left == right
+
+
 def test_required_human_review_must_be_true() -> None:
     with pytest.raises(ValueError, match="required must be true"):
         make_review(required=False)
+
+
+def test_required_harness_must_not_be_false() -> None:
+    with pytest.raises(ValueError, match="required must be true"):
+        make_harness(required=False)
+
+
+def test_plan_constructors_accept_task_2_and_3_requirement_shapes() -> None:
+    harness = HarnessRequirement(
+        case_pack_version="crc_triage_harness_v2",
+        required_levels=["unit", "scenario"],
+        hard_fail_policy="any_clinical_safety_regression_blocks_release_intent",
+    )
+    review = HumanReviewRequirement(
+        required=True,
+        required_roles=["clinical_safety_reviewer", "release_manager"],
+        status="pending",
+    )
+    job = make_job(
+        required_harness=harness,
+        human_review=review,
+        release_governance_ref=None,
+        candidate_patch_ids=[],
+    )
+
+    assert harness.to_dict()["required"] is True
+    assert review.to_dict()["required_roles"] == [
+        "clinical_safety_reviewer",
+        "release_manager",
+    ]
+    assert job.to_dict()["release_governance_ref"] is None
+    assert job.to_dict()["human_review"]["required_roles"] == [
+        "clinical_safety_reviewer",
+        "release_manager",
+    ]
 
 
 def test_signal_to_dict_rejects_post_construction_source_ref_mutation() -> None:
@@ -279,3 +325,43 @@ def test_candidate_to_dict_rejects_post_construction_diff_mutation() -> None:
 
     with pytest.raises(ValueError, match="forbidden key"):
         candidate.to_dict()
+
+
+def test_candidate_to_dict_rejects_post_construction_source_signal_id_mutation() -> None:
+    candidate = make_patch()
+    candidate.source_signal_ids.append("Bearer abcdef123456")
+
+    with pytest.raises(ValueError, match="forbidden content"):
+        candidate.to_dict()
+
+
+def test_job_to_dict_rejects_post_construction_source_signal_id_mutation() -> None:
+    job = make_job()
+    job.source_signal_ids.append("patient_id:p-1")
+
+    with pytest.raises(ValueError, match="forbidden content"):
+        job.to_dict()
+
+
+def test_job_to_dict_rejects_post_construction_candidate_patch_id_mutation() -> None:
+    job = make_job()
+    job.candidate_patch_ids.append("Bearer abcdef123456")
+
+    with pytest.raises(ValueError, match="forbidden content"):
+        job.to_dict()
+
+
+def test_harness_to_dict_rejects_post_construction_required_level_mutation() -> None:
+    harness = make_harness()
+    harness.required_levels.append("Bearer abcdef123456")
+
+    with pytest.raises(ValueError, match="forbidden content"):
+        harness.to_dict()
+
+
+def test_human_review_to_dict_rejects_post_construction_required_role_mutation() -> None:
+    human_review = make_review()
+    human_review.required_roles.append("Bearer abcdef123456")
+
+    with pytest.raises(ValueError, match="forbidden content"):
+        human_review.to_dict()
