@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from backend.api.services.learning_job_store import LearningJobStore
 from src.contracts.learning_job import (
     CandidatePatch,
@@ -22,27 +24,27 @@ _STRONG_REASON_MARKERS = (
     "gap",
     "alert",
 )
-_STRONG_SIGNAL_TYPES = (
-    "doctor_action_trace",
-    "evidence_delta",
-    "harness_failure",
-    "cohort_feasibility_gap",
-    "release_monitoring_alert",
-)
 _NON_MUTATION_REASON = "shadow_learning_jobs_only"
 
 
 class LearningJobService:
-    def __init__(self, store: LearningJobStore) -> None:
+    def __init__(
+        self,
+        store: LearningJobStore,
+        now: Callable[[], str] | None = None,
+    ) -> None:
         self.store = store
+        self._now = now or (lambda: "1970-01-01T00:00:00+00:00")
 
     def read_jobs(self) -> dict[str, object]:
         state = self.store.read_state()
+        disabled_actions = _disabled_actions()
         return {
             "jobs": [job.to_dict() for job in state.jobs],
             "candidates": [candidate.to_dict() for candidate in state.candidates],
             "integrity": state.integrity,
-            "actions": _disabled_actions(),
+            "disabled_actions": disabled_actions,
+            "actions": disabled_actions,
             "runtime": _runtime_metadata(),
         }
 
@@ -72,11 +74,17 @@ class LearningJobService:
         )
 
         self.store.write_job(job, candidates)
+        disabled_actions = _disabled_actions()
         return {
-            "jobs": [job.to_dict()],
+            "job": job.to_dict(),
+            "signals": [
+                signal.to_dict()
+                for signal in sorted(signals, key=lambda item: item.signal_id)
+            ],
             "candidates": [candidate.to_dict() for candidate in candidates],
             "integrity": self.store.read_state().integrity,
-            "actions": _disabled_actions(),
+            "disabled_actions": disabled_actions,
+            "actions": disabled_actions,
             "runtime": _runtime_metadata(),
         }
 
@@ -128,17 +136,17 @@ class LearningJobService:
         source_signal_ids: list[str],
         idempotency_key: str,
     ) -> LearningJob:
-        target_areas = {signal.target_area for signal in signals}
-        job_type = _job_type_for_targets(target_areas)
+        candidate_target_areas = {candidate.patch_type for candidate in candidates}
+        job_type = _job_type_for_targets(candidate_target_areas)
         return LearningJob(
             job_id=make_learning_job_id(source_signal_ids, idempotency_key),
             job_type=job_type,
             status="shadow_only",
-            created_at=min(signal.created_at for signal in signals),
+            created_at=self._now(),
             source_signal_ids=source_signal_ids,
             candidate_patch_ids=[candidate.patch_id for candidate in candidates],
-            required_harness=_harness_requirement(target_areas),
-            human_review=_human_review_requirement(target_areas),
+            required_harness=_harness_requirement(candidate_target_areas),
+            human_review=_human_review_requirement(candidate_target_areas),
             release_governance_ref=None,
             idempotency_key=idempotency_key,
         )
@@ -161,12 +169,8 @@ def _validate_create_inputs(
 
 
 def _is_strong_signal(signal: LearningSignal) -> bool:
-    if signal.severity in {"high", "critical"}:
-        return True
     reason = signal.reason_code.lower()
-    if any(marker in reason for marker in _STRONG_REASON_MARKERS):
-        return True
-    return signal.signal_type in _STRONG_SIGNAL_TYPES and signal.severity != "low"
+    return any(marker in reason for marker in _STRONG_REASON_MARKERS)
 
 
 def _target_kind(patch_type: str) -> str:
@@ -184,26 +188,27 @@ def _job_type_for_targets(target_areas: set[str]) -> str:
 
 
 def _harness_requirement(target_areas: set[str]) -> HarnessRequirement:
-    levels = ["unit", "shadow_replay"]
+    levels = ["L0_L1", "shadow_replay"]
     if "evidence_ingest" in target_areas:
-        levels.extend(["literature", "evidence"])
+        levels.append("literature_shadow")
     else:
         levels.append("clinical_safety")
     return HarnessRequirement(
-        case_pack_version="learning_job_shadow_case_pack_v1",
+        case_pack_version="crc_mutation_pack_v0",
         required_levels=_unique(levels),
         hard_fail_policy="shadow_candidates_require_clean_harness_before_release_intent",
     )
 
 
 def _human_review_requirement(target_areas: set[str]) -> HumanReviewRequirement:
+    roles = ["release_manager"]
     if "evidence_ingest" in target_areas:
-        roles = ["evidence_reviewer"]
-    else:
-        roles = ["clinical_safety_reviewer"]
+        roles.append("evidence_reviewer")
+    if target_areas - {"evidence_ingest"}:
+        roles.append("clinical_safety_reviewer")
     return HumanReviewRequirement(
         required=True,
-        required_roles=roles,
+        required_roles=_unique(roles),
         status="pending",
     )
 

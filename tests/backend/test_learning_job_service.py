@@ -35,7 +35,10 @@ def make_signal(
 
 
 def make_service(root: Path) -> LearningJobService:
-    return LearningJobService(LearningJobStore(root))
+    return LearningJobService(
+        store=LearningJobStore(root),
+        now=lambda: "2026-07-09T12:00:00+08:00",
+    )
 
 
 def test_read_jobs_returns_shadow_runtime_metadata_and_disabled_actions(
@@ -48,6 +51,10 @@ def test_read_jobs_returns_shadow_runtime_metadata_and_disabled_actions(
     assert payload["jobs"] == []
     assert payload["candidates"] == []
     assert payload["integrity"] == {"status": "verified", "warnings": []}
+    assert payload["disabled_actions"] == {
+        "apply": {"enabled": False, "reason": "shadow_learning_jobs_only"},
+        "train": {"enabled": False, "reason": "shadow_learning_jobs_only"},
+    }
     assert payload["actions"] == {
         "apply": {"enabled": False, "reason": "shadow_learning_jobs_only"},
         "train": {"enabled": False, "reason": "shadow_learning_jobs_only"},
@@ -73,18 +80,25 @@ def test_create_job_writes_shadow_only_prompt_candidate(tmp_path: Path) -> None:
         idempotency_key="learning-job-001",
     )
 
-    assert len(result["jobs"]) == 1
+    assert "job" in result
+    assert "signals" in result
     assert len(result["candidates"]) == 1
-    job = result["jobs"][0]
+    job = result["job"]
     candidate = result["candidates"][0]
+    assert result["signals"] == [signal.to_dict()]
     assert job["status"] == "shadow_only"
+    assert job["created_at"] == "2026-07-09T12:00:00+08:00"
     assert job["release_governance_ref"] is None
     assert job["candidate_patch_ids"] == [candidate["patch_id"]]
     assert candidate["patch_type"] == "prompt"
     assert candidate["status"] == "candidate"
     assert candidate["applies_automatically"] is False
-    assert job["human_review"]["required_roles"] == ["clinical_safety_reviewer"]
-    assert "clinical_safety" in job["required_harness"]["required_levels"]
+    assert job["human_review"]["required_roles"] == [
+        "release_manager",
+        "clinical_safety_reviewer",
+    ]
+    assert job["required_harness"]["case_pack_version"] == "crc_mutation_pack_v0"
+    assert "L0_L1" in job["required_harness"]["required_levels"]
     state = LearningJobStore(root).read_state()
     assert [item.job_id for item in state.jobs] == [job["job_id"]]
     assert [item.patch_id for item in state.candidates] == [candidate["patch_id"]]
@@ -107,11 +121,32 @@ def test_create_job_for_weak_signal_writes_job_without_candidates(
         idempotency_key="weak-learning-job-001",
     )
 
-    assert len(result["jobs"]) == 1
     assert result["candidates"] == []
-    assert result["jobs"][0]["candidate_patch_ids"] == []
-    assert result["jobs"][0]["status"] == "shadow_only"
+    assert result["job"]["candidate_patch_ids"] == []
+    assert result["job"]["status"] == "shadow_only"
     assert LearningJobStore(root).read_state().candidates == []
+
+
+def test_documentation_note_review_required_template_signal_is_weak(
+    tmp_path: Path,
+) -> None:
+    service = make_service(tmp_path / "reports" / "learning_jobs")
+    signal = make_signal(
+        reason_code="documentation_note",
+        target_area="template",
+        signal_type="doctor_action_trace",
+        severity="review_required",
+    )
+
+    result = service.create_job(
+        [signal],
+        requested_by="admin_user",
+        idempotency_key="documentation-note-job-001",
+    )
+
+    assert result["candidates"] == []
+    assert result["job"]["job_type"] == "candidate_patch_generation"
+    assert result["job"]["candidate_patch_ids"] == []
 
 
 def test_evidence_ingest_candidate_requires_evidence_reviewer_and_harness(
@@ -130,12 +165,14 @@ def test_evidence_ingest_candidate_requires_evidence_reviewer_and_harness(
         idempotency_key="evidence-learning-job-001",
     )
 
-    job = result["jobs"][0]
+    job = result["job"]
     candidate = result["candidates"][0]
     assert candidate["patch_type"] == "evidence_ingest"
-    assert job["human_review"]["required_roles"] == ["evidence_reviewer"]
-    assert "literature" in job["required_harness"]["required_levels"]
-    assert "evidence" in job["required_harness"]["required_levels"]
+    assert job["human_review"]["required_roles"] == [
+        "release_manager",
+        "evidence_reviewer",
+    ]
+    assert "literature_shadow" in job["required_harness"]["required_levels"]
 
 
 @pytest.mark.parametrize("target_area", ["rubric", "route", "template", "test_case"])
@@ -157,8 +194,9 @@ def test_non_evidence_candidates_require_clinical_safety_reviewer(
     )
 
     assert result["candidates"][0]["patch_type"] == target_area
-    assert result["jobs"][0]["human_review"]["required_roles"] == [
-        "clinical_safety_reviewer"
+    assert result["job"]["human_review"]["required_roles"] == [
+        "release_manager",
+        "clinical_safety_reviewer",
     ]
 
 
@@ -203,7 +241,7 @@ def test_create_job_ids_are_deterministic_for_same_signals_and_key(
         idempotency_key="stable-key",
     )
 
-    assert first_payload["jobs"][0]["job_id"] == second_payload["jobs"][0]["job_id"]
+    assert first_payload["job"]["job_id"] == second_payload["job"]["job_id"]
     assert (
         first_payload["candidates"][0]["patch_id"]
         == second_payload["candidates"][0]["patch_id"]
@@ -226,7 +264,7 @@ def test_create_job_ids_change_with_idempotency_key(tmp_path: Path) -> None:
         idempotency_key="stable-key-2",
     )
 
-    assert first_payload["jobs"][0]["job_id"] != second_payload["jobs"][0]["job_id"]
+    assert first_payload["job"]["job_id"] != second_payload["job"]["job_id"]
     assert (
         first_payload["candidates"][0]["patch_id"]
         != second_payload["candidates"][0]["patch_id"]
@@ -245,6 +283,8 @@ def test_service_exposes_only_shadow_disabled_actions_after_create(
 
     payload = service.read_jobs()
 
+    assert payload["disabled_actions"]["apply"]["enabled"] is False
+    assert payload["disabled_actions"]["train"]["enabled"] is False
     assert payload["actions"]["apply"]["enabled"] is False
     assert payload["actions"]["train"]["enabled"] is False
     assert payload["runtime"]["mode"] == "shadow_learning_jobs"
