@@ -52,18 +52,31 @@ REVIEW_TYPES: tuple[ReviewType, ...] = (
     "pi_review",
     "data_governance_review",
 )
+REVIEW_ITEM_STATUSES = (
+    "pending",
+    "in_review",
+    "approved",
+    "rejected",
+    "blocked",
+)
 PATIENT_IDENTIFIER_KEYS = frozenset(
     {
         "patient_id",
         "patient_ids",
         "patient_identifier",
         "patient_identifiers",
+        "patient_name",
+        "patient_names",
         "patient_number",
         "patient_numbers",
         "medical_record_number",
         "medical_record_numbers",
         "mrn",
         "mrns",
+        "record_id",
+        "record_ids",
+        "session_id",
+        "session_ids",
     }
 )
 
@@ -82,7 +95,16 @@ class ResearchAsset:
     def __post_init__(self) -> None:
         _validate_allowed("asset_type", self.asset_type, ASSET_TYPES)
         _validate_allowed("status", self.status, ASSET_STATUSES)
-        _validate_json_value(self.source_refs)
+        object.__setattr__(
+            self,
+            "source_refs",
+            _validate_json_dict_list("source_refs", self.source_refs),
+        )
+        object.__setattr__(
+            self,
+            "governance_refs",
+            _validate_string_list("governance_refs", self.governance_refs),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -92,8 +114,8 @@ class ResearchAsset:
             "status": self.status,
             "created_by": self.created_by,
             "created_at": self.created_at,
-            "source_refs": self.source_refs,
-            "governance_refs": self.governance_refs,
+            "source_refs": _copy_json_value(self.source_refs),
+            "governance_refs": list(self.governance_refs),
         }
 
 
@@ -107,9 +129,21 @@ class CohortFeasibilityRequest:
     version_refs: dict[str, JsonValue]
 
     def __post_init__(self) -> None:
-        _validate_json_value(self.cohort_criteria)
-        _validate_json_value(self.data_scope)
-        _validate_json_value(self.version_refs)
+        object.__setattr__(
+            self,
+            "cohort_criteria",
+            _validate_json_dict("cohort_criteria", self.cohort_criteria),
+        )
+        object.__setattr__(
+            self,
+            "data_scope",
+            _validate_json_dict("data_scope", self.data_scope),
+        )
+        object.__setattr__(
+            self,
+            "version_refs",
+            _validate_json_dict("version_refs", self.version_refs),
+        )
         _reject_patient_identifier_keys(self.cohort_criteria)
 
         if self.data_scope.get("source") != "patient_record_projection":
@@ -140,9 +174,9 @@ class CohortFeasibilityRequest:
             "request_id": self.request_id,
             "project_id": self.project_id,
             "question": self.question,
-            "cohort_criteria": self.cohort_criteria,
-            "data_scope": self.data_scope,
-            "version_refs": self.version_refs,
+            "cohort_criteria": _copy_json_value(self.cohort_criteria),
+            "data_scope": _copy_json_value(self.data_scope),
+            "version_refs": _copy_json_value(self.version_refs),
         }
 
 
@@ -154,19 +188,33 @@ class VariableCoverage:
     reviewed_status_mix: dict[str, int]
 
     def __post_init__(self) -> None:
+        _validate_non_negative_int("covered_count", self.covered_count)
         if self.covered_count < 0:
             raise ValueError("covered_count must be non-negative")
-        if not 0 <= self.coverage_ratio <= 1:
+        if (
+            isinstance(self.coverage_ratio, bool)
+            or not isinstance(self.coverage_ratio, (int, float))
+            or not math.isfinite(float(self.coverage_ratio))
+            or not 0 <= self.coverage_ratio <= 1
+        ):
             raise ValueError("coverage_ratio must be between 0 and 1")
-        if any(count < 0 for count in self.reviewed_status_mix.values()):
-            raise ValueError("reviewed_status_mix counts must be non-negative")
+        object.__setattr__(
+            self,
+            "source_fact_types",
+            _validate_string_list("source_fact_types", self.source_fact_types),
+        )
+        object.__setattr__(
+            self,
+            "reviewed_status_mix",
+            _validate_count_map("reviewed_status_mix", self.reviewed_status_mix),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "covered_count": self.covered_count,
             "coverage_ratio": self.coverage_ratio,
-            "source_fact_types": self.source_fact_types,
-            "reviewed_status_mix": self.reviewed_status_mix,
+            "source_fact_types": list(self.source_fact_types),
+            "reviewed_status_mix": dict(self.reviewed_status_mix),
         }
 
 
@@ -181,7 +229,17 @@ class ReviewQueueItem:
 
     def __post_init__(self) -> None:
         _validate_allowed("review_type", self.review_type, REVIEW_TYPES)
-        _validate_json_value(self.scope)
+        _validate_allowed("status", self.status, REVIEW_ITEM_STATUSES)
+        object.__setattr__(
+            self,
+            "scope",
+            _validate_json_dict("scope", self.scope),
+        )
+        object.__setattr__(
+            self,
+            "required_checks",
+            _validate_string_list("required_checks", self.required_checks),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -189,8 +247,8 @@ class ReviewQueueItem:
             "review_type": self.review_type,
             "status": self.status,
             "trigger": self.trigger,
-            "scope": self.scope,
-            "required_checks": self.required_checks,
+            "scope": _copy_json_value(self.scope),
+            "required_checks": list(self.required_checks),
         }
 
 
@@ -211,10 +269,44 @@ class CohortFeasibilityResult:
 
     def __post_init__(self) -> None:
         _validate_allowed("status", self.status, FEASIBILITY_STATUSES)
+        _validate_non_negative_int("estimated_count", self.estimated_count)
         if self.estimated_count < 0:
             raise ValueError("estimated_count must be non-negative")
-        if self.patient_level_rows_returned is True:
+        if self.patient_level_rows_returned is not False:
             raise ValueError("patient_level_rows_returned must be false")
+        if not isinstance(self.variable_coverage, dict):
+            raise ValueError("variable_coverage must be a dict")
+        if not all(
+            isinstance(key, str) and isinstance(value, VariableCoverage)
+            for key, value in self.variable_coverage.items()
+        ):
+            raise ValueError("variable_coverage must map strings to VariableCoverage")
+        object.__setattr__(self, "variable_coverage", dict(self.variable_coverage))
+        object.__setattr__(
+            self,
+            "missing_key_variables",
+            _validate_string_list("missing_key_variables", self.missing_key_variables),
+        )
+        object.__setattr__(
+            self,
+            "unmapped_required_features",
+            _validate_string_list(
+                "unmapped_required_features",
+                self.unmapped_required_features,
+            ),
+        )
+        object.__setattr__(
+            self,
+            "bias_warnings",
+            _validate_string_list("bias_warnings", self.bias_warnings),
+        )
+        if not isinstance(self.requires_review, bool):
+            raise ValueError("requires_review must be boolean")
+        if not isinstance(self.review_queue_items, list):
+            raise ValueError("review_queue_items must be a list")
+        if not all(isinstance(item, ReviewQueueItem) for item in self.review_queue_items):
+            raise ValueError("review_queue_items must contain ReviewQueueItem values")
+        object.__setattr__(self, "review_queue_items", list(self.review_queue_items))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -227,9 +319,9 @@ class CohortFeasibilityResult:
                 key: coverage.to_dict()
                 for key, coverage in self.variable_coverage.items()
             },
-            "missing_key_variables": self.missing_key_variables,
-            "unmapped_required_features": self.unmapped_required_features,
-            "bias_warnings": self.bias_warnings,
+            "missing_key_variables": list(self.missing_key_variables),
+            "unmapped_required_features": list(self.unmapped_required_features),
+            "bias_warnings": list(self.bias_warnings),
             "requires_review": self.requires_review,
             "review_queue_items": [
                 item.to_dict() for item in self.review_queue_items
@@ -254,7 +346,7 @@ def _stable_id(prefix: str, seed: str) -> str:
             separators=(",", ":"),
         ).encode("utf-8")
     ).hexdigest()[:8]
-    return f"{prefix}_{seed}_{stable_hash}"
+    return f"{prefix}_{stable_hash}"
 
 
 def _validate_allowed(field_name: str, value: str, allowed: tuple[str, ...]) -> None:
@@ -272,6 +364,51 @@ def _reject_patient_identifier_keys(value: JsonValue) -> None:
     if isinstance(value, list):
         for item in value:
             _reject_patient_identifier_keys(item)
+
+
+def _validate_json_dict(field_name: str, value: Any) -> dict[str, JsonValue]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be a dict")
+    _validate_json_value(value)
+    return _copy_json_value(value)
+
+
+def _validate_json_dict_list(
+    field_name: str,
+    value: Any,
+) -> list[dict[str, JsonValue]]:
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        raise ValueError(f"{field_name} must be a list of dicts")
+    _validate_json_value(value)
+    return _copy_json_value(value)
+
+
+def _validate_string_list(field_name: str, value: Any) -> list[str]:
+    if (
+        not isinstance(value, list)
+        or not all(isinstance(item, str) and item for item in value)
+    ):
+        raise ValueError(f"{field_name} must be a list of non-empty strings")
+    return list(value)
+
+
+def _validate_count_map(field_name: str, value: Any) -> dict[str, int]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} must be a dict")
+    for key, count in value.items():
+        if not isinstance(key, str):
+            raise ValueError(f"{field_name} keys must be strings")
+        _validate_non_negative_int(f"{field_name} counts", count)
+    return dict(value)
+
+
+def _validate_non_negative_int(field_name: str, value: Any) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"{field_name} must be non-negative")
+
+
+def _copy_json_value(value: JsonValue) -> Any:
+    return json.loads(json.dumps(value, sort_keys=True, separators=(",", ":")))
 
 
 def _validate_json_value(value: JsonValue) -> None:
