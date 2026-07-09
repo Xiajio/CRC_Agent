@@ -193,61 +193,65 @@ class LearningSignal:
     signal_id: str
     signal_type: SignalType
     source_ref: dict[str, JsonValue]
+    reason_code: str
     target_area: TargetArea
+    severity: str
     summary: str
-    observed_at: str
     deidentified: bool
-    payload: dict[str, JsonValue]
+    created_at: str
 
     def __post_init__(self) -> None:
         _require_non_empty("signal_id", self.signal_id)
         _validate_choice("signal_type", self.signal_type, SIGNAL_TYPES)
         _validate_choice("target_area", self.target_area, TARGET_AREAS)
+        _require_non_empty("reason_code", self.reason_code)
+        _reject_forbidden_payload_values(self.reason_code, path="reason_code")
+        _require_non_empty("severity", self.severity)
         _require_non_empty("summary", self.summary)
         _reject_forbidden_payload_values(self.summary, path="summary")
-        _require_non_empty("observed_at", self.observed_at)
         if self.deidentified is not True:
             raise ValueError("deidentified must be true")
+        _require_non_empty("created_at", self.created_at)
         object.__setattr__(
             self,
             "source_ref",
             _validated_safe_dict("source_ref", self.source_ref),
         )
-        object.__setattr__(
-            self,
-            "payload",
-            _validated_safe_dict("payload", self.payload),
-        )
 
     def to_dict(self) -> dict[str, Any]:
+        source_ref = _validated_safe_dict("source_ref", self.source_ref)
         return {
             "signal_id": self.signal_id,
             "signal_type": self.signal_type,
-            "source_ref": _copy_json_safe(self.source_ref, path="source_ref"),
+            "source_ref": source_ref,
+            "reason_code": self.reason_code,
             "target_area": self.target_area,
+            "severity": self.severity,
             "summary": self.summary,
-            "observed_at": self.observed_at,
             "deidentified": self.deidentified,
-            "payload": _copy_json_safe(self.payload, path="payload"),
+            "created_at": self.created_at,
         }
 
 
 @dataclass(frozen=True)
 class CandidatePatch:
-    candidate_patch_id: str
+    patch_id: str
     patch_type: CandidatePatchType
     target_ref: dict[str, JsonValue]
+    change_summary: str
     proposed_diff: dict[str, JsonValue]
-    rationale: str
     source_signal_ids: list[str]
     status: CandidatePatchStatus
     applies_automatically: bool
 
     def __post_init__(self) -> None:
-        _require_non_empty("candidate_patch_id", self.candidate_patch_id)
+        _require_non_empty("patch_id", self.patch_id)
         _validate_choice("patch_type", self.patch_type, CANDIDATE_PATCH_TYPES)
-        _require_non_empty("rationale", self.rationale)
-        _reject_forbidden_payload_values(self.rationale, path="rationale")
+        _require_non_empty("change_summary", self.change_summary)
+        _reject_forbidden_payload_values(
+            self.change_summary,
+            path="change_summary",
+        )
         _validate_choice("status", self.status, CANDIDATE_PATCH_STATUSES)
         if self.applies_automatically is not False:
             raise ValueError("applies_automatically must be false")
@@ -265,16 +269,20 @@ class CandidatePatch:
             _require_string_list("source_signal_ids", self.source_signal_ids),
         )
 
+    @property
+    def candidate_patch_id(self) -> str:
+        return self.patch_id
+
     def to_dict(self) -> dict[str, Any]:
+        target_ref = _validated_safe_dict("target_ref", self.target_ref)
+        _reject_clinical_safety_policy_target(target_ref)
+        proposed_diff = _validated_safe_dict("proposed_diff", self.proposed_diff)
         return {
-            "candidate_patch_id": self.candidate_patch_id,
+            "patch_id": self.patch_id,
             "patch_type": self.patch_type,
-            "target_ref": _copy_json_safe(self.target_ref, path="target_ref"),
-            "proposed_diff": _copy_json_safe(
-                self.proposed_diff,
-                path="proposed_diff",
-            ),
-            "rationale": self.rationale,
+            "target_ref": target_ref,
+            "change_summary": self.change_summary,
+            "proposed_diff": proposed_diff,
             "source_signal_ids": list(self.source_signal_ids),
             "status": self.status,
             "applies_automatically": self.applies_automatically,
@@ -338,20 +346,22 @@ class HumanReviewRequirement:
 
 @dataclass(frozen=True)
 class LearningJob:
-    learning_job_id: str
+    job_id: str
     job_type: LearningJobType
     status: LearningJobStatus
+    created_at: str
     source_signal_ids: list[str]
     candidate_patch_ids: list[str]
-    harness_requirement: HarnessRequirement | dict[str, Any]
-    human_review_requirement: HumanReviewRequirement | dict[str, Any]
+    required_harness: HarnessRequirement | dict[str, Any]
+    human_review: HumanReviewRequirement | dict[str, Any]
+    release_governance_ref: dict[str, JsonValue]
     idempotency_key: str
-    created_at: str
 
     def __post_init__(self) -> None:
-        _require_non_empty("learning_job_id", self.learning_job_id)
+        _require_non_empty("job_id", self.job_id)
         _validate_choice("job_type", self.job_type, LEARNING_JOB_TYPES)
         _validate_choice("status", self.status, LEARNING_JOB_STATUSES)
+        _require_non_empty("created_at", self.created_at)
         object.__setattr__(
             self,
             "source_signal_ids",
@@ -368,28 +378,52 @@ class LearningJob:
         )
         object.__setattr__(
             self,
-            "harness_requirement",
-            _coerce_harness_requirement(self.harness_requirement),
+            "required_harness",
+            _coerce_harness_requirement(self.required_harness),
         )
         object.__setattr__(
             self,
-            "human_review_requirement",
-            _coerce_human_review_requirement(self.human_review_requirement),
+            "human_review",
+            _coerce_human_review_requirement(self.human_review),
+        )
+        object.__setattr__(
+            self,
+            "release_governance_ref",
+            _validated_safe_dict(
+                "release_governance_ref",
+                self.release_governance_ref,
+            ),
         )
         _require_non_empty("idempotency_key", self.idempotency_key)
-        _require_non_empty("created_at", self.created_at)
+
+    @property
+    def learning_job_id(self) -> str:
+        return self.job_id
+
+    @property
+    def harness_requirement(self) -> HarnessRequirement:
+        return self.required_harness
+
+    @property
+    def human_review_requirement(self) -> HumanReviewRequirement:
+        return self.human_review
 
     def to_dict(self) -> dict[str, Any]:
+        release_governance_ref = _validated_safe_dict(
+            "release_governance_ref",
+            self.release_governance_ref,
+        )
         return {
-            "learning_job_id": self.learning_job_id,
+            "job_id": self.job_id,
             "job_type": self.job_type,
             "status": self.status,
+            "created_at": self.created_at,
             "source_signal_ids": list(self.source_signal_ids),
             "candidate_patch_ids": list(self.candidate_patch_ids),
-            "harness_requirement": self.harness_requirement.to_dict(),
-            "human_review_requirement": self.human_review_requirement.to_dict(),
+            "required_harness": self.required_harness.to_dict(),
+            "human_review": self.human_review.to_dict(),
+            "release_governance_ref": release_governance_ref,
             "idempotency_key": self.idempotency_key,
-            "created_at": self.created_at,
         }
 
 

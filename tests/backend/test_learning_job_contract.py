@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from src.contracts.learning_job import (
@@ -25,15 +27,12 @@ def make_signal(**overrides: object) -> LearningSignal:
         "signal_id": make_learning_signal_id(source_ref),
         "signal_type": "doctor_action_trace",
         "source_ref": source_ref,
+        "reason_code": "unsafe_disposition_override",
         "target_area": "prompt",
+        "severity": "high",
         "summary": "Doctor overrode an unsafe low-acuity disposition in aggregate review.",
-        "observed_at": "2026-07-09T10:00:00+08:00",
         "deidentified": True,
-        "payload": {
-            "action": "unsafe_disposition_override",
-            "disposition": "urgent_review",
-            "aggregate_count": 3,
-        },
+        "created_at": "2026-07-09T10:00:00+08:00",
     }
     payload.update(overrides)
     return LearningSignal(**payload)
@@ -45,12 +44,13 @@ def make_patch(
 ) -> CandidatePatch:
     patch_id = make_candidate_patch_id("prompt", "doctor_action_trace_crc_shadow_001")
     payload = {
-        "candidate_patch_id": patch_id,
+        "patch_id": patch_id,
         "patch_type": "prompt",
         "target_ref": {
             "kind": "prompt_template",
             "id": "crc_triage_disposition_prompt_v1",
         },
+        "change_summary": "Add a shadow-only escalation guardrail candidate.",
         "proposed_diff": {
             "format": "structured_diff",
             "ops": [
@@ -61,7 +61,6 @@ def make_patch(
                 }
             ],
         },
-        "rationale": "Aggregate doctor overrides indicate a shadow candidate guardrail.",
         "source_signal_ids": [signal_id],
         "status": "candidate",
         "applies_automatically": False,
@@ -106,15 +105,19 @@ def make_job(
     )
     idempotency_key = "learning-job-shadow-001"
     payload = {
-        "learning_job_id": make_learning_job_id(source_ids, idempotency_key),
+        "job_id": make_learning_job_id(source_ids, idempotency_key),
         "job_type": "candidate_patch_generation",
         "status": "shadow_only",
+        "created_at": "2026-07-09T10:05:00+08:00",
         "source_signal_ids": source_ids,
         "candidate_patch_ids": candidate_ids,
-        "harness_requirement": make_harness(),
-        "human_review_requirement": make_review(),
+        "required_harness": make_harness(),
+        "human_review": make_review(),
+        "release_governance_ref": {
+            "kind": "release_governance_intent",
+            "id": "release_governance_shadow_learning_v1",
+        },
         "idempotency_key": idempotency_key,
-        "created_at": "2026-07-09T10:05:00+08:00",
     }
     payload.update(overrides)
     return LearningJob(**payload)
@@ -125,16 +128,68 @@ def test_learning_job_contracts_round_trip() -> None:
     patch = make_patch(signal.signal_id)
     job = make_job(
         source_signal_ids=[signal.signal_id],
-        candidate_patch_ids=[patch.candidate_patch_id],
+        candidate_patch_ids=[patch.patch_id],
     )
 
     assert signal.to_dict()["deidentified"] is True
+    assert signal.to_dict()["reason_code"] == "unsafe_disposition_override"
     assert patch.to_dict()["applies_automatically"] is False
+    assert patch.to_dict()["patch_id"] == patch.patch_id
     assert job.to_dict()["status"] == "shadow_only"
     assert (
-        job.to_dict()["harness_requirement"]["case_pack_version"]
+        job.to_dict()["required_harness"]["case_pack_version"]
         == "crc_triage_harness_v2"
     )
+    assert (
+        job.to_dict()["release_governance_ref"]["kind"]
+        == "release_governance_intent"
+    )
+    json.dumps(signal.to_dict())
+    json.dumps(patch.to_dict())
+    json.dumps(job.to_dict())
+
+
+def test_learning_job_contracts_serialize_plan_shaped_keys_only() -> None:
+    signal = make_signal()
+    patch = make_patch(signal.signal_id)
+    job = make_job(
+        source_signal_ids=[signal.signal_id],
+        candidate_patch_ids=[patch.patch_id],
+    )
+
+    assert set(signal.to_dict()) == {
+        "signal_id",
+        "signal_type",
+        "source_ref",
+        "reason_code",
+        "target_area",
+        "severity",
+        "summary",
+        "deidentified",
+        "created_at",
+    }
+    assert set(patch.to_dict()) == {
+        "patch_id",
+        "patch_type",
+        "target_ref",
+        "change_summary",
+        "proposed_diff",
+        "source_signal_ids",
+        "status",
+        "applies_automatically",
+    }
+    assert set(job.to_dict()) == {
+        "job_id",
+        "job_type",
+        "status",
+        "created_at",
+        "source_signal_ids",
+        "candidate_patch_ids",
+        "required_harness",
+        "human_review",
+        "release_governance_ref",
+        "idempotency_key",
+    }
 
 
 def test_signal_rejects_non_deidentified_input() -> None:
@@ -200,3 +255,27 @@ def test_payload_hash_is_deterministic_and_json_safe() -> None:
 def test_required_human_review_must_be_true() -> None:
     with pytest.raises(ValueError, match="required must be true"):
         make_review(required=False)
+
+
+def test_signal_to_dict_rejects_post_construction_source_ref_mutation() -> None:
+    signal = make_signal()
+    signal.source_ref["patient_id"] = "p-1"
+
+    with pytest.raises(ValueError, match="forbidden key"):
+        signal.to_dict()
+
+
+def test_candidate_to_dict_rejects_post_construction_target_ref_mutation() -> None:
+    candidate = make_patch()
+    candidate.target_ref["id"] = "clinical_safety_policy_crc_v1"
+
+    with pytest.raises(ValueError, match="clinical_safety_policy"):
+        candidate.to_dict()
+
+
+def test_candidate_to_dict_rejects_post_construction_diff_mutation() -> None:
+    candidate = make_patch()
+    candidate.proposed_diff["patient_id"] = "p-1"
+
+    with pytest.raises(ValueError, match="forbidden key"):
+        candidate.to_dict()
