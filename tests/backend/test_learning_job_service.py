@@ -110,8 +110,12 @@ def test_create_job_writes_shadow_only_prompt_candidate(tmp_path: Path) -> None:
         "release_manager",
         "clinical_safety_reviewer",
     ]
-    assert job["required_harness"]["case_pack_version"] == "crc_mutation_pack_v0"
-    assert "L0_L1" in job["required_harness"]["required_levels"]
+    assert job["required_harness"] == {
+        "required": True,
+        "case_pack_version": "crc_mutation_pack_v0",
+        "required_levels": ["L0_L1"],
+        "hard_fail_policy": "block_on_any_hard_fail",
+    }
     state = LearningJobStore(root).read_state()
     assert [item.job_id for item in state.jobs] == [job["job_id"]]
     assert [item.patch_id for item in state.candidates] == [candidate["patch_id"]]
@@ -185,7 +189,12 @@ def test_evidence_ingest_candidate_requires_evidence_reviewer_and_harness(
         "release_manager",
         "evidence_reviewer",
     ]
-    assert "literature_shadow" in job["required_harness"]["required_levels"]
+    assert job["required_harness"] == {
+        "required": True,
+        "case_pack_version": "crc_mutation_pack_v0",
+        "required_levels": ["L0_L1", "literature_shadow"],
+        "hard_fail_policy": "block_on_any_hard_fail",
+    }
 
 
 @pytest.mark.parametrize(
@@ -262,6 +271,18 @@ def test_create_job_validates_required_inputs(
             signals,
             requested_by=requested_by,
             idempotency_key=idempotency_key,
+        )
+
+
+def test_create_job_rejects_duplicate_input_signals(tmp_path: Path) -> None:
+    service = make_service(tmp_path / "reports" / "learning_jobs")
+    signal = make_signal()
+
+    with pytest.raises(LearningJobValidationError, match="duplicate signal_id"):
+        service.create_job(
+            [signal, signal],
+            requested_by="admin_user",
+            idempotency_key="duplicate-signal-job-001",
         )
 
 

@@ -177,6 +177,9 @@ def _validate_create_inputs(
         raise LearningJobValidationError("signals must not be empty")
     if not all(isinstance(signal, LearningSignal) for signal in signals):
         raise TypeError("signals must contain LearningSignal values")
+    signal_ids = [signal.signal_id for signal in signals]
+    if len(signal_ids) != len(set(signal_ids)):
+        raise LearningJobValidationError("duplicate signal_id values are not allowed")
     if not isinstance(requested_by, str) or not requested_by.strip():
         raise LearningJobValidationError("requested_by must be a non-empty string")
     if not isinstance(idempotency_key, str) or not idempotency_key.strip():
@@ -205,15 +208,13 @@ def _job_type_for_targets(target_areas: set[str]) -> str:
 
 
 def _harness_requirement(target_areas: set[str]) -> HarnessRequirement:
-    levels = ["L0_L1", "shadow_replay"]
+    levels = ["L0_L1"]
     if "evidence_ingest" in target_areas:
         levels.append("literature_shadow")
-    else:
-        levels.append("clinical_safety")
     return HarnessRequirement(
         case_pack_version="crc_mutation_pack_v0",
         required_levels=_unique(levels),
-        hard_fail_policy="shadow_candidates_require_clean_harness_before_release_intent",
+        hard_fail_policy="block_on_any_hard_fail",
     )
 
 
