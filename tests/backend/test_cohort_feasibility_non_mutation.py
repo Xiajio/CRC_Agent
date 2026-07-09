@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from src.contracts.research_asset import CohortFeasibilityRequest
 from src.services.cohort_feasibility_service import CohortFeasibilityService
 
@@ -14,7 +16,9 @@ def _snapshot(root: Path) -> dict[str, str]:
     return snapshot
 
 
-def test_cohort_feasibility_does_not_mutate_runtime_artifacts(tmp_path: Path) -> None:
+def test_cohort_feasibility_does_not_mutate_runtime_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     protected = [
         tmp_path / "config" / "safety_policy.yaml",
         tmp_path / "reports" / "literature" / "literature_harness.json",
@@ -25,6 +29,9 @@ def test_cohort_feasibility_does_not_mutate_runtime_artifacts(tmp_path: Path) ->
     for path in protected:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(f"{path.name}: original\n", encoding="utf-8")
+
+    # Relative runtime writes must land inside the guarded temp tree.
+    monkeypatch.chdir(tmp_path)
     before = _snapshot(tmp_path)
 
     request = CohortFeasibilityRequest(
