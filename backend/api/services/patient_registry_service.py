@@ -1174,11 +1174,7 @@ class PatientRegistryService:
                     record_id,
                     patient_id,
                     record_type,
-                    document_type,
-                    normalized_payload_json,
-                    summary_text,
-                    source,
-                    created_at
+                    normalized_payload_json
                 FROM patient_records
                 ORDER BY record_id ASC
                 LIMIT ?

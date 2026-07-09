@@ -177,6 +177,12 @@ def test_registry_exposes_read_only_research_projection_records(tmp_path: Path) 
 
     after = registry.get_patient_detail(patient_id)
     assert len(rows) == 1
+    assert set(rows[0]) == {
+        "record_id",
+        "patient_id",
+        "record_type",
+        "normalized_payload_json",
+    }
     assert rows[0]["patient_id"] == patient_id
     assert rows[0]["record_type"] == "medical_card"
     assert before == after
