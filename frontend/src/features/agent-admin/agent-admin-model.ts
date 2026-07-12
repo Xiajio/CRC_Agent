@@ -12,7 +12,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { AdminToolItem, AdminToolManifestResponse, SessionRunTraceStep, SessionState } from "../../app/api/types";
+import type {
+  AdminRuleItem,
+  AdminRulesResponse,
+  AdminToolItem,
+  AdminToolManifestResponse,
+  SessionRunTraceStep,
+  SessionState,
+} from "../../app/api/types";
 
 export type AgentAdminTaskId =
   | "overview"
@@ -201,6 +208,27 @@ export const RULE_CATALOG = [
   { id: "evaluation.critic_required", group: "评估规则", label: "回答前 Critic 检查", state: "enabled" },
 ];
 
+export type AgentAdminRuleRow = {
+  id: string;
+  group: string;
+  disposition: string;
+  label: string;
+  state: string;
+  priority?: number;
+  conditionSummary: string;
+  hardFailIfMissed: boolean;
+  policyId: string;
+  version: string;
+  source: "runtime" | "catalog";
+};
+
+export type AgentAdminRuleGroupRow = {
+  name: string;
+  disposition: string;
+  count: number;
+  rules?: AgentAdminRuleRow[];
+};
+
 type AgentAdminToolRowSource = "runtime" | "fallback";
 
 export type AgentAdminToolRow = {
@@ -252,20 +280,47 @@ export const CATEGORY_LABELS: Record<AdminToolItem["category"], string> = {
   formatting: "Formatting",
 };
 
-export function buildRuleCatalogRows() {
+function labelForRuntimeRule(rule: AdminRuleItem): string {
+  return rule.condition_summary?.trim() || rule.id;
+}
+
+export function buildRuleCatalogRows(rulesResponse?: AdminRulesResponse | null): AgentAdminRuleRow[] {
+  if (rulesResponse) {
+    return rulesResponse.rules.map((rule) => ({
+      id: rule.id,
+      group: rule.group,
+      disposition: rule.disposition,
+      label: labelForRuntimeRule(rule),
+      state: rulesResponse.status,
+      priority: rule.priority,
+      conditionSummary: rule.condition_summary ?? "未提供",
+      hardFailIfMissed: rule.hard_fail_if_missed,
+      policyId: rulesResponse.policy_id,
+      version: rulesResponse.version,
+      source: "runtime",
+    }));
+  }
+
   return RULE_CATALOG.map((rule) => ({
-    ...rule,
-    editable: false,
-    ownerModule: rule.id.split(".")[0],
+    id: rule.id,
+    group: rule.group,
+    disposition: "catalog",
+    label: rule.label,
+    state: rule.state,
+    conditionSummary: "静态目录占位；运行时规则 API 不可用",
+    hardFailIfMissed: false,
+    policyId: "catalog",
+    version: "catalog",
+    source: "catalog",
   }));
 }
 
-export function buildRuleCatalogGroups() {
-  const ruleRows = buildRuleCatalogRows();
+export function buildRuleCatalogGroups(rulesResponse?: AdminRulesResponse | null): AgentAdminRuleGroupRow[] {
+  const ruleRows = buildRuleCatalogRows(rulesResponse);
 
-  return buildRuleGroupRows().map((group) => ({
+  return buildRuleGroupRows(rulesResponse).map((group) => ({
     ...group,
-    rules: ruleRows.filter((rule) => rule.group === group.name),
+    rules: ruleRows.filter((rule) => rule.group === group.name && rule.disposition === group.disposition),
   }));
 }
 
@@ -346,7 +401,18 @@ export function buildToolGroupRows(manifest?: AdminToolManifestResponse | null):
   }));
 }
 
-export function buildRuleGroupRows() {
+export function buildRuleGroupRows(rulesResponse?: AdminRulesResponse | null): AgentAdminRuleGroupRow[] {
+  if (rulesResponse) {
+    const counts = rulesResponse.rules.reduce<Record<string, AgentAdminRuleGroupRow>>((groups, rule) => {
+      const key = `${rule.group}::${rule.disposition}`;
+      const existing = groups[key] ?? { name: rule.group, disposition: rule.disposition, count: 0 };
+      groups[key] = { ...existing, count: existing.count + 1 };
+      return groups;
+    }, {});
+
+    return Object.values(counts);
+  }
+
   const counts = RULE_CATALOG.reduce<Record<string, number>>((groups, rule) => {
     const namespace = rule.id.split(".")[0];
     const group =
@@ -363,7 +429,7 @@ export function buildRuleGroupRows() {
     return groups;
   }, {});
 
-  return Object.entries(counts).map(([name, count]) => ({ name, count }));
+  return Object.entries(counts).map(([name, count]) => ({ name, disposition: "catalog", count }));
 }
 
 export function asRecord(value: unknown): Record<string, unknown> | null {

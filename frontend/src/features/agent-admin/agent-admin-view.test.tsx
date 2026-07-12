@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { describe, expect, it, vi } from "vitest";
 
 import type {
+  AdminRulesResponse,
   AdminReleaseClosureResponse,
   AdminReleaseDashboardResponse,
   AdminReleaseExecutionResponse,
@@ -78,6 +79,36 @@ function makeAdminToolsManifest(): AdminToolManifestResponse {
       auth: "admin",
       source: "src.tools.manifest",
     },
+  };
+}
+
+function makeAdminRulesResponse(): AdminRulesResponse {
+  return {
+    policy_id: "crc_safety_policy",
+    version: "v2026.07.12",
+    status: "active",
+    applies_to: "doctor",
+    severity_order: ["block", "warn"],
+    source_path: "config/safety_policy.yaml",
+    note: "read-only projection; not editable from admin UI",
+    rules: [
+      {
+        id: "runtime.routing.intent_crc_triage",
+        priority: 10,
+        disposition: "block",
+        hard_fail_if_missed: true,
+        group: "运行时路由规则",
+        condition_summary: "route CRC triage to the safety graph",
+      },
+      {
+        id: "runtime.memory.summary_refresh",
+        priority: 20,
+        disposition: "warn",
+        hard_fail_if_missed: false,
+        group: "运行时记忆规则",
+        condition_summary: "refresh stale summary memory before response",
+      },
+    ],
   };
 }
 
@@ -677,8 +708,67 @@ describe("AgentAdminView", () => {
     const page = screen.getByTestId("agent-admin-task-page");
     expect(page).toHaveTextContent("规则分组");
     expect(page).toHaveTextContent("routing.intent.knowledge_query");
-    expect(page).toHaveTextContent("owner module");
-    expect(page).toHaveTextContent("editable: false");
+    expect(page).toHaveTextContent("static catalog");
+    expect(page).toHaveTextContent("policy_id: catalog");
+    expect(page).toHaveTextContent("hard_fail_if_missed: false");
+    expect(page).not.toHaveTextContent("editable");
+  });
+
+  it("renders runtime rules from the admin rules API", async () => {
+    const rules = makeAdminRulesResponse();
+    const apiClient = { getAdminRules: vi.fn(async () => rules) };
+
+    render(
+      <AgentAdminView
+        activeScene="patient"
+        patient={makeState({ sessionId: "patient-rules-api" })}
+        doctor={makeState({ sessionId: "doctor-rules-api" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /规则/ }));
+
+    await waitFor(() => expect(apiClient.getAdminRules).toHaveBeenCalledTimes(1));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("runtime API");
+    expect(page).toHaveTextContent("runtime.routing.intent_crc_triage");
+    expect(page).toHaveTextContent("运行时路由规则 / block / 1");
+    expect(page).toHaveTextContent("policy_id: crc_safety_policy");
+    expect(page).toHaveTextContent("version: v2026.07.12");
+    expect(page).toHaveTextContent("hard_fail_if_missed: true");
+    expect(page).toHaveTextContent("read-only projection; not editable from admin UI");
+    expect(page).not.toHaveTextContent("routing.intent.knowledge_query");
+    expect(page).not.toHaveTextContent("editable: false");
+  });
+
+  it("falls back to the static rule catalog when the admin rules API fails", async () => {
+    const apiClient = {
+      getAdminRules: vi.fn(async () => {
+        throw new Error("rules endpoint unavailable");
+      }),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="patient"
+        patient={makeState({ sessionId: "patient-rules-fallback" })}
+        doctor={makeState({ sessionId: "doctor-rules-fallback" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /规则/ }));
+
+    await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("rules API unavailable"));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("static catalog");
+    expect(page).toHaveTextContent("rules endpoint unavailable");
+    expect(page).toHaveTextContent("routing.intent.knowledge_query");
   });
 
   it("renders tools as an inventory table and reachability map", () => {
@@ -719,6 +809,7 @@ describe("AgentAdminView", () => {
     await waitFor(() => expect(apiClient.getAdminTools).toHaveBeenCalledTimes(1));
 
     const page = screen.getByTestId("agent-admin-task-page");
+    expect(within(page).getByText("runtime API")).toHaveAttribute("data-source", "runtime-api");
     expect(page).toHaveTextContent("runtime manifest");
     expect(page).toHaveTextContent("search_clinical_guidelines");
     expect(page).toHaveTextContent("search_latest_research");
@@ -833,9 +924,37 @@ describe("AgentAdminView", () => {
     await waitFor(() => expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("runtime manifest unavailable"));
 
     const page = screen.getByTestId("agent-admin-task-page");
-    expect(page).toHaveTextContent("fallback inventory");
+    expect(within(page).getByText("static catalog")).toHaveAttribute("data-source", "catalog");
+    expect(page).toHaveTextContent("非运行时清单");
     expect(page).toHaveTextContent("Forbidden");
     expect(page).toHaveTextContent("search_latest_research");
+  });
+
+  it("marks idle tools and overview tool counts as catalog data until the runtime manifest loads", async () => {
+    const manifest = makeAdminToolsManifest();
+    const apiClient = { getAdminTools: vi.fn(async () => manifest) };
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-tools-overview" })}
+        doctor={makeState({ sessionId: "doctor-tools-overview" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    let availableToolsMetric = screen.getByText("可用工具").closest("article");
+    expect(availableToolsMetric).toHaveTextContent("n/a (catalog)");
+
+    clickToolsTask();
+    await waitFor(() => expect(apiClient.getAdminTools).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "巡检总览" }));
+
+    availableToolsMetric = screen.getByText("可用工具").closest("article");
+    expect(availableToolsMetric).toHaveTextContent("2");
+    expect(availableToolsMetric).not.toHaveTextContent("catalog");
   });
 
   it("renders the release dashboard task from the admin rail", async () => {
@@ -2485,8 +2604,9 @@ describe("AgentAdminView", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: "routing.intent.knowledge_query",
-          editable: false,
-          ownerModule: "routing",
+          source: "catalog",
+          policyId: "catalog",
+          hardFailIfMissed: false,
         }),
       ]),
     );

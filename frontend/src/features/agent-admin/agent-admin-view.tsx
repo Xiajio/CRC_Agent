@@ -15,6 +15,7 @@ import type {
   AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
   AdminReleaseMonitoringResponse,
+  AdminRulesResponse,
   AdminToolManifestResponse,
 } from "../../app/api/types";
 import type { Scene, SessionState } from "../../app/api/types";
@@ -40,6 +41,7 @@ type AgentAdminViewProps = {
     Pick<
       ApiClient,
       | "getAdminTools"
+      | "getAdminRules"
       | "getAdminReleaseDashboard"
       | "getAdminReleaseGovernance"
       | "getAdminReleaseExecution"
@@ -62,6 +64,12 @@ export type AgentAdminToolsResource =
   | { status: "idle" }
   | { status: "loading" }
   | { status: "success"; data: AdminToolManifestResponse }
+  | { status: "error"; error: { status?: number; message: string } };
+
+export type AgentAdminRulesResource =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; data: AdminRulesResponse }
   | { status: "error"; error: { status?: number; message: string } };
 
 export type AgentAdminReleaseDashboardResource =
@@ -154,6 +162,7 @@ export function AgentAdminView({
 }: AgentAdminViewProps) {
   const [activeTaskId, setActiveTaskId] = useState<AgentAdminTaskId>("overview");
   const [toolsResource, setToolsResource] = useState<AgentAdminToolsResource>({ status: "idle" });
+  const [rulesResource, setRulesResource] = useState<AgentAdminRulesResource>({ status: "idle" });
   const [releaseDashboardResource, setReleaseDashboardResource] = useState<AgentAdminReleaseDashboardResource>({ status: "idle" });
   const [releaseGovernanceResource, setReleaseGovernanceResource] = useState<AgentAdminReleaseGovernanceResource>({ status: "idle" });
   const [releaseExecutionResource, setReleaseExecutionResource] = useState<AgentAdminReleaseExecutionResource>({ status: "idle" });
@@ -261,6 +270,42 @@ export function AgentAdminView({
           error: {
             message: error instanceof Error ? error.message : "Unknown admin tools error",
           },
+        });
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTaskId, apiClient]);
+
+  useEffect(() => {
+    if (activeTaskId !== "rules") {
+      return;
+    }
+
+    if (!apiClient || typeof apiClient.getAdminRules !== "function") {
+      setRulesResource({ status: "idle" });
+      return;
+    }
+
+    let cancelled = false;
+    setRulesResource({ status: "loading" });
+
+    void apiClient.getAdminRules().then(
+      (data) => {
+        if (!cancelled) {
+          setRulesResource({ status: "success", data });
+        }
+      },
+      (error) => {
+        if (cancelled) {
+          return;
+        }
+
+        setRulesResource({
+          status: "error",
+          error: apiErrorDetails(error, "Unknown admin rules error"),
         });
       },
     );
@@ -615,6 +660,9 @@ export function AgentAdminView({
     if (taskId === "tools" && activeTaskId !== "tools" && apiClient && typeof apiClient.getAdminTools === "function") {
       setToolsResource({ status: "loading" });
     }
+    if (taskId === "rules" && activeTaskId !== "rules" && apiClient && typeof apiClient.getAdminRules === "function") {
+      setRulesResource({ status: "loading" });
+    }
     if (taskId === "release" && activeTaskId !== "release" && apiClient && typeof apiClient.getAdminReleaseDashboard === "function") {
       setReleaseDashboardResource({ status: "loading" });
     }
@@ -719,6 +767,7 @@ export function AgentAdminView({
           doctor={doctor}
           onNavigateTask={navigateTask}
           toolsResource={toolsResource}
+          rulesResource={rulesResource}
           releaseDashboardResource={releaseDashboardResource}
           releaseGovernanceResource={releaseGovernanceResource}
           releaseExecutionResource={releaseExecutionResource}

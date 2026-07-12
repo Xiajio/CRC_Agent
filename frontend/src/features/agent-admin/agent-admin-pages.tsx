@@ -76,7 +76,7 @@ import {
   type AgentAdminTraceRow,
   type AgentAdminTaskId,
 } from "./agent-admin-model";
-import type { AgentAdminReleaseDashboardResource, AgentAdminToolsResource } from "./agent-admin-view";
+import type { AgentAdminReleaseDashboardResource, AgentAdminRulesResource, AgentAdminToolsResource } from "./agent-admin-view";
 import type {
   AgentAdminReleaseClosureActions,
   AgentAdminReleaseClosureActionState,
@@ -99,6 +99,7 @@ type AgentAdminPagesProps = {
   doctor: SessionState;
   onNavigateTask: (taskId: AgentAdminTaskId) => void;
   toolsResource: AgentAdminToolsResource;
+  rulesResource: AgentAdminRulesResource;
   releaseDashboardResource: AgentAdminReleaseDashboardResource;
   releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
   releaseExecutionResource: AgentAdminReleaseExecutionResource;
@@ -161,6 +162,7 @@ export function AgentAdminTaskPages({
   doctor,
   onNavigateTask,
   toolsResource,
+  rulesResource,
   releaseDashboardResource,
   releaseGovernanceResource,
   releaseExecutionResource,
@@ -199,13 +201,14 @@ export function AgentAdminTaskPages({
           patient={patient}
           doctor={doctor}
           onNavigateTask={onNavigateTask}
+          toolsResource={toolsResource}
         />
       ) : activeTaskId === "sessions" ? (
         <SessionsPage patient={patient} doctor={doctor} />
       ) : activeTaskId === "memory" ? (
         <MemoryPage patient={patient} doctor={doctor} />
       ) : activeTaskId === "rules" ? (
-        <RulesPage />
+        <RulesPage rulesResource={rulesResource} />
       ) : activeTaskId === "tools" ? (
         <ToolsPage toolsResource={toolsResource} />
       ) : activeTaskId === "learning" ? (
@@ -244,10 +247,11 @@ function AgentAdminOverviewPage({
   patient,
   doctor,
   onNavigateTask,
+  toolsResource,
 }: Omit<
   AgentAdminPagesProps,
   | "activeTaskId"
-  | "toolsResource"
+  | "rulesResource"
   | "releaseDashboardResource"
   | "releaseGovernanceResource"
   | "releaseExecutionResource"
@@ -266,7 +270,7 @@ function AgentAdminOverviewPage({
   const patientSession = buildSessionSummary("患者", patient);
   const doctorSession = buildSessionSummary("医生", doctor);
   const ruleGroups = buildRuleGroupRows();
-  const toolRows = buildToolInventoryRows();
+  const runtimeToolCount = toolsResource.status === "success" ? toolsResource.data.tools.length : null;
   const references = buildEvidenceRows(watchedState);
   const activePlan = watchedState.plan.slice(0, 4);
   const status = sessionStatus(watchedState);
@@ -283,7 +287,12 @@ function AgentAdminOverviewPage({
       detail: recentRun ? `${recentRun.status ?? "unknown"} / graph ${recentRun.graphPath.length}` : "runTrace pending",
       tone: recentRun?.status === "error" || recentRun?.status === "aborted" ? "warning" as const : "neutral" as const,
     },
-    { label: "可用工具", value: String(toolRows.length), tone: "red" as const },
+    {
+      label: "可用工具",
+      value: runtimeToolCount === null ? "n/a (catalog)" : String(runtimeToolCount),
+      detail: runtimeToolCount === null ? undefined : "runtime-api",
+      tone: "red" as const,
+    },
     { label: "规则组", value: String(ruleGroups.length), tone: "neutral" as const },
   ];
   const recentChanges = [
@@ -568,34 +577,70 @@ function MemoryPage({ patient, doctor }: Pick<AgentAdminPagesProps, "patient" | 
   );
 }
 
-function RulesPage() {
-  const rulesByGroup = buildRuleCatalogGroups();
-  const inspectedRule = buildRuleCatalogRows()[0];
+function RulesPage({ rulesResource }: { rulesResource: AgentAdminRulesResource }) {
+  const rulesResponse = rulesResource.status === "success" ? rulesResource.data : null;
+  const shouldRenderCatalog = rulesResource.status === "idle" || rulesResource.status === "error";
+  const rulesByGroup = rulesResponse ? buildRuleCatalogGroups(rulesResponse) : shouldRenderCatalog ? buildRuleCatalogGroups() : [];
+  const ruleRows = rulesResponse ? buildRuleCatalogRows(rulesResponse) : shouldRenderCatalog ? buildRuleCatalogRows() : [];
+  const inspectedRule = ruleRows[0];
+  const sourceBadge =
+    rulesResource.status === "success" ? "runtime-api" : rulesResource.status === "loading" ? "unavailable" : "catalog";
+  const sourceStatus =
+    rulesResource.status === "success"
+      ? `${rulesResource.data.policy_id} / ${rulesResource.data.version} / ${rulesResource.data.status}`
+      : rulesResource.status === "loading"
+        ? "reading rules API"
+        : rulesResource.status === "error"
+          ? `rules API unavailable${rulesResource.error.status ? ` (${rulesResource.error.status})` : ""}: ${rulesResource.error.message}`
+          : "catalog fallback";
+  const note = rulesResource.status === "success" ? rulesResource.data.note : "静态目录占位；规则仅展示，不可在后台编辑";
 
   return (
     <>
       <AgentAdminSplitWorkbench
         primary={
           <>
-            <AgentAdminPanel eyebrow="group summary" title="规则分组" icon={ListChecks}>
+            <AgentAdminPanel
+              eyebrow="group summary"
+              title="规则分组"
+              icon={ListChecks}
+              action={<AgentAdminSourceBadge source={sourceBadge} />}
+            >
+              <div className="agent-admin-detail-list">
+                <span>{sourceStatus}</span>
+                <span>{note}</span>
+              </div>
               <div className="agent-admin-timeline">
-                {rulesByGroup.map((group) => (
-                  <article key={group.name} className="agent-admin-timeline-row agent-admin-timeline-row-success">
+                {rulesByGroup.length > 0 ? (
+                  rulesByGroup.map((group) => (
+                    <article key={`${group.name}:${group.disposition}`} className="agent-admin-timeline-row agent-admin-timeline-row-success">
+                      <span className="agent-admin-timeline-node">
+                        <AgentAdminStateIcon state="success" />
+                        {group.name}
+                      </span>
+                      <span>
+                        {group.name} / {group.disposition} / {group.count}
+                      </span>
+                      <strong>{group.count}</strong>
+                    </article>
+                  ))
+                ) : (
+                  <article className="agent-admin-timeline-row agent-admin-timeline-row-ready">
                     <span className="agent-admin-timeline-node">
-                      <AgentAdminStateIcon state="success" />
-                      {group.name}
+                      <AgentAdminStateIcon state="ready" />
+                      reading rules API
                     </span>
-                    <span>catalog entries</span>
-                    <strong>{group.count}</strong>
+                    <span>runtime rules</span>
+                    <strong>loading</strong>
                   </article>
-                ))}
+                )}
               </div>
             </AgentAdminPanel>
             <AgentAdminPanel eyebrow="catalog tree" title="规则目录" icon={GitBranch}>
               <div className="agent-admin-detail-list">
                 {rulesByGroup.map((group) => (
-                  <span key={group.name}>
-                    <strong>{group.name}</strong> / {group.rules.map((rule) => rule.id).join(" / ")}
+                  <span key={`${group.name}:${group.disposition}`}>
+                    <strong>{group.name}</strong> / {(group.rules ?? []).map((rule) => rule.id).join(" / ")}
                   </span>
                 ))}
               </div>
@@ -603,14 +648,27 @@ function RulesPage() {
           </>
         }
         secondary={
-          <AgentAdminPanel eyebrow="rule inspector" title="owner module" icon={ServerCog}>
+          <AgentAdminPanel eyebrow="rule inspector" title="规则检查器" icon={ServerCog}>
             <div className="agent-admin-detail-list">
-              <span>{inspectedRule.id}</span>
-              <span>{inspectedRule.label}</span>
-              <span>group: {inspectedRule.group}</span>
-              <span>state: {inspectedRule.state}</span>
-              <span>editable: {String(inspectedRule.editable)}</span>
-              <span>owner module: {inspectedRule.ownerModule}</span>
+              {inspectedRule ? (
+                <>
+                  <span>{inspectedRule.id}</span>
+                  <span>{inspectedRule.label}</span>
+                  <span>group: {inspectedRule.group}</span>
+                  <span>disposition: {inspectedRule.disposition}</span>
+                  <span>state: {inspectedRule.state}</span>
+                  <span>policy_id: {inspectedRule.policyId}</span>
+                  <span>version: {inspectedRule.version}</span>
+                  <span>hard_fail_if_missed: {String(inspectedRule.hardFailIfMissed)}</span>
+                  <span>{inspectedRule.conditionSummary}</span>
+                </>
+              ) : (
+                <>
+                  <span>reading rules API</span>
+                  <span>runtime rules</span>
+                  <span>loading</span>
+                </>
+              )}
             </div>
           </AgentAdminPanel>
         }
@@ -629,6 +687,8 @@ function ToolsPage({ toolsResource }: { toolsResource: AgentAdminToolsResource }
       ? buildToolReachabilityRows()
       : [];
   const inspectedTool = toolRows[0];
+  const sourceBadge =
+    toolsResource.status === "success" ? "runtime-api" : toolsResource.status === "loading" ? "unavailable" : "catalog";
   const sourceStatus =
     toolsResource.status === "success"
       ? "runtime manifest"
@@ -636,8 +696,8 @@ function ToolsPage({ toolsResource }: { toolsResource: AgentAdminToolsResource }
         ? "reading runtime manifest"
         : toolsResource.status === "error"
           ? `runtime manifest unavailable${toolsResource.error.status ? ` (${toolsResource.error.status})` : ""}: ${toolsResource.error.message}`
-          : "fallback inventory";
-  const fallbackStatus = toolsResource.status === "error" ? "fallback inventory" : null;
+          : "非运行时清单";
+  const fallbackStatus = toolsResource.status === "error" ? "非运行时清单" : null;
   const runtimeFlag = manifest ? `WEB_SEARCH_ENABLED ${String(manifest.runtime.web_search_enabled)}` : null;
   const emptyToolLabel =
     toolsResource.status === "success" ? "runtime manifest returned no tools" : "reading runtime manifest";
@@ -650,7 +710,12 @@ function ToolsPage({ toolsResource }: { toolsResource: AgentAdminToolsResource }
       <AgentAdminSplitWorkbench
         primary={
           <>
-            <AgentAdminPanel eyebrow="filters" title="工具筛选" icon={GitBranch}>
+            <AgentAdminPanel
+              eyebrow="filters"
+              title="工具筛选"
+              icon={GitBranch}
+              action={<AgentAdminSourceBadge source={sourceBadge} />}
+            >
               <div className="agent-admin-detail-list">
                 <span>{sourceStatus}</span>
                 {fallbackStatus ? <span>{fallbackStatus}</span> : null}
