@@ -90,6 +90,65 @@ describe("hydrateSessionState", () => {
 
     expect(state.runTrace).toBeNull();
   });
+
+  it("preserves runTrace when hydrating the same session after stream completion", () => {
+    let state = {
+      ...createInitialSessionState(),
+      sessionId: "sess",
+    };
+
+    state = reduceStreamEvent(state, {
+      type: "trace.start",
+      trace_id: "trace-1",
+      scene: "doctor",
+      session_id: "sess",
+      run_id: "run-1",
+      server_received_at: "t0",
+      graph_started_at: "t0",
+      graph_path: ["intent", "planner"],
+      attrs: {},
+    });
+    state = reduceStreamEvent(state, {
+      type: "trace.step",
+      trace_id: "trace-1",
+      name: "planner",
+      at: "t1",
+      session_id: "sess",
+      run_id: "run-1",
+      attrs: { duration_ms: 120 },
+    });
+
+    const hydrated = hydrateSessionState(state, {
+      session_id: "sess",
+      thread_id: "thread",
+      scene: "doctor",
+      patient_id: null,
+      snapshot_version: 2,
+      runtime: { runner_mode: "real", fixture_case: null },
+      snapshot: {
+        snapshot_version: 2,
+        messages: [],
+        messages_total: 0,
+        messages_next_before_cursor: null,
+        cards: [],
+        roadmap: [],
+        findings: {},
+        patient_profile: null,
+        patient_identity: null,
+        stage: null,
+        assessment_draft: null,
+        references: [],
+        plan: [],
+        critic: null,
+        safety_alert: null,
+        uploaded_assets: {},
+        context_maintenance: null,
+        context_state: null,
+      },
+    });
+
+    expect(hydrated.runTrace).toEqual(state.runTrace);
+  });
 });
 
 describe("reduceStreamEvent", () => {

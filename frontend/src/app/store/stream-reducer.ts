@@ -405,6 +405,7 @@ export function createInitialSessionState(): SessionState {
 
 export function hydrateSessionState(state: SessionState, response: SessionResponse): SessionState {
   const snapshot = response.snapshot;
+  const isSameSession = state.sessionId !== null && state.sessionId === response.session_id;
   return {
     ...state,
     sessionId: response.session_id,
@@ -438,7 +439,7 @@ export function hydrateSessionState(state: SessionState, response: SessionRespon
     latestAssistantMessageCursor: null,
     streamingMessageCursors: {},
     eventLog: state.eventLog ?? [],
-    runTrace: null,
+    runTrace: isSameSession ? state.runTrace : null,
   };
 }
 
