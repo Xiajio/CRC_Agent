@@ -2467,14 +2467,16 @@ describe("AgentAdminView", () => {
     const state = makeState({
       statusNode: "planner",
       eventLog: [
-        { id: "1", kind: "node", title: "planner", detail: "running", tone: "neutral" },
-        { id: "2", kind: "done", title: "done", detail: null, tone: "success" },
+        { id: "node-1", kind: "node", title: "planner", detail: "running", tone: "neutral" },
+        { id: "node-2", kind: "node", title: "planner", detail: "retrying", tone: "neutral" },
+        { id: "done-1", kind: "done", title: "done", detail: null, tone: "success" },
       ],
     });
 
     const rows = buildLiveTraceRows(state);
 
-    expect(rows.map((row) => row.name)).toEqual(["planner", "done"]);
+    expect(rows.map((row) => row.name)).toEqual(["planner", "planner", "done"]);
+    expect(rows.map((row) => row.id)).toEqual(["node-1", "node-2", "done-1"]);
     expect(rows.every((row) => row.latency === null || row.latency === "—")).toBe(true);
   });
 });

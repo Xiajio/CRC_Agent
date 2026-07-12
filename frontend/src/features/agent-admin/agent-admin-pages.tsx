@@ -254,8 +254,8 @@ function AgentAdminOverviewPage({
         primary={
           <AgentAdminPanel eyebrow="run health" title="运行健康时间线" icon={Clock3} action={<AgentAdminSourceBadge source="live" />}>
             <div className="agent-admin-timeline">
-              {timelineSteps.map((step, index) => (
-                <article key={`${step.name}-${index}`} className={`agent-admin-timeline-row agent-admin-timeline-row-${step.state}`}>
+              {timelineSteps.map((step) => (
+                <article key={step.id} className={`agent-admin-timeline-row agent-admin-timeline-row-${step.state}`}>
                   <span className="agent-admin-timeline-node">
                     <AgentAdminStateIcon state={step.state} />
                     {step.name}
@@ -776,7 +776,7 @@ function TracePage({ activeScene, patient, doctor }: Pick<AgentAdminPagesProps, 
           <AgentAdminPanel eyebrow="timeline events" title="执行事件时间线" icon={Clock3}>
             <div className="agent-admin-timeline">
               {traceEvents.map((event) => (
-                <article key={event.name} className={`agent-admin-timeline-row agent-admin-timeline-row-${event.state}`}>
+                <article key={event.id} className={`agent-admin-timeline-row agent-admin-timeline-row-${event.state}`}>
                   <span className="agent-admin-timeline-node">
                     <AgentAdminStateIcon state={event.state} />
                     {event.name}
@@ -803,7 +803,7 @@ function TracePage({ activeScene, patient, doctor }: Pick<AgentAdminPagesProps, 
       <AgentAdminPanel eyebrow="event table" title="event table" icon={ListChecks}>
         <div className="agent-admin-timeline">
           {traceEvents.map((event) => (
-            <article key={`${event.name}-table`} className="agent-admin-timeline-row agent-admin-timeline-row-ready">
+            <article key={event.id} className="agent-admin-timeline-row agent-admin-timeline-row-ready">
               <span>{event.name}</span>
               <span>{event.detail}</span>
               <strong>{event.latency ?? "—"}</strong>

@@ -944,6 +944,7 @@ export function buildEvidenceRows(state: SessionState): Array<{ title: string; s
 }
 
 export type AgentAdminTraceRow = {
+  id: string;
   name: string;
   detail: string;
   latency: string | null;
@@ -956,6 +957,7 @@ export function buildLiveTraceRows(state: SessionState): AgentAdminTraceRow[] {
   if (log.length === 0) {
     return [
       {
+        id: "empty",
         name: "暂无执行事件",
         detail: "先在患者/医生端发起一轮对话；后台读取同一会话的 eventLog",
         latency: null,
@@ -966,6 +968,7 @@ export function buildLiveTraceRows(state: SessionState): AgentAdminTraceRow[] {
   }
 
   return log.map((entry) => ({
+    id: entry.id,
     name: entry.title,
     detail: entry.detail ?? entry.kind,
     latency: null,
