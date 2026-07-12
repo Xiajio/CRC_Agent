@@ -491,6 +491,54 @@ describe("AgentAdminView", () => {
     expect(page).toHaveTextContent("doctor-run");
   });
 
+  it("renders Sessions recent events from patient and doctor eventLog titles", () => {
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({
+          sessionId: "patient-events",
+          snapshotVersion: 2,
+          activeRunId: "run-patient",
+          eventLog: [
+            { id: "patient-event-1", kind: "node", title: "患者进入问诊节点", detail: "intent", tone: "neutral" },
+          ],
+        })}
+        doctor={makeState({
+          sessionId: "doctor-events",
+          snapshotVersion: 3,
+          activeRunId: "run-doctor",
+          eventLog: [
+            { id: "doctor-event-1", kind: "references", title: "医生完成证据检索", detail: "RAG", tone: "success" },
+          ],
+        })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /会话/ }));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("患者: 患者进入问诊节点");
+    expect(page).toHaveTextContent("医生: 医生完成证据检索");
+    expect(page).not.toHaveTextContent("patient patient-events / v2 / run-patient");
+    expect(page).not.toHaveTextContent("doctor doctor-events / v3 / run-doctor");
+  });
+
+  it("renders an empty SSE event message when Sessions eventLog is empty", () => {
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-events-empty" })}
+        doctor={makeState({ sessionId: "doctor-events-empty" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /会话/ }));
+
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("尚无 SSE 事件");
+  });
+
   it("renders memory as an automation lifecycle workbench", () => {
     render(
       <AgentAdminView

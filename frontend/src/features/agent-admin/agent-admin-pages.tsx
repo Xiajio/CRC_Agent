@@ -40,6 +40,7 @@ import type {
   AdminReleaseRollbackPlanStatus,
   AdminReleaseRunStatus,
   AdminReleaseTargetScope,
+  ClinicalEventLogEntry,
   JsonValue,
   Scene,
   SessionState,
@@ -111,6 +112,22 @@ type AgentAdminPagesProps = {
   releaseMonitoringActions: AgentAdminReleaseMonitoringActions;
   releaseClosureActions: AgentAdminReleaseClosureActions;
 };
+
+type SessionRecentEvent = {
+  key: string;
+  text: string;
+};
+
+function recentSessionEventsForScene(
+  sceneKey: Scene,
+  label: "患者" | "医生",
+  eventLog: ClinicalEventLogEntry[],
+): SessionRecentEvent[] {
+  return eventLog.slice(-5).map((event) => ({
+    key: `${sceneKey}-${event.id}`,
+    text: `${label}: ${event.title}`,
+  }));
+}
 
 function watchedSession(activeScene: Scene, patient: SessionState, doctor: SessionState) {
   return activeScene === "doctor" ? doctor : patient;
@@ -348,9 +365,8 @@ function SessionsPage({ patient, doctor }: Pick<AgentAdminPagesProps, "patient" 
     { label: "current node", patient: patientSession.currentNode, doctor: doctorSession.currentNode },
   ];
   const recentEvents = [
-    `patient ${patientSession.sessionId} / ${patientSession.snapshot} / ${patientSession.activeRunId}`,
-    `doctor ${doctorSession.sessionId} / ${doctorSession.snapshot} / ${doctorSession.activeRunId}`,
-    `maintenance ${patientSession.contextMaintenance} -> ${doctorSession.contextMaintenance}`,
+    ...recentSessionEventsForScene("patient", "患者", patient.eventLog),
+    ...recentSessionEventsForScene("doctor", "医生", doctor.eventLog),
   ];
 
   return (
@@ -395,9 +411,11 @@ function SessionsPage({ patient, doctor }: Pick<AgentAdminPagesProps, "patient" 
       />
       <AgentAdminPanel eyebrow="event stream" title="recent session events" icon={Clock3}>
         <div className="agent-admin-detail-list">
-          {recentEvents.map((event) => (
-            <span key={event}>{event}</span>
-          ))}
+          {recentEvents.length > 0
+            ? recentEvents.map((event) => (
+                <span key={event.key}>{event.text}</span>
+              ))
+            : <span>尚无 SSE 事件</span>}
         </div>
       </AgentAdminPanel>
     </>
