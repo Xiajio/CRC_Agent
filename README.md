@@ -101,7 +101,13 @@ INTENT → PLANNER → CLINICAL_ENTRY_RESOLVER → OUTPATIENT_TRIAGE / ASSESSMEN
 总览 → 会话 / 记忆 / 规则 / 工具 / 学习 / Trace / 证据 / Release（发布看板+治理） / 设置只读
 ```
 
-只读观测控制台，通过 `WorkspaceSurfaceSwitcher` 三工作台切换器进入。一期为前端衍生视图，不写入规则或工具状态。
+只读观测控制台，通过 `WorkspaceSurfaceSwitcher` 三工作台切换器进入；切换到后台不会中止患者/医生端正在进行的临床 SSE stream。当前数据边界：
+
+- **总览 / Trace / 会话**：读取同一患者/医生会话的 live `eventLog` 与 `runTrace`，展示真实流事件、节点状态和 trace 步骤；没有 trace duration 时不展示演示延迟，不伪造 `42ms` / `80ms` 等数字。
+- **规则**：通过 `GET /api/admin/rules` 读取 `config/safety_policy.yaml` 派生的运行时规则；API 不可用时仅显示静态目录占位。
+- **工具**：通过 `GET /api/admin/tools` 读取运行时工具清单与可达性；后端不可用时使用 fallback catalog，并在界面标注 catalog/fallback 来源。
+- **学习**：仅为 roadmap / not wired，scheduler、摄取队列与自主学习执行尚未接入。
+- **只读边界**：后台不写入规则、工具状态或临床流运行态。
 
 ## 目录结构
 
