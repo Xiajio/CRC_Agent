@@ -41,9 +41,155 @@ describe("hydrateSessionState", () => {
     expect(state.registryPatientId).toBe(7);
     expect(state.currentPatientId).toBe("093");
   });
+
+  it("clears runTrace when hydrating a reset session snapshot", () => {
+    const state = hydrateSessionState(
+      {
+        ...createInitialSessionState(),
+        runTrace: {
+          traceId: "trace-1",
+          runId: "run-1",
+          scene: "doctor",
+          status: "active",
+          graphPath: ["planner"],
+          steps: [{ name: "planner", at: "t1", attrs: {} }],
+          summary: null,
+          startedAt: "t0",
+          finishedAt: null,
+        },
+      },
+      {
+        session_id: "sess",
+        thread_id: "thread",
+        scene: "doctor",
+        patient_id: null,
+        snapshot_version: 2,
+        runtime: { runner_mode: "real", fixture_case: null },
+        snapshot: {
+          snapshot_version: 2,
+          messages: [],
+          messages_total: 0,
+          messages_next_before_cursor: null,
+          cards: [],
+          roadmap: [],
+          findings: {},
+          patient_profile: null,
+          patient_identity: null,
+          stage: null,
+          assessment_draft: null,
+          references: [],
+          plan: [],
+          critic: null,
+          safety_alert: null,
+          uploaded_assets: {},
+          context_maintenance: null,
+          context_state: null,
+        },
+      },
+    );
+
+    expect(state.runTrace).toBeNull();
+  });
 });
 
 describe("reduceStreamEvent", () => {
+  it("records runTrace from trace SSE events", () => {
+    let state = createInitialSessionState();
+
+    state = reduceStreamEvent(state, {
+      type: "trace.start",
+      scene: "doctor",
+      session_id: "s1",
+      run_id: "r1",
+      server_received_at: "t0",
+      graph_started_at: "t0",
+      graph_path: ["intent", "planner"],
+      attrs: {},
+    });
+    state = reduceStreamEvent(state, {
+      type: "trace.step",
+      name: "planner",
+      at: "t1",
+      session_id: "s1",
+      run_id: "r1",
+      attrs: { duration_ms: 120 },
+    });
+
+    expect(state.runTrace?.runId).toBe("r1");
+    expect(state.runTrace?.steps[0]).toMatchObject({ name: "planner" });
+  });
+
+  it("marks runTrace completed from trace.summary events", () => {
+    let state = createInitialSessionState();
+
+    state = reduceStreamEvent(state, {
+      type: "trace.start",
+      trace_id: "trace-1",
+      scene: "doctor",
+      session_id: "s1",
+      run_id: "r1",
+      server_received_at: "t0",
+      graph_started_at: "t0",
+      graph_path: ["intent", "planner"],
+      attrs: {},
+    });
+    state = reduceStreamEvent(state, {
+      type: "trace.summary",
+      trace_id: "trace-1",
+      scene: "doctor",
+      session_id: "s1",
+      run_id: "r1",
+      at: "t2",
+      status: "completed",
+      graph_path: ["intent", "planner"],
+      has_thinking: false,
+      response_chars: 42,
+      tool_calls: 1,
+      retrieval_hit_count: 2,
+      response_tokens: 12,
+      attrs: { model_latency_ms: 300 },
+    });
+
+    expect(state.runTrace?.status).toBe("completed");
+    expect(state.runTrace?.finishedAt).toBe("t2");
+    expect(state.runTrace?.summary).toMatchObject({
+      status: "completed",
+      response_chars: 42,
+    });
+  });
+
+  it("starts a fresh active runTrace when trace.step run_id changes", () => {
+    let state = createInitialSessionState();
+
+    state = reduceStreamEvent(state, {
+      type: "trace.start",
+      trace_id: "trace-1",
+      scene: "doctor",
+      session_id: "s1",
+      run_id: "r1",
+      server_received_at: "t0",
+      graph_started_at: "t0",
+      graph_path: ["intent"],
+      attrs: {},
+    });
+    state = reduceStreamEvent(state, {
+      type: "trace.step",
+      trace_id: "trace-2",
+      name: "planner",
+      at: "t1",
+      session_id: "s1",
+      run_id: "r2",
+      attrs: { duration_ms: 120 },
+    });
+
+    expect(state.runTrace?.runId).toBe("r2");
+    expect(state.runTrace?.status).toBe("active");
+    expect(state.runTrace?.graphPath).toEqual([]);
+    expect(state.runTrace?.steps).toEqual([
+      { name: "planner", at: "t1", attrs: { duration_ms: 120 } },
+    ]);
+  });
+
   it("records a bounded visible event log for clinical stream events", () => {
     let state = createInitialSessionState();
 

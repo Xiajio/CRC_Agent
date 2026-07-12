@@ -10,8 +10,12 @@ import type {
   SafetyAlertState,
   SessionMessage,
   SessionResponse,
+  SessionRunTrace,
   SessionState,
   StreamEvent,
+  TraceStartEvent,
+  TraceStepEvent,
+  TraceSummaryEvent,
 } from "../api/types";
 import { compactClinicalEventDetail, formatCriticFeedback } from "../clinical/critic-feedback";
 
@@ -270,6 +274,82 @@ function cardsToRecord(cards: CardUpsertEvent[]): Record<string, Record<string, 
   }, {});
 }
 
+function runTraceFromStart(event: TraceStartEvent): SessionRunTrace {
+  return {
+    traceId: event.trace_id ?? null,
+    runId: event.run_id,
+    scene: event.scene,
+    status: "active",
+    graphPath: event.graph_path,
+    steps: [],
+    summary: null,
+    startedAt: event.graph_started_at,
+    finishedAt: null,
+  };
+}
+
+function appendRunTraceStep(
+  current: SessionRunTrace | null,
+  event: TraceStepEvent,
+): SessionRunTrace {
+  const step = {
+    name: event.name,
+    at: event.at,
+    attrs: event.attrs,
+  };
+
+  if (!current || current.runId !== event.run_id) {
+    return {
+      traceId: event.trace_id ?? null,
+      runId: event.run_id,
+      scene: null,
+      status: "active",
+      graphPath: [],
+      steps: [step],
+      summary: null,
+      startedAt: null,
+      finishedAt: null,
+    };
+  }
+
+  return {
+    ...current,
+    traceId: current.traceId ?? event.trace_id ?? null,
+    status: "active",
+    steps: [...current.steps, step],
+  };
+}
+
+function completeRunTrace(
+  current: SessionRunTrace | null,
+  event: TraceSummaryEvent,
+): SessionRunTrace {
+  const base = current && current.runId === event.run_id
+    ? current
+    : {
+        traceId: event.trace_id ?? null,
+        runId: event.run_id,
+        scene: event.scene,
+        status: null,
+        graphPath: event.graph_path,
+        steps: [],
+        summary: null,
+        startedAt: null,
+        finishedAt: null,
+      };
+
+  return {
+    ...base,
+    traceId: base.traceId ?? event.trace_id ?? null,
+    runId: event.run_id,
+    scene: event.scene,
+    status: event.status,
+    graphPath: event.graph_path,
+    summary: event,
+    finishedAt: event.at,
+  };
+}
+
 function messageKey(message: FrontendMessage): string {
   return message.cursor || message.id || JSON.stringify([message.type, message.content]);
 }
@@ -319,6 +399,7 @@ export function createInitialSessionState(): SessionState {
     latestAssistantMessageCursor: null,
     streamingMessageCursors: {},
     eventLog: [],
+    runTrace: null,
   };
 }
 
@@ -357,6 +438,7 @@ export function hydrateSessionState(state: SessionState, response: SessionRespon
     latestAssistantMessageCursor: null,
     streamingMessageCursors: {},
     eventLog: state.eventLog ?? [],
+    runTrace: null,
   };
 }
 
@@ -394,6 +476,21 @@ export function mergeMessageHistory(
 
 export function reduceStreamEvent(state: SessionState, event: StreamEvent): SessionState {
   switch (event.type) {
+    case "trace.start":
+      return {
+        ...state,
+        runTrace: runTraceFromStart(event),
+      };
+    case "trace.step":
+      return {
+        ...state,
+        runTrace: appendRunTraceStep(state.runTrace, event),
+      };
+    case "trace.summary":
+      return {
+        ...state,
+        runTrace: completeRunTrace(state.runTrace, event),
+      };
     case "status.node": {
       const nextState = {
         ...state,

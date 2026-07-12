@@ -394,14 +394,14 @@ export function useWorkspaceStreamingTurn({
     try {
       const response = await apiClient.resetSession(sessionId);
       applySessionResponse(response);
-      setSessionState((current) => ({ ...current, eventLog: [] }));
+      setSessionState((current) => ({ ...current, eventLog: [], runTrace: null }));
       return true;
     } catch (error) {
       if (isNotFoundApiError(error)) {
         try {
           const replacement = await apiClient.createSession(scene);
           applySessionResponse(replacement);
-          setSessionState((current) => ({ ...current, eventLog: [] }));
+          setSessionState((current) => ({ ...current, eventLog: [], runTrace: null }));
           return true;
         } catch (replacementError) {
           setErrorMessage(readWorkspaceErrorMessage(replacementError));

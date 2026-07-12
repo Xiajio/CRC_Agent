@@ -1330,6 +1330,24 @@ export interface ClinicalEventLogEntry {
   requiresHumanReview?: boolean;
 }
 
+export interface SessionRunTraceStep {
+  name: string;
+  at: string;
+  attrs: JsonObject;
+}
+
+export interface SessionRunTrace {
+  traceId: string | null;
+  runId: string | null;
+  scene: Scene | null;
+  status: "active" | "completed" | "error" | "aborted" | null;
+  graphPath: string[];
+  steps: SessionRunTraceStep[];
+  summary: TraceSummaryEvent | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
 export interface SessionState {
   sessionId: string | null;
   threadId: string | null;
@@ -1365,4 +1383,5 @@ export interface SessionState {
   latestAssistantMessageCursor: string | null;
   streamingMessageCursors: Record<string, string>;
   eventLog: ClinicalEventLogEntry[];
+  runTrace: SessionRunTrace | null;
 }

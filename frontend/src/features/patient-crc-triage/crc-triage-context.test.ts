@@ -40,6 +40,7 @@ function stateWithFindings(findings: Record<string, unknown>): SessionState {
     latestAssistantMessageCursor: null,
     streamingMessageCursors: {},
     eventLog: [],
+    runTrace: null,
   };
 }
 
