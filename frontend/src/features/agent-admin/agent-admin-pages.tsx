@@ -583,8 +583,7 @@ function RulesPage({ rulesResource }: { rulesResource: AgentAdminRulesResource }
   const rulesByGroup = rulesResponse ? buildRuleCatalogGroups(rulesResponse) : shouldRenderCatalog ? buildRuleCatalogGroups() : [];
   const ruleRows = rulesResponse ? buildRuleCatalogRows(rulesResponse) : shouldRenderCatalog ? buildRuleCatalogRows() : [];
   const inspectedRule = ruleRows[0];
-  const sourceBadge =
-    rulesResource.status === "success" ? "runtime-api" : rulesResource.status === "loading" ? "unavailable" : "catalog";
+  const sourceBadge = rulesResource.status === "success" ? "runtime-api" : "catalog";
   const sourceStatus =
     rulesResource.status === "success"
       ? `${rulesResource.data.policy_id} / ${rulesResource.data.version} / ${rulesResource.data.status}`

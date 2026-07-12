@@ -771,6 +771,30 @@ describe("AgentAdminView", () => {
     expect(page).toHaveTextContent("routing.intent.knowledge_query");
   });
 
+  it("uses the catalog source badge while the admin rules API is loading", async () => {
+    const apiClient = {
+      getAdminRules: vi.fn(() => new Promise<ReturnType<typeof makeAdminRulesResponse>>(() => {})),
+    };
+
+    render(
+      <AgentAdminView
+        activeScene="patient"
+        patient={makeState({ sessionId: "patient-rules-loading" })}
+        doctor={makeState({ sessionId: "doctor-rules-loading" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={apiClient}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /规则/ }));
+
+    await waitFor(() => expect(apiClient.getAdminRules).toHaveBeenCalledTimes(1));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(within(page).getByText("static catalog")).toHaveAttribute("data-source", "catalog");
+    expect(page).not.toHaveTextContent("unavailable");
+  });
+
   it("renders tools as an inventory table and reachability map", () => {
     render(
       <AgentAdminView
