@@ -380,6 +380,17 @@ describe("AgentAdminView", () => {
           snapshotVersion: 8,
           statusNode: "planner",
           activeRunId: "run-overview",
+          runTrace: {
+            traceId: "trace-overview",
+            runId: "run-overview",
+            scene: "doctor",
+            status: "active",
+            graphPath: ["planner", "tool_executor"],
+            steps: [{ name: "planner", at: "2026-07-12T07:30:00.000Z", attrs: { duration_ms: 120 } }],
+            summary: null,
+            startedAt: "2026-07-12T07:30:00.000Z",
+            finishedAt: null,
+          },
           eventLog: [{ id: "overview-1", kind: "node", title: "planner", detail: "running", tone: "neutral" }],
           references: [{ title: "overview evidence", source: "RAG", confidence: 0.91 }],
         })}
@@ -395,6 +406,9 @@ describe("AgentAdminView", () => {
     expect(page).toHaveTextContent("最近变化");
     expect(page).toHaveTextContent("doctor-overview");
     expect(page).toHaveTextContent("run-overview");
+    expect(page).toHaveTextContent("最近 run");
+    expect(page).toHaveTextContent("active / graph 2");
+    expect(page).toHaveTextContent("120ms");
     expect(page).toHaveTextContent("live session");
     expect(page).toHaveTextContent("planner");
   });
@@ -2419,7 +2433,7 @@ describe("AgentAdminView", () => {
 
   it.each([
     { button: /学习/, taskId: "learning", required: ["发现论文", "人工审核", "写入知识库", "Run now", "一期不执行每日任务"] },
-    { button: /Trace/, taskId: "trace", required: ["tool_executor", "done", "latency panel", "event table", "节点耗时尚未写入会话快照"] },
+    { button: /Trace/, taskId: "trace", required: ["tool_executor", "done", "latency panel", "event table", "eventLog length 2"] },
     { button: /证据/, taskId: "evidence", required: ["证据池", "retrieval profile", "citation coverage", "RAG pipeline"] },
     { button: /设置只读/, taskId: "read-only", required: ["权限矩阵", "编辑规则", "disabled", "不创建第三种 graph scene"] },
   ])("renders $taskId as a distinct workbench", ({ button, taskId, required }) => {
@@ -2556,6 +2570,89 @@ describe("AgentAdminView", () => {
     expect(rows.map((row) => row.name)).toEqual(["planner", "planner", "done"]);
     expect(rows.map((row) => row.id)).toEqual(["node-1", "node-2", "done-1"]);
     expect(rows.every((row) => row.latency === null || row.latency === "—")).toBe(true);
+    expect(rows.every((row) => row.source === "eventLog")).toBe(true);
+  });
+
+  it("builds trace rows from runTrace before eventLog with real latency", () => {
+    const state = makeState({
+      activeRunId: "run-trace-1",
+      statusNode: "tool_executor",
+      runTrace: {
+        traceId: "trace-1",
+        runId: "run-trace-1",
+        scene: "doctor",
+        status: "active",
+        graphPath: ["planner", "tool_executor"],
+        steps: [
+          { name: "planner", at: "2026-07-12T07:30:00.000Z", attrs: { duration_ms: 120 } },
+          { name: "tool_executor", at: "2026-07-12T07:30:01.000Z", attrs: { elapsed_ms: 80 } },
+        ],
+        summary: null,
+        startedAt: "2026-07-12T07:30:00.000Z",
+        finishedAt: null,
+      },
+      eventLog: [{ id: "node-1", kind: "node", title: "fallback", detail: "should not render", tone: "neutral" }],
+    });
+
+    const rows = buildLiveTraceRows(state);
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: "run-trace-1:0:planner",
+        name: "planner",
+        detail: "active",
+        latency: "120ms",
+        state: "success",
+        source: "runTrace",
+      }),
+      expect.objectContaining({
+        id: "run-trace-1:1:tool_executor",
+        name: "tool_executor",
+        detail: "active",
+        latency: "80ms",
+        state: "active",
+        source: "runTrace",
+      }),
+    ]);
+  });
+
+  it("renders Trace runTrace fields and honest latency availability", () => {
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-trace-panel" })}
+        doctor={makeState({
+          sessionId: "doctor-trace-panel",
+          activeRunId: "run-trace-panel",
+          runTrace: {
+            traceId: "trace-panel",
+            runId: "run-trace-panel",
+            scene: "doctor",
+            status: "completed",
+            graphPath: ["planner", "critic"],
+            steps: [
+              { name: "planner", at: "2026-07-12T07:30:00.000Z", attrs: { duration_ms: 120 } },
+              { name: "critic", at: "2026-07-12T07:30:01.000Z", attrs: {} },
+            ],
+            summary: null,
+            startedAt: "2026-07-12T07:30:00.000Z",
+            finishedAt: "2026-07-12T07:30:02.000Z",
+          },
+        })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Trace/ }));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("runTrace run run-trace-panel");
+    expect(page).toHaveTextContent("runTrace status completed");
+    expect(page).toHaveTextContent("graphPath planner / critic");
+    expect(page).toHaveTextContent("step count 2");
+    expect(page).toHaveTextContent("real latencies 1/2");
+    expect(page).toHaveTextContent("部分节点缺少 duration_ms / elapsed_ms");
+    expect(page).toHaveTextContent("120ms");
   });
 });
 

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -73,6 +73,7 @@ import {
   formatSnapshot,
   readText,
   sessionStatus,
+  type AgentAdminTraceRow,
   type AgentAdminTaskId,
 } from "./agent-admin-model";
 import type { AgentAdminReleaseDashboardResource, AgentAdminToolsResource } from "./agent-admin-view";
@@ -117,6 +118,26 @@ type SessionRecentEvent = {
   key: string;
   text: string;
 };
+
+function latencyBarStyle(row: AgentAdminTraceRow): CSSProperties | undefined {
+  return row.latencyPercent !== null ? { width: `${row.latencyPercent}%` } : undefined;
+}
+
+function latencyAvailabilityLabel(rows: AgentAdminTraceRow[]): string {
+  const traceRows = rows.filter((row) => row.source === "runTrace");
+  if (traceRows.length === 0) {
+    return "eventLog fallback: latency unavailable";
+  }
+
+  const timedRows = traceRows.filter((row) => row.latency !== null).length;
+  if (timedRows === traceRows.length) {
+    return "所有 runTrace steps 都包含真实耗时";
+  }
+  if (timedRows > 0) {
+    return "部分节点缺少 duration_ms / elapsed_ms";
+  }
+  return "runTrace 已到达；节点耗时尚未写入 duration_ms / elapsed_ms";
+}
 
 function recentSessionEventsForScene(
   sceneKey: Scene,
@@ -250,11 +271,18 @@ function AgentAdminOverviewPage({
   const activePlan = watchedState.plan.slice(0, 4);
   const status = sessionStatus(watchedState);
   const timelineSteps = buildLiveTraceRows(watchedState).slice(-8);
+  const recentRun = watchedState.runTrace;
   const metrics = [
     { label: "活跃会话", value: `${patient.sessionId ? 1 : 0}/${doctor.sessionId ? 1 : 0}`, tone: "red" as const },
     { label: "患者快照", value: patientSession.snapshot, detail: patientSession.sessionId, tone: "neutral" as const },
     { label: "医生快照", value: doctorSession.snapshot, detail: doctorSession.sessionId, tone: "neutral" as const },
     { label: "当前状态", value: status, detail: watchedState.activeRunId ?? "idle", tone: status === "error" ? "warning" as const : "success" as const },
+    {
+      label: "最近 run",
+      value: recentRun?.runId ?? watchedState.activeRunId ?? "idle",
+      detail: recentRun ? `${recentRun.status ?? "unknown"} / graph ${recentRun.graphPath.length}` : "runTrace pending",
+      tone: recentRun?.status === "error" || recentRun?.status === "aborted" ? "warning" as const : "neutral" as const,
+    },
     { label: "可用工具", value: String(toolRows.length), tone: "red" as const },
     { label: "规则组", value: String(ruleGroups.length), tone: "neutral" as const },
   ];
@@ -279,9 +307,9 @@ function AgentAdminOverviewPage({
                   </span>
                   <span
                     className={`agent-admin-latency-bar${step.state === "active" ? " agent-admin-latency-bar-active" : ""}`}
-                    aria-label={step.state === "active" ? "节点运行中" : "节点耗时未记录"}
+                    aria-label={step.latency ? `节点耗时 ${step.latency}` : step.state === "active" ? "节点运行中，耗时未记录" : "节点耗时未记录"}
                   >
-                    {step.state === "active" ? <i /> : null}
+                    {step.latencyPercent !== null ? <i style={latencyBarStyle(step)} /> : null}
                   </span>
                   <span>{step.detail}</span>
                   <strong>{step.latency ?? "—"}</strong>
@@ -786,6 +814,8 @@ function LearningPage() {
 function TracePage({ activeScene, patient, doctor }: Pick<AgentAdminPagesProps, "activeScene" | "patient" | "doctor">) {
   const state = watchedSession(activeScene, patient, doctor);
   const traceEvents = buildLiveTraceRows(state);
+  const runTrace = state.runTrace;
+  const timedTraceSteps = traceEvents.filter((event) => event.source === "runTrace" && event.latency !== null).length;
 
   return (
     <>
@@ -809,11 +839,24 @@ function TracePage({ activeScene, patient, doctor }: Pick<AgentAdminPagesProps, 
         secondary={
           <AgentAdminPanel eyebrow="latency panel" title="latency panel" icon={Activity}>
             <div className="agent-admin-detail-list">
-              <span>active run {state.activeRunId ?? "idle"}</span>
-              <span>status node {state.statusNode ?? "idle"}</span>
-              <span>snapshot version {state.snapshotVersion}</span>
-              <span>eventLog length {state.eventLog.length}</span>
-              <span>节点耗时尚未写入会话快照</span>
+              {runTrace ? (
+                <>
+                  <span>runTrace run {runTrace.runId ?? state.activeRunId ?? "unknown"}</span>
+                  <span>runTrace status {runTrace.status ?? "unknown"}</span>
+                  <span>graphPath {runTrace.graphPath.length > 0 ? runTrace.graphPath.join(" / ") : "empty"}</span>
+                  <span>step count {runTrace.steps.length}</span>
+                  <span>real latencies {timedTraceSteps}/{runTrace.steps.length}</span>
+                  <span>{latencyAvailabilityLabel(traceEvents)}</span>
+                </>
+              ) : (
+                <>
+                  <span>active run {state.activeRunId ?? "idle"}</span>
+                  <span>status node {state.statusNode ?? "idle"}</span>
+                  <span>snapshot version {state.snapshotVersion}</span>
+                  <span>eventLog length {state.eventLog.length}</span>
+                  <span>eventLog fallback: latency unavailable</span>
+                </>
+              )}
             </div>
           </AgentAdminPanel>
         }

@@ -12,7 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-import type { AdminToolItem, AdminToolManifestResponse, SessionState } from "../../app/api/types";
+import type { AdminToolItem, AdminToolManifestResponse, SessionRunTraceStep, SessionState } from "../../app/api/types";
 
 export type AgentAdminTaskId =
   | "overview"
@@ -948,11 +948,74 @@ export type AgentAdminTraceRow = {
   name: string;
   detail: string;
   latency: string | null;
+  latencyMs: number | null;
+  latencyPercent: number | null;
   state: "success" | "active" | "ready" | "warning" | "error";
   source: "eventLog" | "runTrace" | "empty";
 };
 
+function readStepLatencyMs(step: SessionRunTraceStep): number | null {
+  const raw = step.attrs?.duration_ms ?? step.attrs?.elapsed_ms;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return raw;
+  }
+  return null;
+}
+
+export function formatStepLatency(step: SessionRunTraceStep): string | null {
+  const raw = readStepLatencyMs(step);
+  if (raw !== null) return `${Math.round(raw)}ms`;
+  return null;
+}
+
+function traceStepState(
+  step: SessionRunTraceStep,
+  index: number,
+  stepCount: number,
+  runStatus: NonNullable<SessionState["runTrace"]>["status"],
+): AgentAdminTraceRow["state"] {
+  const status = readText(step.attrs?.status ?? step.attrs?.state, "");
+  if (status === "error" || status === "failed") {
+    return "error";
+  }
+  if (status === "warning" || status === "retrying") {
+    return "warning";
+  }
+  if (runStatus === "active" && index === stepCount - 1) {
+    return "active";
+  }
+  if (runStatus === "error" && index === stepCount - 1) {
+    return "error";
+  }
+  if (runStatus === "aborted" && index === stepCount - 1) {
+    return "warning";
+  }
+  return "success";
+}
+
 export function buildLiveTraceRows(state: SessionState): AgentAdminTraceRow[] {
+  const runTrace = state.runTrace;
+  if (runTrace && runTrace.steps.length > 0) {
+    const latencies = runTrace.steps.map((step) => readStepLatencyMs(step));
+    const maxLatency = Math.max(...latencies.filter((latency): latency is number => latency !== null));
+    const canScaleLatency = Number.isFinite(maxLatency) && maxLatency > 0;
+    const runId = runTrace.runId ?? state.activeRunId ?? runTrace.traceId ?? "runTrace";
+
+    return runTrace.steps.map((step, index) => {
+      const latencyMs = latencies[index] ?? null;
+      return {
+        id: `${runId}:${index}:${step.name}`,
+        name: step.name,
+        detail: readText(step.attrs?.status ?? step.attrs?.state, runTrace.status ?? "trace step"),
+        latency: formatStepLatency(step),
+        latencyMs,
+        latencyPercent: canScaleLatency && latencyMs !== null ? Math.max(4, Math.round((latencyMs / maxLatency) * 100)) : null,
+        state: traceStepState(step, index, runTrace.steps.length, runTrace.status),
+        source: "runTrace",
+      };
+    });
+  }
+
   const log = state.eventLog ?? [];
   if (log.length === 0) {
     return [
@@ -961,6 +1024,8 @@ export function buildLiveTraceRows(state: SessionState): AgentAdminTraceRow[] {
         name: "暂无执行事件",
         detail: "先在患者/医生端发起一轮对话；后台读取同一会话的 eventLog",
         latency: null,
+        latencyMs: null,
+        latencyPercent: null,
         state: "ready",
         source: "empty",
       },
@@ -972,6 +1037,8 @@ export function buildLiveTraceRows(state: SessionState): AgentAdminTraceRow[] {
     name: entry.title,
     detail: entry.detail ?? entry.kind,
     latency: null,
+    latencyMs: null,
+    latencyPercent: null,
     state:
       entry.tone === "error"
         ? "error"
