@@ -1125,10 +1125,10 @@ export function buildTraceRows(state: SessionState): AgentAdminTraceRow[] {
 
 export function buildLearningReadiness() {
   return [
-    { label: "候选工具", value: "search_latest_research", state: "candidate" },
-    { label: "调度器配置", value: "scheduler disabled / config needed", state: "disabled" },
-    { label: "摄取队列", value: "ingestion queue empty", state: "ready" },
-    { label: "论文来源", value: "PubMed / Crossref / arXiv", state: "planned" },
+    { label: "候选工具", value: "search_latest_research", state: "roadmap" },
+    { label: "调度器配置", value: "scheduler disabled / config needed", state: "roadmap" },
+    { label: "摄取队列", value: "ingestion queue empty", state: "roadmap" },
+    { label: "论文来源", value: "PubMed / Crossref / arXiv", state: "roadmap" },
   ];
 }
 
@@ -1136,8 +1136,8 @@ export function buildPermissionRows() {
   return [
     { label: "查看会话", state: "enabled", reason: "read-only observation" },
     { label: "查看证据", state: "enabled", reason: "references are frontend snapshots" },
-    { label: "编辑规则", state: "disabled", reason: "Phase 1 不写入规则" },
-    { label: "启停工具", state: "disabled", reason: "Phase 1 不写入工具状态" },
+    { label: "编辑规则", state: "disabled", reason: "规则运行态不可从后台写入" },
+    { label: "启停工具", state: "disabled", reason: "工具运行态不可从后台写入" },
     { label: "运行学习任务", state: "disabled", reason: "scheduler disabled / config needed" },
   ];
 }

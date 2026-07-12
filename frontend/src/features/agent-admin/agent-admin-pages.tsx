@@ -811,9 +811,9 @@ function LearningPage() {
   const readinessRows = buildLearningReadiness();
   const pipelineStages = ["发现论文", "去重", "打分", "摘要", "人工审核", "写入知识库", "生成学习报告"];
   const artifacts = [
-    "learned artifact preview / paper digest card",
-    "candidate guideline delta / oncology evidence watch",
-    "knowledge base write preview / no mutation in Phase 1",
+    "未接线预览 / paper digest card",
+    "未接线预览 / oncology evidence watch",
+    "未接线预览 / knowledge base write preview / no mutation in Phase 1",
   ];
 
   return (
@@ -823,7 +823,7 @@ function LearningPage() {
           label: row.label,
           value: row.value,
           detail: row.state,
-          tone: row.state === "disabled" ? "warning" : "neutral",
+          tone: "neutral",
         }))}
       />
       <AgentAdminSplitWorkbench
@@ -840,14 +840,16 @@ function LearningPage() {
             </AgentAdminPanel>
             <AgentAdminPanel eyebrow="learning pipeline" title="学习流水线" icon={GitBranch}>
               <div className="agent-admin-timeline">
-                {pipelineStages.map((stage, index) => (
+                {pipelineStages.map((stage) => (
                   <article key={stage} className="agent-admin-timeline-row agent-admin-timeline-row-ready">
                     <span className="agent-admin-timeline-node">
-                      <AgentAdminStateIcon state={index < 2 ? "success" : "ready"} />
+                      <AgentAdminStateIcon state="ready" />
                       {stage}
                     </span>
-                    <span>{index < 2 ? "readiness checked" : "waiting for scheduler"}</span>
-                    <strong>{index + 1}</strong>
+                    <span>未接线 / waiting for scheduler</span>
+                    <strong>
+                      <AgentAdminSourceBadge source="roadmap" />
+                    </strong>
                   </article>
                 ))}
               </div>
@@ -2828,6 +2830,7 @@ function ReadOnlyPage({ activeScene, patient, doctor }: Pick<AgentAdminPagesProp
           <span>Graph scene 保持为 {activeScene}</span>
           <span>不创建第三种 graph scene</span>
           <span>admin console observes patient / doctor state only</span>
+          <span>规则/工具运行态不可从后台写入</span>
         </div>
       </AgentAdminPanel>
     </>

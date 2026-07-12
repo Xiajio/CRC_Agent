@@ -2575,7 +2575,11 @@ describe("AgentAdminView", () => {
   });
 
   it.each([
-    { button: /学习/, taskId: "learning", required: ["发现论文", "人工审核", "写入知识库", "Run now", "一期不执行每日任务"] },
+    {
+      button: /学习/,
+      taskId: "learning",
+      required: ["发现论文", "人工审核", "写入知识库", "Run now", "一期不执行每日任务", "未接线预览"],
+    },
     { button: /Trace/, taskId: "trace", required: ["tool_executor", "done", "latency panel", "event table", "eventLog length 2"] },
     { button: /证据/, taskId: "evidence", required: ["证据池", "retrieval profile", "citation coverage", "RAG pipeline"] },
     { button: /设置只读/, taskId: "read-only", required: ["权限矩阵", "编辑规则", "disabled", "不创建第三种 graph scene"] },
@@ -2605,6 +2609,25 @@ describe("AgentAdminView", () => {
     for (const text of required) {
       expect(page).toHaveTextContent(text);
     }
+  });
+
+  it("marks the learning pipeline as unwired roadmap instead of fake progress", () => {
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-learning-roadmap" })}
+        doctor={makeState({ sessionId: "doctor-learning-roadmap" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /学习/ }));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    const roadmapBadges = within(page).getAllByText("roadmap / not wired");
+    expect(roadmapBadges).toHaveLength(7);
+    expect(page).toHaveTextContent("未接线预览");
+    expect(page).not.toHaveTextContent("readiness checked");
   });
 
   it("builds the complete task and manifest model", () => {
@@ -2691,6 +2714,7 @@ describe("AgentAdminView", () => {
     );
     expect(buildEvidenceRows(state)[0]).toMatchObject({ title: "指南来源", confidence: "88%" });
     expect(buildLearningReadiness().map((row) => row.label)).toContain("调度器配置");
+    expect(buildLearningReadiness().map((row) => row.state)).toEqual(["roadmap", "roadmap", "roadmap", "roadmap"]);
     expect(buildLiveTraceRows(state)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "暂无执行事件", detail: "先在患者/医生端发起一轮对话；后台读取同一会话的 eventLog" }),
@@ -3052,5 +3076,6 @@ describe("AgentAdminModel", () => {
     expect(taskPage).toHaveTextContent("只读边界");
     expect(taskPage).toHaveTextContent("admin token / feature flags / read-only boundary");
     expect(taskPage).toHaveTextContent("Graph scene 保持为 patient");
+    expect(taskPage).toHaveTextContent("规则/工具运行态不可从后台写入");
   });
 });
