@@ -917,12 +917,42 @@ describe("WorkspacePage patient triage submission wiring", () => {
     expect(document.documentElement).toHaveAttribute("data-theme", "agent-admin");
   });
 
-  it("keeps doctor selection as a graph scene switch from the surface menu", () => {
-    renderWorkspaceWithSceneSessions(buildApiClientStub());
+  it("does not abort the active turn when switching to agent-admin", async () => {
+    const { calls, streamTurn } = createControlledStreamTurn();
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "切换工作台，当前为患者" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /后台/ }));
+
+    expect(calls[0]?.signal?.aborted).toBe(false);
+    expect(screen.getByTestId("agent-admin-console")).toBeInTheDocument();
+
+    calls[0]?.resolve();
+    await act(async () => {
+      await Promise.resolve();
+    });
+  });
+
+  it("aborts the active turn when switching between clinical scenes from the surface menu", async () => {
+    const { calls, streamTurn } = createControlledStreamTurn();
+    const apiClient = buildApiClientStub({ streamTurn });
+
+    renderWorkspaceWithSceneSessions(apiClient);
+
+    fireEvent.click(screen.getByRole("button", { name: /set composer draft/i }));
+    fireEvent.click(screen.getByRole("button", { name: /submit composer draft/i }));
+    await waitFor(() => expect(calls).toHaveLength(1));
 
     fireEvent.click(screen.getByRole("button", { name: "切换工作台，当前为患者" }));
     fireEvent.click(screen.getByRole("menuitem", { name: /医生/ }));
 
+    expect(calls[0]?.signal?.aborted).toBe(true);
     expect(mockSceneSessions.setActiveScene).toHaveBeenCalledWith("doctor");
   });
 

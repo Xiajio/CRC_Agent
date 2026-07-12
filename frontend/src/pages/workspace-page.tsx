@@ -521,7 +521,7 @@ export function WorkspacePage() {
     }
 
     if (surface === "agent-admin") {
-      activeTurn.abortActiveTurn("scene_switch");
+      // Keep the active clinical turn alive so Admin can observe eventLog/statusNode.
       setSceneError(null);
       patientUploads.clearError();
       setActiveSurface("agent-admin");
