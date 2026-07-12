@@ -524,6 +524,36 @@ describe("AgentAdminView", () => {
     expect(page).not.toHaveTextContent("doctor doctor-events / v3 / run-doctor");
   });
 
+  it("renders only the last five Sessions eventLog titles per scene", () => {
+    const patientEvents = Array.from({ length: 6 }, (_, index) => ({
+      id: `patient-event-${index + 1}`,
+      kind: "node" as const,
+      title: `患者事件 ${index + 1}`,
+      detail: "node",
+      tone: "neutral" as const,
+    }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({
+          sessionId: "patient-events-truncated",
+          eventLog: patientEvents,
+        })}
+        doctor={makeState({ sessionId: "doctor-events-truncated" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /会话/ }));
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).not.toHaveTextContent("患者: 患者事件 1");
+    for (const event of patientEvents.slice(1)) {
+      expect(page).toHaveTextContent(`患者: ${event.title}`);
+    }
+  });
+
   it("renders an empty SSE event message when Sessions eventLog is empty", () => {
     render(
       <AgentAdminView
