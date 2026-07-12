@@ -74,6 +74,26 @@ export interface AdminToolManifestResponse {
   };
 }
 
+export interface AdminRuleItem {
+  id: string;
+  priority: number;
+  disposition: string;
+  hard_fail_if_missed: boolean;
+  group: string;
+  condition_summary?: string;
+}
+
+export interface AdminRulesResponse {
+  policy_id: string;
+  version: string;
+  status: string;
+  applies_to: string;
+  severity_order: string[];
+  rules: AdminRuleItem[];
+  source_path: "config/safety_policy.yaml";
+  note: "read-only projection; not editable from admin UI";
+}
+
 export type AdminReleaseRunStatus = "pass" | "fail" | "shadow_only" | "missing" | "invalid";
 export type AdminReleaseGateState = "pass" | "locked" | "warning" | "blocked" | "missing";
 export type AdminReleaseHumanSignoffStatus = "missing" | "recorded_elsewhere" | "not_required";

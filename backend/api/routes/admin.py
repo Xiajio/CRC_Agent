@@ -17,6 +17,7 @@ from backend.api.schemas.release_monitoring import (
     ReleaseMonitoringAcknowledgeAlertRequest,
     ReleaseMonitoringCheckRequest,
 )
+from backend.api.services.admin_rules_service import build_admin_rules_projection
 from backend.api.services.admin_release_dashboard import REPO_ROOT, build_release_dashboard
 from backend.api.services.release_closure_store import (
     ReleaseClosureIntegrityError,
@@ -201,6 +202,14 @@ async def get_admin_tools(request: Request) -> dict[str, Any]:
     return build_tool_manifest_response(
         web_search_enabled=_web_search_enabled_from_request(request),
     )
+
+
+@router.get("/rules")
+async def get_admin_rules() -> dict[str, Any]:
+    try:
+        return build_admin_rules_projection()
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @router.get("/release-dashboard")

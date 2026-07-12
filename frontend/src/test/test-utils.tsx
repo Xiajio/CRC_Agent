@@ -11,6 +11,7 @@ import type {
   AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
   AdminReleaseMonitoringResponse,
+  AdminRulesResponse,
   AdminToolManifestResponse,
   DatabaseCaseDetailResponse,
   DatabaseSearchResponse,
@@ -407,6 +408,16 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
       source: "src.tools.manifest",
     },
   }));
+  const getAdminRules = vi.fn(async (): Promise<AdminRulesResponse> => ({
+    policy_id: "crc_safety_policy_v0",
+    version: "2026-06-29.0",
+    status: "draft",
+    applies_to: "patient_crc_triage",
+    severity_order: ["emergency", "urgent", "backfill", "routine"],
+    rules: [],
+    source_path: "config/safety_policy.yaml",
+    note: "read-only projection; not editable from admin UI",
+  }));
   const getAdminReleaseDashboard = vi.fn(async (): Promise<AdminReleaseDashboardResponse> => ({
     version_chain: {
       agent_policy_version: "agent_policy_20260629_0",
@@ -521,6 +532,7 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
 
   return {
     getAdminTools,
+    getAdminRules,
     getAdminReleaseDashboard,
     getAdminReleaseGovernance,
     getAdminReleaseExecution,

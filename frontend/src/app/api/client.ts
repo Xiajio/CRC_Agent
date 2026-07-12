@@ -11,6 +11,7 @@ import type {
   AdminReleaseExecutionResponse,
   AdminReleaseGovernanceResponse,
   AdminReleaseMonitoringResponse,
+  AdminRulesResponse,
   AdminRecordReleaseApprovalRequest,
   AdminRecordReleaseRollbackPlanRequest,
   AdminToolManifestResponse,
@@ -102,6 +103,7 @@ function buildJsonHeaders(defaultHeaders?: HeadersInit): Headers {
 
 export interface ApiClient {
   getAdminTools(): Promise<AdminToolManifestResponse>;
+  getAdminRules(): Promise<AdminRulesResponse>;
   getAdminReleaseDashboard(): Promise<AdminReleaseDashboardResponse>;
   getAdminReleaseGovernance(): Promise<AdminReleaseGovernanceResponse>;
   getAdminReleaseExecution(): Promise<AdminReleaseExecutionResponse>;
@@ -185,6 +187,13 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         headers: defaultHeaders,
       });
       return parseJsonResponse<AdminToolManifestResponse>(response);
+    },
+
+    async getAdminRules() {
+      const response = await fetchImpl(buildUrl("/api/admin/rules", baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<AdminRulesResponse>(response);
     },
 
     async getAdminReleaseDashboard() {
