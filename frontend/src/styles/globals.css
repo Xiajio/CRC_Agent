@@ -5059,9 +5059,14 @@ body {
 
 .agent-admin-latency-bar i {
   display: block;
+  width: 2.75rem;
   height: 100%;
   border-radius: inherit;
   background: var(--color-primary);
+}
+
+.agent-admin-latency-bar-active i {
+  animation: agent-admin-latency-indeterminate 1.1s ease-in-out infinite;
 }
 
 .agent-admin-timeline-row-ready .agent-admin-latency-bar i {
@@ -5070,6 +5075,23 @@ body {
 
 .agent-admin-timeline-row-active {
   color: var(--color-primary);
+}
+
+@keyframes agent-admin-latency-indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(360%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-admin-latency-bar-active i {
+    animation: none;
+    transform: none;
+  }
 }
 
 .agent-admin-plan-list {

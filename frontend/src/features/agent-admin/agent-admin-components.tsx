@@ -164,13 +164,13 @@ export function AgentAdminStateIcon({
   state,
   className,
 }: {
-  state: AgentAdminTone | "disabled" | "idle" | "active" | "ready";
+  state: AgentAdminTone | "disabled" | "idle" | "active" | "ready" | "error";
   className?: string;
 }) {
   const Icon =
     state === "success" || state === "active"
       ? CheckCircle2
-      : state === "warning" || state === "red"
+      : state === "warning" || state === "red" || state === "error"
         ? AlertTriangle
         : state === "disabled"
           ? Ban

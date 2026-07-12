@@ -943,30 +943,48 @@ export function buildEvidenceRows(state: SessionState): Array<{ title: string; s
       ];
 }
 
-export function buildTraceRows(
-  state: SessionState,
-): Array<{ name: string; detail: string; latency: string; state: "success" | "active" | "ready" }> {
-  return [
-    { name: "trace.start", detail: state.activeRunId ?? "run idle", latency: "0ms", state: "success" },
-    {
-      name: "status.node",
-      detail: state.statusNode ?? "idle",
-      latency: "42ms",
-      state: state.statusNode ? "active" : "ready",
-    },
-    {
-      name: "retrieval.query",
-      detail: `${state.references.length} references`,
-      latency: "180ms",
-      state: "success",
-    },
-    {
-      name: "tool.dispatch",
-      detail: state.statusNode === "tool_executor" ? "tool_executor active" : "await executor",
-      latency: "260ms",
-      state: state.statusNode === "tool_executor" ? "active" : "ready",
-    },
-  ];
+export type AgentAdminTraceRow = {
+  name: string;
+  detail: string;
+  latency: string | null;
+  state: "success" | "active" | "ready" | "warning" | "error";
+  source: "eventLog" | "runTrace" | "empty";
+};
+
+export function buildLiveTraceRows(state: SessionState): AgentAdminTraceRow[] {
+  const log = state.eventLog ?? [];
+  if (log.length === 0) {
+    return [
+      {
+        name: "暂无执行事件",
+        detail: "先在患者/医生端发起一轮对话；后台读取同一会话的 eventLog",
+        latency: null,
+        state: "ready",
+        source: "empty",
+      },
+    ];
+  }
+
+  return log.map((entry) => ({
+    name: entry.title,
+    detail: entry.detail ?? entry.kind,
+    latency: null,
+    state:
+      entry.tone === "error"
+        ? "error"
+        : entry.tone === "warning"
+          ? "warning"
+          : entry.tone === "success"
+            ? "success"
+            : entry.kind === "node" && state.statusNode === entry.title
+              ? "active"
+              : "ready",
+    source: "eventLog",
+  }));
+}
+
+export function buildTraceRows(state: SessionState): AgentAdminTraceRow[] {
+  return buildLiveTraceRows(state);
 }
 
 export function buildLearningReadiness() {

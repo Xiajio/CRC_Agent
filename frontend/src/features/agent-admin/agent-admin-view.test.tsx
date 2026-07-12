@@ -30,7 +30,7 @@ import {
   buildToolInventoryRows,
   buildToolGroupRows,
   buildToolReachabilityRows,
-  buildTraceRows,
+  buildLiveTraceRows,
   RULE_CATALOG,
   TOOL_INVENTORY,
 } from "./agent-admin-model";
@@ -380,6 +380,7 @@ describe("AgentAdminView", () => {
           snapshotVersion: 8,
           statusNode: "planner",
           activeRunId: "run-overview",
+          eventLog: [{ id: "overview-1", kind: "node", title: "planner", detail: "running", tone: "neutral" }],
           references: [{ title: "overview evidence", source: "RAG", confidence: 0.91 }],
         })}
         surfaceSwitcher={<button type="button">后台切换菜单</button>}
@@ -394,6 +395,8 @@ describe("AgentAdminView", () => {
     expect(page).toHaveTextContent("最近变化");
     expect(page).toHaveTextContent("doctor-overview");
     expect(page).toHaveTextContent("run-overview");
+    expect(page).toHaveTextContent("live session");
+    expect(page).toHaveTextContent("planner");
   });
 
   it("renders the operations console with the detailed subtask rail", () => {
@@ -2338,7 +2341,7 @@ describe("AgentAdminView", () => {
 
   it.each([
     { button: /学习/, taskId: "learning", required: ["发现论文", "人工审核", "写入知识库", "Run now", "一期不执行每日任务"] },
-    { button: /Trace/, taskId: "trace", required: ["trace.start", "status.node", "latency panel", "event table"] },
+    { button: /Trace/, taskId: "trace", required: ["tool_executor", "done", "latency panel", "event table", "节点耗时尚未写入会话快照"] },
     { button: /证据/, taskId: "evidence", required: ["证据池", "retrieval profile", "citation coverage", "RAG pipeline"] },
     { button: /设置只读/, taskId: "read-only", required: ["权限矩阵", "编辑规则", "disabled", "不创建第三种 graph scene"] },
   ])("renders $taskId as a distinct workbench", ({ button, taskId, required }) => {
@@ -2350,6 +2353,10 @@ describe("AgentAdminView", () => {
           sessionId: "doctor-final",
           activeRunId: "run-final",
           statusNode: "tool_executor",
+          eventLog: [
+            { id: "trace-1", kind: "node", title: "tool_executor", detail: "running", tone: "neutral" },
+            { id: "trace-2", kind: "done", title: "done", detail: null, tone: "success" },
+          ],
           references: [{ title: "final evidence", source: "RAG", confidence: 0.77 }],
         })}
         surfaceSwitcher={<button type="button">后台切换菜单</button>}
@@ -2448,13 +2455,27 @@ describe("AgentAdminView", () => {
     );
     expect(buildEvidenceRows(state)[0]).toMatchObject({ title: "指南来源", confidence: "88%" });
     expect(buildLearningReadiness().map((row) => row.label)).toContain("调度器配置");
-    expect(buildTraceRows(state)).toEqual(
+    expect(buildLiveTraceRows(state)).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "trace.start", detail: "run-a" }),
-        expect.objectContaining({ name: "status.node", detail: "planner" }),
+        expect.objectContaining({ name: "暂无执行事件", detail: "先在患者/医生端发起一轮对话；后台读取同一会话的 eventLog" }),
       ]),
     );
     expect(buildPermissionRows().find((row) => row.label === "编辑规则")?.state).toBe("disabled");
+  });
+
+  it("builds trace rows from eventLog instead of fake latencies", () => {
+    const state = makeState({
+      statusNode: "planner",
+      eventLog: [
+        { id: "1", kind: "node", title: "planner", detail: "running", tone: "neutral" },
+        { id: "2", kind: "done", title: "done", detail: null, tone: "success" },
+      ],
+    });
+
+    const rows = buildLiveTraceRows(state);
+
+    expect(rows.map((row) => row.name)).toEqual(["planner", "done"]);
+    expect(rows.every((row) => row.latency === null || row.latency === "—")).toBe(true);
   });
 });
 

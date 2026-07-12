@@ -49,6 +49,7 @@ import {
   AgentAdminPanel,
   AgentAdminDisabledAction,
   AgentAdminSplitWorkbench,
+  AgentAdminSourceBadge,
   AgentAdminStateIcon,
 } from "./agent-admin-components";
 import {
@@ -67,7 +68,7 @@ import {
   buildSessionSummary,
   buildToolInventoryRows,
   buildToolReachabilityRows,
-  buildTraceRows,
+  buildLiveTraceRows,
   formatSnapshot,
   readText,
   sessionStatus,
@@ -231,6 +232,7 @@ function AgentAdminOverviewPage({
   const references = buildEvidenceRows(watchedState);
   const activePlan = watchedState.plan.slice(0, 4);
   const status = sessionStatus(watchedState);
+  const timelineSteps = buildLiveTraceRows(watchedState).slice(-8);
   const metrics = [
     { label: "活跃会话", value: `${patient.sessionId ? 1 : 0}/${doctor.sessionId ? 1 : 0}`, tone: "red" as const },
     { label: "患者快照", value: patientSession.snapshot, detail: patientSession.sessionId, tone: "neutral" as const },
@@ -238,14 +240,6 @@ function AgentAdminOverviewPage({
     { label: "当前状态", value: status, detail: watchedState.activeRunId ?? "idle", tone: status === "error" ? "warning" as const : "success" as const },
     { label: "可用工具", value: String(toolRows.length), tone: "red" as const },
     { label: "规则组", value: String(ruleGroups.length), tone: "neutral" as const },
-  ];
-  const timelineSteps = [
-    { node: "用户请求", state: "success" as const, detail: "80ms" },
-    { node: "Planner", state: watchedState.statusNode === "planner" ? "active" as const : "success" as const, detail: "420ms" },
-    { node: "Knowledge Retrieval", state: "success" as const, detail: "680ms" },
-    { node: "Tool Executor", state: watchedState.statusNode === "tool_executor" ? "active" as const : "ready" as const, detail: "540ms" },
-    { node: "Critic", state: watchedState.critic ? "success" as const : "ready" as const, detail: "220ms" },
-    { node: "Response", state: watchedState.messages.length > 0 ? "success" as const : "ready" as const, detail: "160ms" },
   ];
   const recentChanges = [
     `${activeScene === "doctor" ? "医生" : "患者"}会话 ${watchedState.sessionId ?? "未创建"} / ${formatSnapshot(watchedState)}`,
@@ -258,18 +252,22 @@ function AgentAdminOverviewPage({
       <AgentAdminMetricStrip metrics={metrics} />
       <AgentAdminSplitWorkbench
         primary={
-          <AgentAdminPanel eyebrow="run health" title="运行健康时间线" icon={Clock3}>
+          <AgentAdminPanel eyebrow="run health" title="运行健康时间线" icon={Clock3} action={<AgentAdminSourceBadge source="live" />}>
             <div className="agent-admin-timeline">
-              {timelineSteps.map((step) => (
-                <article key={step.node} className={`agent-admin-timeline-row agent-admin-timeline-row-${step.state}`}>
+              {timelineSteps.map((step, index) => (
+                <article key={`${step.name}-${index}`} className={`agent-admin-timeline-row agent-admin-timeline-row-${step.state}`}>
                   <span className="agent-admin-timeline-node">
                     <AgentAdminStateIcon state={step.state} />
-                    {step.node}
+                    {step.name}
                   </span>
-                  <span className="agent-admin-latency-bar">
-                    <i style={{ width: step.state === "ready" ? "32%" : "76%" }} />
+                  <span
+                    className={`agent-admin-latency-bar${step.state === "active" ? " agent-admin-latency-bar-active" : ""}`}
+                    aria-label={step.state === "active" ? "节点运行中" : "节点耗时未记录"}
+                  >
+                    {step.state === "active" ? <i /> : null}
                   </span>
-                  <strong>{step.detail}</strong>
+                  <span>{step.detail}</span>
+                  <strong>{step.latency ?? "—"}</strong>
                 </article>
               ))}
             </div>
@@ -769,7 +767,7 @@ function LearningPage() {
 
 function TracePage({ activeScene, patient, doctor }: Pick<AgentAdminPagesProps, "activeScene" | "patient" | "doctor">) {
   const state = watchedSession(activeScene, patient, doctor);
-  const traceEvents = buildTraceRows(state);
+  const traceEvents = buildLiveTraceRows(state);
 
   return (
     <>
@@ -784,7 +782,7 @@ function TracePage({ activeScene, patient, doctor }: Pick<AgentAdminPagesProps, 
                     {event.name}
                   </span>
                   <span>{event.detail}</span>
-                  <strong>{event.latency}</strong>
+                  <strong>{event.latency ?? "—"}</strong>
                 </article>
               ))}
             </div>
@@ -795,8 +793,9 @@ function TracePage({ activeScene, patient, doctor }: Pick<AgentAdminPagesProps, 
             <div className="agent-admin-detail-list">
               <span>active run {state.activeRunId ?? "idle"}</span>
               <span>status node {state.statusNode ?? "idle"}</span>
-              <span>scene {activeScene}</span>
-              <span>snapshot {formatSnapshot(state)}</span>
+              <span>snapshot version {state.snapshotVersion}</span>
+              <span>eventLog length {state.eventLog.length}</span>
+              <span>节点耗时尚未写入会话快照</span>
             </div>
           </AgentAdminPanel>
         }
@@ -807,7 +806,7 @@ function TracePage({ activeScene, patient, doctor }: Pick<AgentAdminPagesProps, 
             <article key={`${event.name}-table`} className="agent-admin-timeline-row agent-admin-timeline-row-ready">
               <span>{event.name}</span>
               <span>{event.detail}</span>
-              <strong>{event.latency}</strong>
+              <strong>{event.latency ?? "—"}</strong>
             </article>
           ))}
         </div>
