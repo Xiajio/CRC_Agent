@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AgentAdminDisabledAction,
   AgentAdminMetricStrip,
+  AgentAdminSourceBadge,
   AgentAdminStatusChip,
 } from "./agent-admin-components";
 
@@ -28,6 +29,14 @@ describe("AgentAdmin shared components", () => {
     render(<AgentAdminStatusChip tone="warning">待配置</AgentAdminStatusChip>);
 
     expect(screen.getByText("待配置")).toBeInTheDocument();
+  });
+
+  it("renders live and catalog source badges", () => {
+    render(<AgentAdminSourceBadge source="live" />);
+    expect(screen.getByText("live session")).toBeInTheDocument();
+
+    render(<AgentAdminSourceBadge source="catalog" />);
+    expect(screen.getByText("static catalog")).toBeInTheDocument();
   });
 
   it("keeps disabled actions focusable while exposing the reason", () => {

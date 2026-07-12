@@ -4773,6 +4773,7 @@ body {
 .agent-admin-panel-heading span,
 .agent-admin-metric span,
 .agent-admin-metric small,
+.agent-admin-source-badge,
 .agent-admin-status-chip,
 .agent-admin-definition-list dt,
 .agent-admin-detail-list span,
@@ -4863,6 +4864,40 @@ body {
   background: var(--color-surface-muted);
   font-weight: 700;
   white-space: nowrap;
+}
+
+.agent-admin-source-badge {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-muted);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.agent-admin-source-badge-live {
+  border-color: color-mix(in srgb, var(--color-success) 32%, transparent);
+  color: var(--color-success);
+}
+
+.agent-admin-source-badge-runtime-api {
+  border-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+  color: var(--color-primary);
+}
+
+.agent-admin-source-badge-roadmap {
+  border-color: color-mix(in srgb, var(--color-warning) 28%, transparent);
+  color: var(--color-warning);
+}
+
+.agent-admin-source-badge-unavailable {
+  border-color: color-mix(in srgb, var(--color-primary) 20%, transparent);
+  color: var(--color-text-muted);
 }
 
 .agent-admin-panel {

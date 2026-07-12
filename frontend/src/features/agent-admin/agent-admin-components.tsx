@@ -11,6 +11,27 @@ import { classNames } from "../../components/ui";
 
 type AgentAdminTone = "red" | "neutral" | "warning" | "success";
 
+export type AgentAdminDataSource = "live" | "runtime-api" | "catalog" | "unavailable" | "roadmap";
+
+export function AgentAdminSourceBadge({ source }: { source: AgentAdminDataSource }) {
+  const label =
+    source === "live"
+      ? "live session"
+      : source === "runtime-api"
+        ? "runtime API"
+        : source === "catalog"
+          ? "static catalog"
+          : source === "roadmap"
+            ? "roadmap / not wired"
+            : "unavailable";
+
+  return (
+    <span className={`agent-admin-source-badge agent-admin-source-badge-${source}`} data-source={source}>
+      {label}
+    </span>
+  );
+}
+
 type AgentAdminMetric = {
   id?: string;
   label: string;
