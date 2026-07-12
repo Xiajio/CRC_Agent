@@ -33,10 +33,16 @@ describe("AgentAdmin shared components", () => {
 
   it("renders live and catalog source badges", () => {
     render(<AgentAdminSourceBadge source="live" />);
-    expect(screen.getByText("live session")).toBeInTheDocument();
+    const liveBadge = screen.getByText("live session");
+    expect(liveBadge).toBeInTheDocument();
+    expect(liveBadge).toHaveAttribute("data-source", "live");
+    expect(liveBadge).toHaveClass("agent-admin-source-badge-live");
 
     render(<AgentAdminSourceBadge source="catalog" />);
-    expect(screen.getByText("static catalog")).toBeInTheDocument();
+    const catalogBadge = screen.getByText("static catalog");
+    expect(catalogBadge).toBeInTheDocument();
+    expect(catalogBadge).toHaveAttribute("data-source", "catalog");
+    expect(catalogBadge).toHaveClass("agent-admin-source-badge-catalog");
   });
 
   it("keeps disabled actions focusable while exposing the reason", () => {

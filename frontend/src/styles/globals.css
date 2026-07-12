@@ -4890,6 +4890,11 @@ body {
   color: var(--color-primary);
 }
 
+.agent-admin-source-badge-catalog {
+  border-color: var(--color-border);
+  color: var(--color-text-muted);
+}
+
 .agent-admin-source-badge-roadmap {
   border-color: color-mix(in srgb, var(--color-warning) 28%, transparent);
   color: var(--color-warning);
