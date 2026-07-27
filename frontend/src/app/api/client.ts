@@ -1,8 +1,17 @@
 import { streamJsonEvents, type FetchLike, type StreamTraceTap } from "./stream";
 import type {
   AdminAcknowledgeReleaseMonitoringAlertRequest,
+  AdminAutoResearchRunResponse,
+  AdminAutoResearchRunsResponse,
   AdminCancelReleaseIntentRequest,
+  AdminCohortFeasibilityRequest,
+  AdminCohortFeasibilityResponse,
+  AdminCreateAutoResearchRunRequest,
+  AdminCreateAutoResearchRunResponse,
+  AdminCreateLearningJobRequest,
+  AdminCreateLearningJobResponse,
   AdminCreateReleaseIntentRequest,
+  AdminLearningJobsResponse,
   AdminRecordReleaseClosureRequest,
   AdminExecuteReleaseRequest,
   AdminReleaseClosureResponse,
@@ -104,6 +113,16 @@ function buildJsonHeaders(defaultHeaders?: HeadersInit): Headers {
 export interface ApiClient {
   getAdminTools(): Promise<AdminToolManifestResponse>;
   getAdminRules(): Promise<AdminRulesResponse>;
+  getAdminLearningJobs(): Promise<AdminLearningJobsResponse>;
+  createAdminLearningJob(request: AdminCreateLearningJobRequest): Promise<AdminCreateLearningJobResponse>;
+  evaluateAdminCohortFeasibility(
+    request: AdminCohortFeasibilityRequest,
+  ): Promise<AdminCohortFeasibilityResponse>;
+  getAdminAutoResearchRuns(): Promise<AdminAutoResearchRunsResponse>;
+  createAdminAutoResearchRun(
+    request: AdminCreateAutoResearchRunRequest,
+  ): Promise<AdminCreateAutoResearchRunResponse>;
+  getAdminAutoResearchRun(runId: string): Promise<AdminAutoResearchRunResponse>;
   getAdminReleaseDashboard(): Promise<AdminReleaseDashboardResponse>;
   getAdminReleaseGovernance(): Promise<AdminReleaseGovernanceResponse>;
   getAdminReleaseExecution(): Promise<AdminReleaseExecutionResponse>;
@@ -194,6 +213,59 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
         headers: defaultHeaders,
       });
       return parseJsonResponse<AdminRulesResponse>(response);
+    },
+
+    async getAdminLearningJobs() {
+      const response = await fetchImpl(buildUrl("/api/admin/learning-jobs", baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<AdminLearningJobsResponse>(response);
+    },
+
+    async createAdminLearningJob(request) {
+      const response = await fetchImpl(buildUrl("/api/admin/learning-jobs", baseUrl), {
+        method: "POST",
+        headers: buildJsonHeaders(defaultHeaders),
+        body: JSON.stringify(request),
+      });
+      return parseJsonResponse<AdminCreateLearningJobResponse>(response);
+    },
+
+    async evaluateAdminCohortFeasibility(request) {
+      const response = await fetchImpl(
+        buildUrl("/api/admin/research/cohort-feasibility", baseUrl),
+        {
+          method: "POST",
+          headers: buildJsonHeaders(defaultHeaders),
+          body: JSON.stringify(request),
+        },
+      );
+      return parseJsonResponse<AdminCohortFeasibilityResponse>(response);
+    },
+
+    async getAdminAutoResearchRuns() {
+      const response = await fetchImpl(buildUrl("/api/admin/research/runs", baseUrl), {
+        headers: defaultHeaders,
+      });
+      return parseJsonResponse<AdminAutoResearchRunsResponse>(response);
+    },
+
+    async createAdminAutoResearchRun(request) {
+      const response = await fetchImpl(buildUrl("/api/admin/research/runs", baseUrl), {
+        method: "POST",
+        headers: buildJsonHeaders(defaultHeaders),
+        body: JSON.stringify(request),
+      });
+      return parseJsonResponse<AdminCreateAutoResearchRunResponse>(response);
+    },
+
+    async getAdminAutoResearchRun(runId) {
+      const encodedRunId = encodeURIComponent(runId);
+      const response = await fetchImpl(
+        buildUrl(`/api/admin/research/runs/${encodedRunId}`, baseUrl),
+        { headers: defaultHeaders },
+      );
+      return parseJsonResponse<AdminAutoResearchRunResponse>(response);
     },
 
     async getAdminReleaseDashboard() {

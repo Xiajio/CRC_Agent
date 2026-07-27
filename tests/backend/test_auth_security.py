@@ -113,6 +113,18 @@ def _auth_client(*, user_token: str = "user-token", admin_token: str | None = "a
     async def admin_research_cohort_feasibility() -> dict[str, object]:
         return {"runtime": {"auth": "admin", "mode": "shadow_cohort_feasibility"}}
 
+    @app.get("/api/admin/research/runs")
+    async def admin_research_runs_read() -> dict[str, object]:
+        return {"runtime": {"auth": "admin", "mode": "shadow_auto_research"}}
+
+    @app.post("/api/admin/research/runs")
+    async def admin_research_runs_create() -> dict[str, object]:
+        return {"runtime": {"auth": "admin", "mode": "shadow_auto_research"}}
+
+    @app.get("/api/admin/research/runs/{run_id}")
+    async def admin_research_run_detail(run_id: str) -> dict[str, object]:
+        return {"run_id": run_id}
+
     @app.get("/api/admin/learning-jobs")
     async def admin_learning_jobs_read() -> dict[str, object]:
         return {"runtime": {"auth": "admin", "mode": "shadow_learning_jobs"}}
@@ -164,6 +176,9 @@ def test_bearer_auth_required_for_api_routes() -> None:
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
         ("post", "/api/admin/release-closure/closures"),
         ("post", "/api/admin/research/cohort-feasibility"),
+        ("get", "/api/admin/research/runs"),
+        ("post", "/api/admin/research/runs"),
+        ("get", "/api/admin/research/runs/auto_research_run_001"),
         ("get", "/api/admin/learning-jobs"),
         ("post", "/api/admin/learning-jobs"),
     ],
@@ -202,6 +217,9 @@ def test_admin_endpoints_reject_user_token_when_admin_token_is_distinct(method: 
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
         ("post", "/api/admin/release-closure/closures"),
         ("post", "/api/admin/research/cohort-feasibility"),
+        ("get", "/api/admin/research/runs"),
+        ("post", "/api/admin/research/runs"),
+        ("get", "/api/admin/research/runs/auto_research_run_001"),
         ("get", "/api/admin/learning-jobs"),
         ("post", "/api/admin/learning-jobs"),
     ],
@@ -239,6 +257,9 @@ def test_admin_endpoints_accept_admin_token(method: str, path: str) -> None:
         ("post", "/api/admin/release-monitoring/alerts/alert-1/acknowledge"),
         ("post", "/api/admin/release-closure/closures"),
         ("post", "/api/admin/research/cohort-feasibility"),
+        ("get", "/api/admin/research/runs"),
+        ("post", "/api/admin/research/runs"),
+        ("get", "/api/admin/research/runs/auto_research_run_001"),
         ("get", "/api/admin/learning-jobs"),
         ("post", "/api/admin/learning-jobs"),
     ],

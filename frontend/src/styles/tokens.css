@@ -58,6 +58,7 @@
   --motion-duration-highlight: 240ms;
   --motion-duration-transition: 240ms;
   --motion-duration-enter: 320ms;
+  --motion-duration-ambient: 1100ms;
   --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-gsap-ease-out: power3.out;
   --motion-enter-y: 12px;

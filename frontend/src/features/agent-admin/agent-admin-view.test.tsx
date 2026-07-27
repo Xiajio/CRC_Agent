@@ -1,7 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
+  AdminCohortFeasibilityResponse,
+  AdminCreateLearningJobResponse,
+  AdminLearningJobsResponse,
   AdminRulesResponse,
   AdminReleaseClosureResponse,
   AdminReleaseDashboardResponse,
@@ -11,7 +14,13 @@ import type {
   AdminToolManifestResponse,
 } from "../../app/api/types";
 import type { SessionState } from "../../app/api/types";
+import { ApiClientError } from "../../app/api/client";
 import { createInitialSessionState } from "../../app/store/stream-reducer";
+import {
+  makeAdminAutoResearchRun,
+  makeAdminAutoResearchRunResponse,
+  makeAdminAutoResearchRunsResponse,
+} from "../../test/test-utils";
 import {
   ADMIN_NAV_ITEMS,
   AGENT_ADMIN_TASKS,
@@ -42,6 +51,19 @@ function makeState(overrides: Partial<SessionState> = {}): SessionState {
     ...createInitialSessionState(),
     ...overrides,
   };
+}
+
+function fillAutoResearchCreateForm(options: { confirmPrivacy?: boolean; suffix?: string } = {}) {
+  const suffix = options.suffix ?? "test";
+  fireEvent.change(screen.getByLabelText("自动科研请求 ID"), { target: { value: `request-${suffix}` } });
+  fireEvent.change(screen.getByLabelText("自动科研项目 ID"), { target: { value: `project-${suffix}` } });
+  fireEvent.change(screen.getByLabelText("自动科研幂等键"), { target: { value: `idempotency-${suffix}` } });
+  fireEvent.change(screen.getByLabelText("自动科研研究问题"), {
+    target: { value: `Which public evidence should be reviewed for ${suffix}?` },
+  });
+  if (options.confirmPrivacy !== false) {
+    fireEvent.click(screen.getByRole("checkbox", { name: /确认问题不含患者标识符/ }));
+  }
 }
 
 function makeAdminToolsManifest(): AdminToolManifestResponse {
@@ -181,6 +203,115 @@ function makeAdminReleaseDashboard(): AdminReleaseDashboardResponse {
       source: "reports/static_release_artifacts",
       mode: "read_only",
     },
+  };
+}
+
+function makeAdminLearningJobsResponse(): AdminLearningJobsResponse {
+  return {
+    jobs: [
+      {
+        job_id: "learning_job_crc_shadow_001",
+        job_type: "candidate_evidence_ingest",
+        status: "shadow_only",
+        created_at: "2026-07-17T09:30:00+08:00",
+        source_signal_ids: ["signal_crc_001"],
+        candidate_patch_ids: ["candidate_crc_001"],
+        required_harness: {
+          required: true,
+          case_pack_version: "crc_case_pack_v0",
+          required_levels: ["P0", "P1"],
+          hard_fail_policy: "zero_hard_fail",
+        },
+        human_review: {
+          required: true,
+          required_roles: ["evidence_reviewer"],
+          status: "pending",
+        },
+        release_governance_ref: null,
+        idempotency_key: "learning-job-crc-shadow-001",
+      },
+    ],
+    candidates: [
+      {
+        patch_id: "candidate_crc_001",
+        patch_type: "evidence_ingest",
+        target_ref: { index: "clinical_rag" },
+        change_summary: "Review a deidentified CRC evidence delta.",
+        proposed_diff: { mode: "candidate_only" },
+        source_signal_ids: ["signal_crc_001"],
+        status: "candidate",
+        applies_automatically: false,
+      },
+    ],
+    integrity: { status: "verified", warnings: [] },
+    disabled_actions: [
+      { id: "apply", label: "Apply candidate", disabled: true, reason: "Human review is required." },
+      { id: "train", label: "Train model", disabled: true, reason: "Training is outside this workflow." },
+    ],
+    actions: {
+      apply: { enabled: false, reason: "Human review is required." },
+      train: { enabled: false, reason: "Training is outside this workflow." },
+    },
+    runtime: { auth: "admin", source: "reports/learning_jobs", mode: "shadow_learning_jobs" },
+  };
+}
+
+function makeAdminCreateLearningJobResponse(): AdminCreateLearningJobResponse {
+  const learning = makeAdminLearningJobsResponse();
+  return {
+    job: learning.jobs[0],
+    signals: [
+      {
+        signal_id: "signal_crc_001",
+        signal_type: "evidence_delta",
+        source_ref: { kind: "evidence_delta", id: "aggregate-signal-001" },
+        reason_code: "evidence_gap",
+        target_area: "evidence_ingest",
+        severity: "review_required",
+        summary: "Aggregate deidentified evidence delta.",
+        deidentified: true,
+        created_at: "2026-07-17T09:30:00+08:00",
+      },
+    ],
+    candidates: learning.candidates,
+    integrity: learning.integrity,
+    disabled_actions: learning.disabled_actions,
+    actions: learning.actions,
+    runtime: learning.runtime,
+  };
+}
+
+function makeAdminCohortFeasibilityResponse(): AdminCohortFeasibilityResponse {
+  return {
+    result_id: "cohort_feasibility_crc_001",
+    request_id: "cohort_request_crc_001",
+    project_id: "research_crc_001",
+    status: "needs_review",
+    estimated_count: 7,
+    variable_coverage: {
+      rectal_bleeding: {
+        covered_count: 5,
+        coverage_ratio: 0.71,
+        source_fact_types: ["symptom"],
+        reviewed_status_mix: { reviewed: 3, pending: 2 },
+      },
+    },
+    missing_key_variables: ["anemia"],
+    unmapped_required_features: [],
+    bias_warnings: ["coverage differs by review status"],
+    requires_review: true,
+    review_queue_items: [
+      {
+        review_item_id: "research_review_crc_001",
+        review_type: "pi_review",
+        status: "pending",
+        trigger: "cohort_feasibility",
+        scope: { project_id: "research_crc_001" },
+        required_checks: ["coverage review", "bias review"],
+      },
+    ],
+    patient_level_rows_returned: false,
+    runtime: { auth: "admin", source: "patient_record_projection", mode: "shadow_cohort_feasibility" },
   };
 }
 
@@ -477,12 +608,905 @@ describe("AgentAdminView", () => {
 
     const rail = screen.getByRole("navigation", { name: "后台子任务" });
     expect(within(rail).getAllByRole("button")).toHaveLength(10);
-    for (const label of ["总览", "会话", "记忆", "规则", "工具", "学习", "Trace", "证据", "Release", "设置只读"]) {
+    for (const label of ["总览", "会话", "记忆", "规则", "工具", "自动科研", "Trace", "证据", "Release", "设置只读"]) {
       expect(within(rail).getByText(label)).toBeInTheDocument();
     }
 
     expect(within(rail).getByText("summary memory / 永久事实")).toBeInTheDocument();
-    expect(within(rail).getByText("daily paper readiness")).toBeInTheDocument();
+    expect(within(rail).getByText("review-gated research")).toBeInTheDocument();
+  });
+
+  it("loads the research console from literature and LearningJob runtime APIs", async () => {
+    const getAdminReleaseDashboard = vi.fn(async () => makeAdminReleaseDashboard());
+    const getAdminLearningJobs = vi.fn(async () => makeAdminLearningJobsResponse());
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-research-read" })}
+        doctor={makeState({ sessionId: "doctor-research-read" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{ getAdminReleaseDashboard, getAdminLearningJobs }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+
+    await waitFor(() => {
+      expect(getAdminReleaseDashboard).toHaveBeenCalledTimes(1);
+      expect(getAdminLearningJobs).toHaveBeenCalledTimes(1);
+      expect(screen.getAllByText("learning_job_crc_shadow_001").length).toBeGreaterThan(0);
+    });
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    expect(page).toHaveTextContent("literature_harness_20260630_001");
+    expect(page).toHaveTextContent("Review a deidentified CRC evidence delta.");
+    expect(page).toHaveTextContent("applies automatically: false");
+    expect(page).toHaveTextContent("最新影子报告");
+    expect(within(page).getByText("Apply candidate").closest("button")).toHaveAttribute("aria-disabled", "true");
+    expect(page).not.toHaveTextContent("waiting for scheduler");
+  });
+
+  it("loads and inspects a source-grounded automatic research Run", async () => {
+    const run = makeAdminAutoResearchRun({
+      run_id: "auto_research_run_ui_001",
+      report_markdown: "# Shadow report\n\nSupported by [research_source_test].",
+    });
+    const getAdminAutoResearchRuns = vi.fn(async () => makeAdminAutoResearchRunsResponse({ runs: [run] }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-read" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-read" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+          getAdminLearningJobs: vi.fn(async () => makeAdminLearningJobsResponse()),
+          getAdminAutoResearchRuns,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+
+    await waitFor(() => expect(getAdminAutoResearchRuns).toHaveBeenCalledTimes(1));
+    const page = screen.getByTestId("agent-admin-task-page");
+    await waitFor(() => expect(page).toHaveTextContent("auto_research_run_ui_001"));
+    expect(page).toHaveTextContent("执行完成 · 待人工复核");
+    expect(page).toHaveTextContent("A source-grounded candidate hypothesis.");
+    expect(page).toHaveTextContent("研究方案草案（未执行）");
+    expect(page).toHaveTextContent("# Shadow report Supported by [research_source_test].");
+    expect(page).toHaveTextContent("applies automatically: false");
+    expect(page).toHaveTextContent("clinical default mutated: false");
+    expect(page).toHaveTextContent("patient rows returned: false");
+    expect(within(page).getByRole("link", { name: "CRC evidence source（新窗口）" })).toHaveAttribute(
+      "href",
+      "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+    );
+  });
+
+  it("creates an automatic research Run with bounded shadow-only inputs", async () => {
+    const run = makeAdminAutoResearchRun({
+      run_id: "auto_research_run_ui_created",
+      request: {
+        request_id: "auto_research_request_ui_001",
+        project_id: "auto_research_project_ui_001",
+        question: "Which evidence-grounded hypothesis merits controlled follow-up?",
+        requested_by: "research_operator",
+        idempotency_key: "auto-research-ui-001",
+        max_sources: 8,
+        max_hypotheses: 3,
+        max_iterations: 2,
+        deidentified: true,
+      },
+    });
+    const getAdminAutoResearchRuns = vi
+      .fn()
+      .mockResolvedValueOnce(makeAdminAutoResearchRunsResponse())
+      .mockResolvedValueOnce(makeAdminAutoResearchRunsResponse({ runs: [run] }));
+    const createAdminAutoResearchRun = vi.fn(async () => ({
+      ...makeAdminAutoResearchRunResponse({ run }),
+      reused: false,
+    }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-create" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-create" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+          getAdminLearningJobs: vi.fn(async () => makeAdminLearningJobsResponse()),
+          getAdminAutoResearchRuns,
+          createAdminAutoResearchRun,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    await waitFor(() => expect(getAdminAutoResearchRuns).toHaveBeenCalledTimes(1));
+    const identifierPattern = String.raw`[A-Za-z0-9][A-Za-z0-9_.:\-]*`;
+    expect(screen.getByLabelText("自动科研请求 ID")).toHaveAttribute("pattern", identifierPattern);
+    expect(screen.getByLabelText("自动科研项目 ID")).toHaveAttribute("pattern", identifierPattern);
+    expect(screen.getByLabelText("自动科研幂等键")).toHaveAttribute("pattern", identifierPattern);
+    fireEvent.change(screen.getByLabelText("自动科研请求 ID"), { target: { value: "auto_research_request_ui_001" } });
+    fireEvent.change(screen.getByLabelText("自动科研项目 ID"), { target: { value: "auto_research_project_ui_001" } });
+    fireEvent.change(screen.getByLabelText("自动科研幂等键"), { target: { value: "auto-research-ui-001" } });
+    fireEvent.change(screen.getByLabelText("自动科研研究问题"), {
+      target: { value: "Which evidence-grounded hypothesis merits controlled follow-up?" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: /确认问题不含患者标识符/ }));
+    fireEvent.click(screen.getByRole("button", { name: "运行自动科研闭环" }));
+
+    await waitFor(() => expect(createAdminAutoResearchRun).toHaveBeenCalledTimes(1));
+    expect(createAdminAutoResearchRun).toHaveBeenCalledWith({
+      request_id: "auto_research_request_ui_001",
+      project_id: "auto_research_project_ui_001",
+      question: "Which evidence-grounded hypothesis merits controlled follow-up?",
+      requested_by: "research_operator",
+      idempotency_key: "auto-research-ui-001",
+      max_sources: 8,
+      max_hypotheses: 3,
+      max_iterations: 2,
+      deidentified: true,
+    });
+    expect(await screen.findByText(/已记录自动科研 Run auto_research_run_ui_created；闭环执行完成/)).toBeInTheDocument();
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("仍需人工复核");
+  });
+
+  it("shows when an idempotent automatic research Run is reused", async () => {
+    const run = makeAdminAutoResearchRun({ run_id: "auto_research_run_ui_reused" });
+    const getAdminAutoResearchRuns = vi.fn(async () => (
+      makeAdminAutoResearchRunsResponse({ runs: [run] })
+    ));
+    const createAdminAutoResearchRun = vi.fn(async () => ({
+      ...makeAdminAutoResearchRunResponse({ run }),
+      reused: true,
+    }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-reused" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-reused" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{ getAdminAutoResearchRuns, createAdminAutoResearchRun }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    await screen.findByRole("button", { name: /auto_research_run_ui_reused/ });
+    fillAutoResearchCreateForm({ suffix: "reused" });
+    fireEvent.click(screen.getByRole("button", { name: "运行自动科研闭环" }));
+
+    expect(await screen.findByText(
+      /已复用自动科研 Run auto_research_run_ui_reused；闭环执行完成/,
+    )).toBeInTheDocument();
+    expect(createAdminAutoResearchRun).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    {
+      status: 503,
+      suffix: "model-unavailable",
+      detail: "Auto-research reasoning model is unavailable. Configure LLM_MODE=API with a function-calling compatible LLM_API_BASE and, for non-local endpoints, LLM_API_KEY; then restart the backend.",
+    },
+    {
+      status: 409,
+      suffix: "idempotency-conflict",
+      detail: "idempotency key already belongs to a different research request",
+    },
+  ])("surfaces actionable $status auto-research create errors without retrying", async ({ status, suffix, detail }) => {
+    const getAdminAutoResearchRuns = vi.fn(async () => makeAdminAutoResearchRunsResponse());
+    const createAdminAutoResearchRun = vi.fn(async () => {
+      throw new ApiClientError(status, detail, { detail });
+    });
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: `patient-auto-research-${suffix}` })}
+        doctor={makeState({ sessionId: `doctor-auto-research-${suffix}` })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{ getAdminAutoResearchRuns, createAdminAutoResearchRun }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    await screen.findByText("尚无自动科研 Run");
+    fillAutoResearchCreateForm({ suffix });
+    fireEvent.click(screen.getByRole("button", { name: "运行自动科研闭环" }));
+
+    expect(await screen.findByText(detail)).toHaveClass("agent-admin-action-status-error");
+    expect(createAdminAutoResearchRun).toHaveBeenCalledTimes(1);
+    expect(getAdminAutoResearchRuns).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a newly created Run when an older list request resolves later", async () => {
+    const createdRun = makeAdminAutoResearchRun({ run_id: "auto_research_run_race_winner" });
+    const olderRun = makeAdminAutoResearchRun({ run_id: "auto_research_run_race_older" });
+    let resolveStaleList: ((value: ReturnType<typeof makeAdminAutoResearchRunsResponse>) => void) | undefined;
+    const getAdminAutoResearchRuns = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise<ReturnType<typeof makeAdminAutoResearchRunsResponse>>((resolve) => {
+          resolveStaleList = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(makeAdminAutoResearchRunsResponse({ runs: [createdRun, olderRun] }));
+    const createAdminAutoResearchRun = vi.fn(async () => ({
+      ...makeAdminAutoResearchRunResponse({ run: createdRun }),
+      reused: false,
+    }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-race" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-race" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{ getAdminAutoResearchRuns, createAdminAutoResearchRun }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    await waitFor(() => expect(getAdminAutoResearchRuns).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText("自动科研请求 ID"), { target: { value: "race-request" } });
+    fireEvent.change(screen.getByLabelText("自动科研项目 ID"), { target: { value: "race-project" } });
+    fireEvent.change(screen.getByLabelText("自动科研幂等键"), { target: { value: "race-key" } });
+    fireEvent.change(screen.getByLabelText("自动科研研究问题"), { target: { value: "Can this race preserve the newest Run?" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /确认问题不含患者标识符/ }));
+    fireEvent.click(screen.getByRole("button", { name: "运行自动科研闭环" }));
+
+    expect(await screen.findByText(/已记录自动科研 Run auto_research_run_race_winner；闭环执行完成/)).toBeInTheDocument();
+    await waitFor(() => expect(getAdminAutoResearchRuns).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      resolveStaleList?.(makeAdminAutoResearchRunsResponse({
+        runs: [olderRun],
+        integrity: { status: "warning", warnings: ["stale list must not win"] },
+      }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      const page = screen.getByTestId("agent-admin-task-page");
+      expect(page).toHaveTextContent("auto_research_run_race_winner");
+      expect(page).toHaveTextContent("auto_research_run_race_older");
+      expect(page).not.toHaveTextContent("stale list must not win");
+    });
+  });
+
+  it("loads the selected automatic research Run through the independent detail API", async () => {
+    const listedA = makeAdminAutoResearchRun({ run_id: "auto_research_run_detail_a" });
+    const listedB = makeAdminAutoResearchRun({
+      run_id: "auto_research_run_detail_b",
+      report_markdown: "List snapshot for B.",
+    });
+    const detailedB = makeAdminAutoResearchRun({
+      run_id: listedB.run_id,
+      report_markdown: "Authoritative detail response for B.",
+    });
+    const getAdminAutoResearchRun = vi.fn(async (runId: string) => {
+      expect(runId).toBe(listedB.run_id);
+      return makeAdminAutoResearchRunResponse({ run: detailedB });
+    });
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-detail" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-detail" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminAutoResearchRuns: vi.fn(async () => makeAdminAutoResearchRunsResponse({ runs: [listedA, listedB] })),
+          getAdminAutoResearchRun,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    const runBButton = await screen.findByRole("button", { name: /auto_research_run_detail_b/ });
+    fireEvent.click(runBButton);
+
+    await waitFor(() => expect(getAdminAutoResearchRun).toHaveBeenCalledWith("auto_research_run_detail_b"));
+    expect(await screen.findByText("Authoritative detail response for B.")).toBeInTheDocument();
+    const report = screen.getByLabelText("Run auto_research_run_detail_b 的引用受控报告");
+    expect(report).toHaveAttribute("tabindex", "0");
+    expect(screen.getByText("A source abstract used only for a shadow research fixture.")).toBeInTheDocument();
+    const inspector = document.getElementById("auto-research-run-inspector");
+    expect(inspector).not.toHaveAttribute("aria-live");
+    const announcement = within(inspector as HTMLElement).getByRole("status");
+    expect(announcement).toHaveTextContent("已选择自动科研 Run auto_research_run_detail_b");
+    expect(announcement).not.toHaveTextContent("Authoritative detail response for B.");
+  });
+
+  it("prevents a late A detail response from overwriting the selected B Run", async () => {
+    const listedA = makeAdminAutoResearchRun({ run_id: "auto_research_run_switch_a" });
+    const listedB = makeAdminAutoResearchRun({ run_id: "auto_research_run_switch_b" });
+    const detailA = makeAdminAutoResearchRun({ run_id: listedA.run_id, report_markdown: "Late detail A." });
+    const detailB = makeAdminAutoResearchRun({ run_id: listedB.run_id, report_markdown: "Winning detail B." });
+    let resolveA: ((value: ReturnType<typeof makeAdminAutoResearchRunResponse>) => void) | undefined;
+    let resolveB: ((value: ReturnType<typeof makeAdminAutoResearchRunResponse>) => void) | undefined;
+    const getAdminAutoResearchRun = vi.fn((runId: string) => (
+      new Promise<ReturnType<typeof makeAdminAutoResearchRunResponse>>((resolve) => {
+        if (runId === listedA.run_id) {
+          resolveA = resolve;
+        } else {
+          resolveB = resolve;
+        }
+      })
+    ));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-switch" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-switch" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminAutoResearchRuns: vi.fn(async () => makeAdminAutoResearchRunsResponse({ runs: [listedA, listedB] })),
+          getAdminAutoResearchRun,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    const runAButton = await screen.findByRole("button", { name: /auto_research_run_switch_a/ });
+    const runBButton = screen.getByRole("button", { name: /auto_research_run_switch_b/ });
+    fireEvent.click(runAButton);
+    fireEvent.click(runBButton);
+    await waitFor(() => expect(getAdminAutoResearchRun).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      resolveB?.(makeAdminAutoResearchRunResponse({ run: detailB }));
+      await Promise.resolve();
+    });
+    expect(await screen.findByText("Winning detail B.")).toBeInTheDocument();
+
+    await act(async () => {
+      resolveA?.(makeAdminAutoResearchRunResponse({ run: detailA }));
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Winning detail B.")).toBeInTheDocument();
+    expect(screen.queryByText("Late detail A.")).not.toBeInTheDocument();
+  });
+
+  it("keeps the Run ledger available when detail loading fails and supports retry", async () => {
+    const listedA = makeAdminAutoResearchRun({ run_id: "auto_research_run_retry_a" });
+    const listedB = makeAdminAutoResearchRun({ run_id: "auto_research_run_retry_b" });
+    const recoveredB = makeAdminAutoResearchRun({ run_id: listedB.run_id, report_markdown: "Recovered B detail." });
+    const getAdminAutoResearchRun = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiClientError(404, "Run not found", { detail: "Run not found" }))
+      .mockResolvedValueOnce(makeAdminAutoResearchRunResponse({ run: recoveredB }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-retry" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-retry" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminAutoResearchRuns: vi.fn(async () => makeAdminAutoResearchRunsResponse({ runs: [listedA, listedB] })),
+          getAdminAutoResearchRun,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /auto_research_run_retry_b/ }));
+
+    expect(await screen.findByText("Run 详情读取失败")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /auto_research_run_retry_a/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /auto_research_run_retry_b/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "重试详情" }));
+
+    expect(await screen.findByText("Recovered B detail.")).toBeInTheDocument();
+    expect(getAdminAutoResearchRun).toHaveBeenCalledTimes(2);
+  });
+
+  it("preserves the last successful Run list while refresh is pending or fails", async () => {
+    const previousRun = makeAdminAutoResearchRun({ run_id: "auto_research_run_refresh_previous" });
+    const refreshedRun = makeAdminAutoResearchRun({ run_id: "auto_research_run_refresh_current" });
+    let rejectRefresh: ((reason?: unknown) => void) | undefined;
+    const pendingRefresh = new Promise<ReturnType<typeof makeAdminAutoResearchRunsResponse>>((_, reject) => {
+      rejectRefresh = reject;
+    });
+    const getAdminAutoResearchRuns = vi
+      .fn()
+      .mockResolvedValueOnce(makeAdminAutoResearchRunsResponse({ runs: [previousRun] }))
+      .mockImplementationOnce(() => pendingRefresh)
+      .mockResolvedValueOnce(makeAdminAutoResearchRunsResponse({ runs: [refreshedRun] }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-refresh" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-refresh" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{ getAdminAutoResearchRuns }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    expect(await screen.findByRole("button", { name: /auto_research_run_refresh_previous/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新 Runs" }));
+
+    expect(await screen.findByRole("button", { name: "刷新中…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /auto_research_run_refresh_previous/ })).toBeInTheDocument();
+    await act(async () => {
+      rejectRefresh?.(new ApiClientError(503, "ledger unavailable", { detail: "ledger unavailable" }));
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByText("刷新失败，当前显示最近一次成功结果")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /auto_research_run_refresh_previous/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新 Runs" }));
+
+    expect(await screen.findByRole("button", { name: /auto_research_run_refresh_current/ })).toBeInTheDocument();
+    expect(screen.queryByText("刷新失败，当前显示最近一次成功结果")).not.toBeInTheDocument();
+    expect(getAdminAutoResearchRuns).toHaveBeenCalledTimes(3);
+  });
+
+  it("filters the automatic research ledger and discloses a hidden selection", async () => {
+    const completed = makeAdminAutoResearchRun({
+      run_id: "auto_research_run_filter_completed",
+      request: {
+        ...makeAdminAutoResearchRun().request,
+        project_id: "project-completed",
+        question: "Completed evidence question",
+      },
+    });
+    const partial = makeAdminAutoResearchRun({
+      run_id: "auto_research_run_filter_partial",
+      status: "partial_shadow",
+      request: {
+        ...makeAdminAutoResearchRun().request,
+        project_id: "project-partial",
+        question: "Partial evidence question",
+      },
+    });
+    const failed = makeAdminAutoResearchRun({
+      run_id: "auto_research_run_filter_failed",
+      status: "failed_shadow",
+      request: {
+        ...makeAdminAutoResearchRun().request,
+        project_id: "project-failed",
+        question: "Failed evidence question",
+      },
+    });
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-filter" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-filter" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminAutoResearchRuns: vi.fn(async () => makeAdminAutoResearchRunsResponse({ runs: [completed, partial, failed] })),
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    await screen.findByText("3 / 3 条");
+    fireEvent.change(screen.getByLabelText("搜索 Run"), { target: { value: "project-partial" } });
+
+    await waitFor(() => expect(screen.getByText("1 / 3 条")).toBeInTheDocument());
+    let ledger = screen.getByLabelText("自动科研 Run 列表");
+    expect(within(ledger).getByText("auto_research_run_filter_partial")).toBeInTheDocument();
+    expect(within(ledger).queryByText("auto_research_run_filter_completed")).not.toBeInTheDocument();
+    expect(screen.getByText("当前选择被筛选隐藏")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
+
+    await waitFor(() => expect(screen.getByText("3 / 3 条")).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("执行状态"), { target: { value: "failed_shadow" } });
+    await waitFor(() => expect(screen.getByText("1 / 3 条")).toBeInTheDocument());
+    ledger = screen.getByLabelText("自动科研 Run 列表");
+    expect(within(ledger).getByText("auto_research_run_filter_failed")).toBeInTheDocument();
+    expect(within(ledger).queryByText("auto_research_run_filter_partial")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("搜索 Run"), { target: { value: "no-such-run" } });
+    expect(await screen.findByText("没有匹配的 Run")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "清除筛选" })[0]);
+    await waitFor(() => expect(screen.getByText("3 / 3 条")).toBeInTheDocument());
+  });
+
+  it("requires an explicit PubMed privacy confirmation before creating a Run", async () => {
+    const createAdminAutoResearchRun = vi.fn(async () => ({
+      ...makeAdminAutoResearchRunResponse(),
+      reused: false,
+    }));
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-privacy" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-privacy" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminAutoResearchRuns: vi.fn(async () => makeAdminAutoResearchRunsResponse()),
+          createAdminAutoResearchRun,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    await screen.findByText("尚无自动科研 Run");
+    fillAutoResearchCreateForm({ confirmPrivacy: false, suffix: "privacy" });
+    expect(screen.getByText(/内容会发送至 NCBI PubMed 检索/)).toBeInTheDocument();
+    const submitButton = screen.getByRole("button", { name: "运行自动科研闭环" });
+    fireEvent.submit(submitButton.closest("form") as HTMLFormElement);
+
+    expect(await screen.findByText(/请确认研究问题不含患者标识符/)).toBeInTheDocument();
+    const confirmation = screen.getByRole("checkbox", { name: /确认问题不含患者标识符/ });
+    expect(confirmation).toHaveFocus();
+    expect(confirmation).toHaveAttribute("aria-invalid", "true");
+    expect(createAdminAutoResearchRun).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      status: "partial_shadow" as const,
+      runId: "auto_research_run_partial_ui",
+      expectedMessage: "已记录部分完成的 Run auto_research_run_partial_ui；失败阶段 hypothesis_review：review timeout",
+      expectedClass: "agent-admin-action-status-warning",
+    },
+    {
+      status: "failed_shadow" as const,
+      runId: "auto_research_run_failed_ui",
+      expectedMessage: "已记录执行失败的 Run auto_research_run_failed_ui；失败阶段 hypothesis_review：review timeout 可检查输入后使用新的幂等键重试。",
+      expectedClass: "agent-admin-action-status-error",
+    },
+  ])("reports $status Run creation without a generic success state", async ({ status, runId, expectedMessage, expectedClass }) => {
+    const run = makeAdminAutoResearchRun({
+      run_id: runId,
+      status,
+      stages: [
+        {
+          name: "hypothesis_review",
+          status: "failed",
+          started_at: "2026-07-19T02:00:10+00:00",
+          completed_at: "2026-07-19T02:00:20+00:00",
+          summary: "Review did not complete.",
+          error: "review timeout",
+        },
+      ],
+    });
+    const getAdminAutoResearchRuns = vi
+      .fn()
+      .mockResolvedValueOnce(makeAdminAutoResearchRunsResponse())
+      .mockResolvedValueOnce(makeAdminAutoResearchRunsResponse({ runs: [run] }));
+    const createAdminAutoResearchRun = vi.fn(async () => ({
+      ...makeAdminAutoResearchRunResponse({ run }),
+      reused: false,
+    }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: `patient-${status}` })}
+        doctor={makeState({ sessionId: `doctor-${status}` })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{ getAdminAutoResearchRuns, createAdminAutoResearchRun }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    await screen.findByText("尚无自动科研 Run");
+    fillAutoResearchCreateForm({ suffix: status });
+    fireEvent.click(screen.getByRole("button", { name: "运行自动科研闭环" }));
+
+    const message = await screen.findByText(expectedMessage);
+    expect(message).toHaveClass(expectedClass);
+    expect(message).not.toHaveClass("agent-admin-action-status-success");
+  });
+
+  it("cancels orphaned detail loading when leaving and re-entering automatic research", async () => {
+    const listedA = makeAdminAutoResearchRun({ run_id: "auto_research_run_leave_a" });
+    const listedB = makeAdminAutoResearchRun({ run_id: "auto_research_run_leave_b", report_markdown: "List snapshot B." });
+    const lateB = makeAdminAutoResearchRun({ run_id: listedB.run_id, report_markdown: "Late cancelled B detail." });
+    const recoveredB = makeAdminAutoResearchRun({ run_id: listedB.run_id, report_markdown: "Fresh B detail after return." });
+    let resolveLateDetail: ((value: ReturnType<typeof makeAdminAutoResearchRunResponse>) => void) | undefined;
+    const getAdminAutoResearchRun = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise<ReturnType<typeof makeAdminAutoResearchRunResponse>>((resolve) => {
+          resolveLateDetail = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(makeAdminAutoResearchRunResponse({ run: recoveredB }));
+    const getAdminAutoResearchRuns = vi.fn(async () => makeAdminAutoResearchRunsResponse({ runs: [listedA, listedB] }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-leave" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-leave" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{ getAdminAutoResearchRuns, getAdminAutoResearchRun }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /auto_research_run_leave_b/ }));
+    await waitFor(() => expect(getAdminAutoResearchRun).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText(/正在读取 Run auto_research_run_leave_b 的详情/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "巡检总览" }));
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    await waitFor(() => expect(getAdminAutoResearchRuns).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("List snapshot B.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "刷新详情" })).toBeEnabled();
+
+    await act(async () => {
+      resolveLateDetail?.(makeAdminAutoResearchRunResponse({ run: lateB }));
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("Late cancelled B detail.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "刷新详情" }));
+
+    expect(await screen.findByText("Fresh B detail after return.")).toBeInTheDocument();
+    expect(getAdminAutoResearchRun).toHaveBeenCalledTimes(2);
+  });
+
+  it("treats the post-create ledger refresh as authoritative when a Run is quarantined", async () => {
+    const existingRun = makeAdminAutoResearchRun({ run_id: "auto_research_run_authority_existing" });
+    const quarantinedRun = makeAdminAutoResearchRun({ run_id: "auto_research_run_authority_quarantined" });
+    const getAdminAutoResearchRuns = vi
+      .fn()
+      .mockResolvedValueOnce(makeAdminAutoResearchRunsResponse({ runs: [existingRun] }))
+      .mockResolvedValueOnce(makeAdminAutoResearchRunsResponse({
+        runs: [existingRun],
+        integrity: { status: "warning", warnings: ["quarantined Run omitted from ledger"] },
+      }));
+    const createAdminAutoResearchRun = vi.fn(async () => ({
+      ...makeAdminAutoResearchRunResponse({ run: quarantinedRun }),
+      reused: false,
+    }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-authority" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-authority" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{ getAdminAutoResearchRuns, createAdminAutoResearchRun }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    await screen.findByRole("button", { name: /auto_research_run_authority_existing/ });
+    fillAutoResearchCreateForm({ suffix: "authority" });
+    fireEvent.click(screen.getByRole("button", { name: "运行自动科研闭环" }));
+
+    expect((await screen.findAllByText("quarantined Run omitted from ledger")).length).toBeGreaterThan(0);
+    const ledger = screen.getByLabelText("自动科研 Run 列表");
+    expect(within(ledger).getByText("auto_research_run_authority_existing")).toBeInTheDocument();
+    expect(within(ledger).queryByText("auto_research_run_authority_quarantined")).not.toBeInTheDocument();
+    expect(getAdminAutoResearchRuns).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows affected Run artifacts and append-only recovery paths for integrity warnings", async () => {
+    const artifactPath = "runs/auto_research_run_filename.json";
+    const persistedRunId = "auto_research_run_persisted";
+    const warning = `${artifactPath} auto-research run is invalid: run filename must match the persisted run_id`;
+    const getAdminAutoResearchRuns = vi.fn(async () => makeAdminAutoResearchRunsResponse({
+      integrity: {
+        status: "warning",
+        warnings: [warning],
+        affected_artifacts: [
+          {
+            code: "filename_run_id_mismatch",
+            artifact_path: artifactPath,
+            filename_run_id: "auto_research_run_filename",
+            persisted_run_id: persistedRunId,
+            message: warning,
+            excluded_from_runs: true,
+          },
+        ],
+        recovery_actions: [
+          {
+            code: "rerun_with_new_idempotency_key",
+            label: "Rerun as a new append-only Run",
+            instruction: "Submit again with a new idempotency key.",
+            overwrites_existing_artifact: false,
+            clinical_data_mutated: false,
+          },
+          {
+            code: "manual_quarantine",
+            label: "Quarantine the artifact manually",
+            instruction: "Preserve original bytes and move the file outside runs.",
+            overwrites_existing_artifact: false,
+            clinical_data_mutated: false,
+          },
+        ],
+      },
+    }));
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-auto-research-integrity" })}
+        doctor={makeState({ sessionId: "doctor-auto-research-integrity" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{ getAdminAutoResearchRuns }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+
+    const alert = await screen.findByRole("alert", { name: "自动科研台账 integrity warning" });
+    expect(alert).toHaveTextContent("1 个受影响文件已从正常 Run 列表排除");
+    expect(alert).toHaveTextContent("文件名与工件内 run_id 不一致");
+    expect(alert).toHaveTextContent(artifactPath);
+    expect(alert).toHaveTextContent("auto_research_run_filename");
+    expect(alert).toHaveTextContent(persistedRunId);
+    expect(alert).toHaveTextContent("已排除，不作为正常结果展示");
+    expect(alert).toHaveTextContent("使用新幂等键重新运行");
+    expect(alert).toHaveTextContent("由授权人员人工隔离");
+    expect(alert).toHaveTextContent("不会自动改名、覆盖或隔离工件");
+    expect(alert).toHaveTextContent("不写入或改写临床数据");
+    expect(screen.getByText("没有通过完整性校验的 Run")).toBeInTheDocument();
+    expect(screen.queryByText("尚无自动科研 Run")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("自动科研 Run 列表")).not.toBeInTheDocument();
+  });
+
+  it("creates an audited shadow LearningJob and refreshes the candidate ledger", async () => {
+    const getAdminLearningJobs = vi.fn(async () => makeAdminLearningJobsResponse());
+    const createAdminLearningJob = vi.fn(async () => makeAdminCreateLearningJobResponse());
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-research-create" })}
+        doctor={makeState({ sessionId: "doctor-research-create" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+          getAdminLearningJobs,
+          createAdminLearningJob,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    await waitFor(() => expect(getAdminLearningJobs).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByLabelText("幂等键"), { target: { value: "learning-job-ui-001" } });
+    fireEvent.change(screen.getByLabelText("聚合来源 ID"), { target: { value: "aggregate-signal-ui-001" } });
+    fireEvent.change(screen.getByLabelText("原因代码"), { target: { value: "evidence_gap" } });
+    fireEvent.change(screen.getByLabelText("信号摘要"), { target: { value: "Aggregate deidentified evidence gap." } });
+    fireEvent.click(screen.getByRole("button", { name: "创建 shadow_only 候选" }));
+
+    await waitFor(() => expect(createAdminLearningJob).toHaveBeenCalledTimes(1));
+    expect(createAdminLearningJob).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requested_by: "admin_operator",
+        idempotency_key: "learning-job-ui-001",
+        signals: [
+          expect.objectContaining({
+            signal_type: "evidence_delta",
+            target_area: "evidence_ingest",
+            reason_code: "evidence_gap",
+            deidentified: true,
+            source_ref: expect.objectContaining({
+              id: "aggregate-signal-ui-001",
+              projection: "aggregate_shadow_learning",
+            }),
+          }),
+        ],
+      }),
+    );
+    await waitFor(() => expect(getAdminLearningJobs).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(/已创建影子 LearningJob learning_job_crc_shadow_001/)).toBeInTheDocument();
+  });
+
+  it("renders structured FastAPI validation details for a rejected LearningJob", async () => {
+    const createAdminLearningJob = vi.fn(async () => {
+      throw new ApiClientError(422, "[object Object]", {
+        detail: [{ loc: ["body", "signals", 0, "summary"], msg: "Field required" }],
+      });
+    });
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-research-validation" })}
+        doctor={makeState({ sessionId: "doctor-research-validation" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+          getAdminLearningJobs: vi.fn(async () => makeAdminLearningJobsResponse()),
+          createAdminLearningJob,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    fireEvent.change(screen.getByLabelText("幂等键"), { target: { value: "learning-job-invalid" } });
+    fireEvent.change(screen.getByLabelText("聚合来源 ID"), { target: { value: "aggregate-signal-invalid" } });
+    fireEvent.change(screen.getByLabelText("原因代码"), { target: { value: "evidence_gap" } });
+    fireEvent.change(screen.getByLabelText("信号摘要"), { target: { value: "Rejected by backend validation." } });
+    fireEvent.click(screen.getByRole("button", { name: "创建 shadow_only 候选" }));
+
+    await waitFor(() => expect(createAdminLearningJob).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("signals.0.summary: Field required")).toBeInTheDocument();
+    expect(screen.queryByText("[object Object]")).not.toBeInTheDocument();
+  });
+
+  it("does not present a missing literature report fallback as a real isolation violation", async () => {
+    const dashboard = makeAdminReleaseDashboard();
+    dashboard.summary.literature_isolation_violations = 1;
+    dashboard.summary.literature_claims = 0;
+    dashboard.runs = dashboard.runs.map((run) =>
+      run.kind === "literature_shadow_harness" ? { ...run, status: "missing" as const } : run,
+    );
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-literature-missing" })}
+        doctor={makeState({ sessionId: "doctor-literature-missing" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminReleaseDashboard: vi.fn(async () => dashboard),
+          getAdminLearningJobs: vi.fn(async () => makeAdminLearningJobsResponse()),
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    const isolationLabel = await screen.findByText("临床隔离违规");
+    const metric = isolationLabel.closest("article");
+    expect(metric).toHaveTextContent("待核验");
+    expect(metric).toHaveTextContent("需先恢复报告");
+    expect(screen.getByTestId("agent-admin-task-page")).toHaveTextContent("报告缺失或无效时不采用兜底数");
+  });
+
+  it("evaluates cohort feasibility without requesting patient-level rows", async () => {
+    const evaluateAdminCohortFeasibility = vi.fn(async () => makeAdminCohortFeasibilityResponse());
+
+    render(
+      <AgentAdminView
+        activeScene="doctor"
+        patient={makeState({ sessionId: "patient-cohort" })}
+        doctor={makeState({ sessionId: "doctor-cohort" })}
+        surfaceSwitcher={<button type="button">后台切换菜单</button>}
+        apiClient={{
+          getAdminReleaseDashboard: vi.fn(async () => makeAdminReleaseDashboard()),
+          getAdminLearningJobs: vi.fn(async () => makeAdminLearningJobsResponse()),
+          evaluateAdminCohortFeasibility,
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
+    fireEvent.change(screen.getByLabelText("请求 ID"), { target: { value: "cohort_request_crc_001" } });
+    fireEvent.change(screen.getByLabelText("项目 ID"), { target: { value: "research_crc_001" } });
+    fireEvent.change(screen.getByLabelText("必需变量，逗号分隔"), { target: { value: "rectal_bleeding, anemia" } });
+    fireEvent.change(screen.getByLabelText("研究问题"), { target: { value: "Is the aggregate projection reviewable?" } });
+    fireEvent.click(screen.getByRole("button", { name: "运行可行性评估" }));
+
+    await waitFor(() => expect(evaluateAdminCohortFeasibility).toHaveBeenCalledTimes(1));
+    expect(evaluateAdminCohortFeasibility).toHaveBeenCalledWith(
+      expect.objectContaining({
+        cohort_criteria: expect.objectContaining({ required_features: ["rectal_bleeding", "anemia"] }),
+        data_scope: {
+          source: "patient_record_projection",
+          patient_level_export_requested: false,
+          deidentified_only: true,
+        },
+      }),
+    );
+
+    const page = screen.getByTestId("agent-admin-task-page");
+    await waitFor(() => expect(page).toHaveTextContent("cohort_feasibility_crc_001"));
+    expect(page).toHaveTextContent("可评估投影人数");
+    expect(page).toHaveTextContent("不是符合纳排条件的患者数");
+    expect(page).toHaveTextContent("research_review_crc_001");
+    expect(within(page).getByRole("progressbar", { name: "rectal_bleeding 覆盖率" })).toHaveAttribute("aria-valuenow", "71");
   });
 
   it.each([
@@ -491,8 +1515,8 @@ describe("AgentAdminView", () => {
     { label: /记忆/, taskId: "memory", hidden: "差异对比", visible: "自动化维护流水线" },
     { label: /规则/, taskId: "rules", hidden: "记忆事实", visible: "规则目录" },
     { label: /工具/, taskId: "tools", hidden: "规则目录", visible: "可达性矩阵" },
-    { label: /学习/, taskId: "learning", hidden: "可达性矩阵", visible: "学习流水线" },
-    { label: /Trace/, taskId: "trace", hidden: "学习流水线", visible: "event table" },
+    { label: /自动科研/, taskId: "learning", hidden: "可达性矩阵", visible: "最新文献影子报告" },
+    { label: /Trace/, taskId: "trace", hidden: "最新文献影子报告", visible: "event table" },
     { label: /证据/, taskId: "evidence", hidden: "event table", visible: "RAG pipeline" },
     { label: /Release/, taskId: "release", hidden: "RAG pipeline", visible: "Release Dashboard" },
     { label: /设置只读/, taskId: "read-only", hidden: "RAG pipeline", visible: "权限矩阵" },
@@ -2576,9 +3600,9 @@ describe("AgentAdminView", () => {
 
   it.each([
     {
-      button: /学习/,
+      button: /自动科研/,
       taskId: "learning",
-      required: ["发现论文", "人工审核", "写入知识库", "Run now", "一期不执行每日任务", "未接线预览"],
+      required: ["影子科研，不进入临床默认流", "最新文献影子报告", "候选学习任务", "队列可行性评估", "写入临床 RAG"],
     },
     { button: /Trace/, taskId: "trace", required: ["tool_executor", "done", "latency panel", "event table", "eventLog length 2"] },
     { button: /证据/, taskId: "evidence", required: ["证据池", "retrieval profile", "citation coverage", "RAG pipeline"] },
@@ -2611,7 +3635,7 @@ describe("AgentAdminView", () => {
     }
   });
 
-  it("marks the learning pipeline as unwired roadmap instead of fake progress", () => {
+  it("shows honest unavailable states and hard boundaries when research APIs are not connected", () => {
     render(
       <AgentAdminView
         activeScene="doctor"
@@ -2621,13 +3645,13 @@ describe("AgentAdminView", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /学习/ }));
+    fireEvent.click(screen.getByRole("button", { name: /自动科研/ }));
 
     const page = screen.getByTestId("agent-admin-task-page");
-    const roadmapBadges = within(page).getAllByText("roadmap / not wired");
-    expect(roadmapBadges).toHaveLength(7);
-    expect(page).toHaveTextContent("未接线预览");
-    expect(page).not.toHaveTextContent("readiness checked");
+    expect(page).toHaveTextContent("尚无可用文献影子报告");
+    expect(page).toHaveTextContent("候选队列为空");
+    expect(page).toHaveTextContent("知识写入、自动训练、自动应用仍被禁止");
+    expect(page).not.toHaveTextContent("waiting for scheduler");
   });
 
   it("builds the complete task and manifest model", () => {
@@ -2713,8 +3737,8 @@ describe("AgentAdminView", () => {
       ]),
     );
     expect(buildEvidenceRows(state)[0]).toMatchObject({ title: "指南来源", confidence: "88%" });
-    expect(buildLearningReadiness().map((row) => row.label)).toContain("调度器配置");
-    expect(buildLearningReadiness().map((row) => row.state)).toEqual(["roadmap", "roadmap", "roadmap", "roadmap"]);
+    expect(buildLearningReadiness().map((row) => row.label)).toContain("人工复核");
+    expect(buildLearningReadiness().map((row) => row.state)).toEqual(["runtime", "boundary", "boundary", "governance"]);
     expect(buildLiveTraceRows(state)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "暂无执行事件", detail: "先在患者/医生端发起一轮对话；后台读取同一会话的 eventLog" }),
@@ -2835,7 +3859,7 @@ describe("AgentAdminModel", () => {
     );
     expect(buildToolReachabilityRows()).toEqual(buildToolGroupRows());
     expect(buildPermissionRows().map((row) => row.label)).toEqual(
-      expect.arrayContaining(["编辑规则", "启停工具", "运行学习任务"]),
+      expect.arrayContaining(["编辑规则", "启停工具", "创建科研候选"]),
     );
   });
 
@@ -3056,7 +4080,7 @@ describe("AgentAdminModel", () => {
 
   it("renders read-only permissions from the permission model", () => {
     const permissionRows = buildPermissionRows().filter((row) =>
-      ["\u7f16\u8f91\u89c4\u5219", "\u542f\u505c\u5de5\u5177", "\u8fd0\u884c\u5b66\u4e60\u4efb\u52a1"].includes(row.label),
+      ["编辑规则", "启停工具", "创建科研候选"].includes(row.label),
     );
     expect(permissionRows).toHaveLength(3);
 

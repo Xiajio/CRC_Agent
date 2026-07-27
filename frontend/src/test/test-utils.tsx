@@ -6,6 +6,13 @@ import { AppProviders } from "../app/providers";
 import type { ApiClient } from "../app/api/client";
 import { ApiClientError } from "../app/api/client";
 import type {
+  AdminAutoResearchRun,
+  AdminAutoResearchRunResponse,
+  AdminAutoResearchRunsResponse,
+  AdminCohortFeasibilityResponse,
+  AdminCreateAutoResearchRunResponse,
+  AdminCreateLearningJobResponse,
+  AdminLearningJobsResponse,
   AdminReleaseClosureResponse,
   AdminReleaseDashboardResponse,
   AdminReleaseExecutionResponse,
@@ -314,6 +321,126 @@ export function makeAdminReleaseClosureResponse(
   };
 }
 
+export function makeAdminAutoResearchRun(
+  overrides: Partial<AdminAutoResearchRun> = {},
+): AdminAutoResearchRun {
+  return {
+    run_id: overrides.run_id ?? "auto_research_run_test",
+    request_hash: overrides.request_hash ?? `sha256:${"a".repeat(64)}`,
+    request: overrides.request ?? {
+      request_id: "auto_research_request_test",
+      project_id: "auto_research_project_test",
+      question: "Which source-grounded CRC hypotheses merit controlled follow-up?",
+      requested_by: "admin_operator",
+      idempotency_key: "auto-research-test",
+      max_sources: 8,
+      max_hypotheses: 3,
+      max_iterations: 2,
+      deidentified: true,
+    },
+    status: overrides.status ?? "completed_shadow",
+    created_at: overrides.created_at ?? "2026-07-19T02:00:00+00:00",
+    completed_at: overrides.completed_at ?? "2026-07-19T02:01:00+00:00",
+    stages: overrides.stages ?? [
+      {
+        name: "literature_search",
+        status: "completed",
+        started_at: "2026-07-19T02:00:00+00:00",
+        completed_at: "2026-07-19T02:00:10+00:00",
+        summary: "Retrieved one verified PubMed abstract.",
+        error: null,
+      },
+    ],
+    sources: overrides.sources ?? [
+      {
+        source_id: "research_source_test",
+        title: "CRC evidence source",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+        abstract: "A source abstract used only for a shadow research fixture.",
+        journal: "Fixture Journal",
+        publication_year: "2026",
+        source_type: "pubmed",
+        query: "colorectal cancer",
+        retrieved_at: "2026-07-19T02:00:09+00:00",
+        pmid: "12345678",
+      },
+    ],
+    hypotheses: overrides.hypotheses ?? [
+      {
+        hypothesis_id: "research_hypothesis_test",
+        statement: "A source-grounded candidate hypothesis.",
+        rationale: "The verified abstract supports controlled follow-up.",
+        testable_prediction: "A predefined aggregate analysis can falsify the candidate.",
+        supporting_source_ids: ["research_source_test"],
+        counterevidence_source_ids: [],
+        iteration: 1,
+        review: {
+          verdict: "advance",
+          evidence_support_score: 0.8,
+          novelty_score: 0.6,
+          testability_score: 0.9,
+          safety_risk: "shadow-only interpretation required",
+          critique: "Requires independent human review.",
+          revision_instructions: "",
+        },
+      },
+    ],
+    study_plans: overrides.study_plans ?? [
+      {
+        plan_id: "research_plan_test",
+        hypothesis_id: "research_hypothesis_test",
+        study_type: "aggregate retrospective analysis",
+        objective: "Falsify the candidate using approved aggregate data.",
+        required_data: ["approved aggregate projection"],
+        analysis_steps: ["Pre-register the aggregate analysis."],
+        success_criteria: ["Meet the predefined effect threshold."],
+        safety_constraints: ["Do not return patient-level rows."],
+        execution_status: "not_executed",
+      },
+    ],
+    report_markdown: overrides.report_markdown ?? "# Shadow report\n\nPending human review.",
+    iteration_count: overrides.iteration_count ?? 1,
+    provenance: overrides.provenance ?? {
+      pipeline_version: "shadow_auto_research_v1",
+      retriever: "pubmed",
+      reasoner: "fixture",
+    },
+    human_review_status: overrides.human_review_status ?? "needs_human_review",
+    mode: overrides.mode ?? "shadow_only",
+    applies_automatically: false,
+    clinical_default_path_mutated: false,
+    patient_level_rows_returned: false,
+  };
+}
+
+export function makeAdminAutoResearchRunsResponse(
+  overrides: Partial<AdminAutoResearchRunsResponse> = {},
+): AdminAutoResearchRunsResponse {
+  return {
+    runs: overrides.runs ?? [],
+    integrity: overrides.integrity ?? { status: "verified", warnings: [] },
+    runtime: overrides.runtime ?? {
+      auth: "admin",
+      source: "reports/auto_research",
+      mode: "shadow_auto_research",
+    },
+  };
+}
+
+export function makeAdminAutoResearchRunResponse(
+  overrides: Partial<AdminAutoResearchRunResponse> = {},
+): AdminAutoResearchRunResponse {
+  return {
+    run: overrides.run ?? makeAdminAutoResearchRun(),
+    integrity: overrides.integrity ?? { status: "verified", warnings: [] },
+    runtime: overrides.runtime ?? {
+      auth: "admin",
+      source: "reports/auto_research",
+      mode: "shadow_auto_research",
+    },
+  };
+}
+
 export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClient {
   const createSession = vi.fn(async (scene: Scene) => makeSessionResponse({ scene }));
   const getSession = vi.fn(async (sessionId: string) => makeSessionResponse({ session_id: sessionId }));
@@ -506,6 +633,75 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
   const getAdminReleaseClosure = vi.fn(async (): Promise<AdminReleaseClosureResponse> =>
     makeAdminReleaseClosureResponse(),
   );
+  const getAdminLearningJobs = vi.fn(async (): Promise<AdminLearningJobsResponse> => ({
+    jobs: [],
+    candidates: [],
+    integrity: { status: "verified", warnings: [] },
+    disabled_actions: [
+      { id: "apply", label: "Apply candidate", disabled: true, reason: "shadow learning jobs only" },
+      { id: "train", label: "Train model", disabled: true, reason: "training is outside this surface" },
+    ],
+    actions: {
+      apply: { enabled: false, reason: "shadow learning jobs only" },
+      train: { enabled: false, reason: "training is outside this surface" },
+    },
+    runtime: { auth: "admin", source: "reports/learning_jobs", mode: "shadow_learning_jobs" },
+  }));
+  const createAdminLearningJob = vi.fn(async (): Promise<AdminCreateLearningJobResponse> => ({
+    job: {
+      job_id: "learning_job_test",
+      job_type: "candidate_evidence_ingest",
+      status: "shadow_only",
+      created_at: "2026-07-17T00:00:00Z",
+      source_signal_ids: ["signal_test"],
+      candidate_patch_ids: ["candidate_test"],
+      required_harness: {
+        required: true,
+        case_pack_version: "crc_case_pack_v0",
+        required_levels: ["P0"],
+        hard_fail_policy: "zero_hard_fail",
+      },
+      human_review: { required: true, required_roles: ["evidence_reviewer"], status: "pending" },
+      release_governance_ref: null,
+      idempotency_key: "learning-job-test",
+    },
+    signals: [],
+    candidates: [],
+    integrity: { status: "verified", warnings: [] },
+    disabled_actions: [],
+    actions: {
+      apply: { enabled: false, reason: "shadow learning jobs only" },
+      train: { enabled: false, reason: "training is outside this surface" },
+    },
+    runtime: { auth: "admin", source: "reports/learning_jobs", mode: "shadow_learning_jobs" },
+  }));
+  const evaluateAdminCohortFeasibility = vi.fn(async (): Promise<AdminCohortFeasibilityResponse> => ({
+    result_id: "cohort_result_test",
+    request_id: "cohort_request_test",
+    project_id: "research_project_test",
+    status: "needs_review",
+    estimated_count: 0,
+    variable_coverage: {},
+    missing_key_variables: [],
+    unmapped_required_features: [],
+    bias_warnings: [],
+    requires_review: true,
+    review_queue_items: [],
+    patient_level_rows_returned: false,
+    runtime: { auth: "admin", source: "patient_record_projection", mode: "shadow_cohort_feasibility" },
+  }));
+  const getAdminAutoResearchRuns = vi.fn(async (): Promise<AdminAutoResearchRunsResponse> =>
+    makeAdminAutoResearchRunsResponse(),
+  );
+  const createAdminAutoResearchRun = vi.fn(async (): Promise<AdminCreateAutoResearchRunResponse> => ({
+    ...makeAdminAutoResearchRunResponse(),
+    reused: false,
+  }));
+  const getAdminAutoResearchRun = vi.fn(async (runId: string): Promise<AdminAutoResearchRunResponse> =>
+    makeAdminAutoResearchRunResponse({
+      run: makeAdminAutoResearchRun({ run_id: runId }),
+    }),
+  );
   const createAdminReleaseIntent = vi.fn(async () => getAdminReleaseGovernance());
   const recordAdminReleaseApproval = vi.fn(async () => getAdminReleaseGovernance());
   const recordAdminReleaseRollbackPlan = vi.fn(async () => getAdminReleaseGovernance());
@@ -533,6 +729,12 @@ export function buildApiClientStub(overrides: Partial<ApiClient> = {}): ApiClien
   return {
     getAdminTools,
     getAdminRules,
+    getAdminLearningJobs,
+    createAdminLearningJob,
+    evaluateAdminCohortFeasibility,
+    getAdminAutoResearchRuns,
+    createAdminAutoResearchRun,
+    getAdminAutoResearchRun,
     getAdminReleaseDashboard,
     getAdminReleaseGovernance,
     getAdminReleaseExecution,

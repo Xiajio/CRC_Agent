@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { CardUpsertEvent, MessageDeltaEvent, MessageDoneEvent } from "../api/types";
+import type { CardUpsertEvent, MessageDeltaEvent, MessageDoneEvent, SessionState } from "../api/types";
 import { createInitialSessionState, hydrateSessionState, reduceStreamEvent } from "./stream-reducer";
 
 describe("hydrateSessionState", () => {
@@ -92,7 +92,7 @@ describe("hydrateSessionState", () => {
   });
 
   it("preserves runTrace when hydrating the same session after stream completion", () => {
-    let state = {
+    let state: SessionState = {
       ...createInitialSessionState(),
       sessionId: "sess",
     };

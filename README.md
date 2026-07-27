@@ -1,6 +1,6 @@
 # LangG —— 结直肠癌智能临床决策支持系统
 
-基于 **LangGraph** 的多智能体临床决策支持系统，面向**结直肠癌（CRC）**的智能诊疗全流程。提供患者分诊、医生临床决策辅助、后台智能体运行观测三大工作台，集成 RAG 知识检索、医学影像 AI 分析、历史病例数据库、患者登记处（事件溯源）、记忆自动化维护和可回放演示链路。
+基于 **LangGraph** 的多智能体临床决策支持系统，面向**结直肠癌（CRC）**的智能诊疗全流程。提供患者分诊、医生临床决策辅助、后台智能体运行观测三大工作台，集成 RAG 知识检索、医学影像 AI 分析、历史病例数据库、患者登记处（事件溯源）、记忆自动化维护、影子自动科研和可回放演示链路。
 
 ## 核心功能
 
@@ -8,11 +8,12 @@
 |------|------|
 | **患者端** | 智能分诊问答（门诊分诊）、症状采集、病历资料上传、身份登记、自报告卡片生成；**CRC 结直肠癌分诊子流程**：7 阶段交互式问卷（identity → vitals → red_flags → symptom_cluster → differential → tests → final），安全规则驱动的 disposition，评估保存到患者记录 |
 | **医生端** | 意图分类 → 规划 → 知识检索 / 影像分析 / 病理分析 / 病例查询 / 网络搜索 → 临床评估 → 诊断 → TNM 分期 → 治疗决策 → 批判审查 → 证据引用 → 质量评估 → 记忆管理，多模态医生视图与患者绑定上下文注入；**Doctor Review Cockpit**：患者事实时间线 + agent draft + provenance view + 字段级操作追踪 |
-| **后台端** | 智能体运行观测控制台：全局健康 / 会话观测 / 上下文记忆审计 / 规则目录 / 工具清单与可达性 / 学习准备 / 执行链路追踪 / 证据池 / **发布看板与治理（Release Dashboard + Governance）** / 只读边界，10 个子任务页面 |
+| **后台端** | 智能体运行观测控制台：全局健康 / 会话观测 / 上下文记忆审计 / 规则目录 / 工具清单与可达性 / 影子自动科研 / 执行链路追踪 / 证据池 / **发布看板与治理（Release Dashboard + Governance）** / 只读边界，10 个子任务页面 |
 | **CRC 安全规则** | `ClinicalSafetyPolicyVersion v0`：deterministic 严重程度分层（emergency > urgent > backfill > routine），`hard_fail_if_missed` 红旗规则不可被 LLM 降低，变异测试包（CRC mutation pack）驱动 HarnessRun 发布门禁 |
 | **患者记录** | `ClinicalAssertion` 多源患者事实规范化（triage / patient_upload / doctor_note 等来源），patient-records-panel 时间线视图，patient-care-cards 护理卡片，全链路 assessment_id → record_id → care_card 可追溯 |
 | **发布门禁** | `HarnessRun`（L0/L1 变异测试）+ `ReleaseSafetyReport`，版本链（AgentPolicyVersion / ClinicalSafetyPolicyVersion / EvidenceIndexVersion / JudgeRubricVersion），`hard_fail_count > 0` 时 release_decision = `block` |
 | **文献证据（影子）** | `EvidenceClaim` / `LiteratureHarnessRun`（L0 shadow）：候选论文抽取为结构化证据声明，`IsolationCheck` 校验证据不泄漏进入 clinical RAG / patient 默认流 / doctor 默认流，`ReviewStatus` 闭环（candidate → needs_review / rejected），未经人工签署不得进入 prompt / RAG 索引 / 训练数据 |
+| **自动科研（影子）** | 管理员人工提交研究问题后，`AutoResearchService` 自动执行 PubMed ESearch/EFetch 可核验摘要检索 → 多轮来源绑定假设 → 同模型分阶段对抗性复核 → 未执行研究方案 → 逐行引用受控报告；Run 以 append-only JSON 保存并停在 `needs_human_review`，不执行真实研究、不返回患者级数据、不写入临床默认流 |
 | **发布看板与治理** | Admin Release Dashboard 汇总 P0 CRC harness / release safety / literature harness 三类 run 与版本链、阻断门、rollback target、人工签署就绪度；`ReleaseGovernanceStore`（审计闭环）记录 `ReleaseIntent → ReleaseApproval → ReleaseRollbackPlan`，SHA-256 哈希链审计事件，仅记录治理意图，不执行发布或回滚 |
 | **知识检索** | 混合 RAG 引擎：Chroma 向量检索 + BM25 关键词检索（jieba 分词） + Cross-Encoder / Cohere / LLM 重排序 |
 | **影像 AI** | YOLOv8 肿瘤检测、U-Net 肿瘤分割、PyRadiomics 影像组学特征提取 |
@@ -20,7 +21,7 @@
 | **病例库** | 历史病例 Excel 数据库 + SQLite 患者登记处（事件溯源），支持结构化筛选、自然语言查询、患者资产落盘与会话上下文恢复 |
 | **记忆自动化** | 分层摘要记忆（摘要记忆 / 永久事实 / 动态事实 / 锚点事件 / 维护日志），五阶段流水线（收集 → 摘要 → 结构化 → 同步 → 过期检查） |
 | **运行与演示** | `real` / `fixture` 双图运行模式、`demo` 回放模式、可选 SQLite BFF session 持久化、Bearer/API Admin 鉴权 |
-| **联网搜索** | Deep Research 服务：查询分解 → 并行搜索 → 去重 → LLM 综合，带来源可信度评分 |
+| **联网搜索** | Deep Research 候选发现服务：查询分解 → 并行候选 → 去重 → LLM 综合；其模型生成来源不等同于已验真证据，自动科研闭环另使用 NCBI PubMed E-utilities 获取可核验元数据与摘要 |
 
 ## 技术架构
 
@@ -54,6 +55,7 @@
 │  schemas/ events (18 种, 含 trace.*) · responses · database · registry    │
 │           doctor_review · doctor_action_trace · release_governance         │
 │  admin/ release_dashboard (harness/release_safety/literature 汇总) ·      │
+│         research runs (PubMed/假设复核/方案/报告) · auto_research_store · │
 │         release_governance_store (intent/approval/rollback/audit 事件溯源) │
 └────────────────────────┬───────────────────────────────────────────────────┘
                          │ SceneGraphRouter: patient_graph / doctor_graph
@@ -64,14 +66,14 @@
 │            StructuredSummary 分层记忆)                                      │
 │  nodes/ (27 个 Python 模块, 23 个 NodeName)  ·  policies/  ·  prompts/    │
 │  rag/ (Chroma + BM25 + 混合检索 + 重排序)  ·  tools/                      │
-│  services/ (LLM服务/网络搜索/文档转换/病例Excel/患者卡片投射/              │
-│            临床安全策略/CRC分诊流程/ClinicalAssertion投射)                  │
+│  services/ (LLM服务/网络搜索/自动科研/PubMed/文档转换/病例Excel/            │
+│            患者卡片投射/临床安全策略/CRC分诊流程/ClinicalAssertion投射)     │
 │  contracts/ (harness · clinical_assertion · release_safety_report ·        │
-│              evidence_claim · release_governance)                          │
+│              evidence_claim · auto_research · release_governance)          │
 └──────────────────────────────────────────────────────────────────────────┘
      ↑
 config/ (intended_use_profiles.yaml · safety_policy.yaml)
-reports/ (harness/ · release_safety/)
+reports/ (harness/ · release_safety/ · auto_research/)
 ```
 
 ### 医生端 Agent 工作流（20 个节点）
@@ -98,7 +100,7 @@ INTENT → PLANNER → CLINICAL_ENTRY_RESOLVER → OUTPATIENT_TRIAGE / ASSESSMEN
 ### 后台端（Agent Admin Console，10 个子任务页面）
 
 ```
-总览 → 会话 / 记忆 / 规则 / 工具 / 学习 / Trace / 证据 / Release（发布看板+治理） / 设置只读
+总览 → 会话 / 记忆 / 规则 / 工具 / 自动科研 / Trace / 证据 / Release（发布看板+治理） / 设置只读
 ```
 
 只读观测控制台，通过 `WorkspaceSurfaceSwitcher` 三工作台切换器进入；切换到后台不会中止患者/医生端正在进行的临床 SSE stream。当前数据边界：
@@ -106,7 +108,8 @@ INTENT → PLANNER → CLINICAL_ENTRY_RESOLVER → OUTPATIENT_TRIAGE / ASSESSMEN
 - **总览 / Trace / 会话**：读取同一患者/医生会话的 live `eventLog` 与 `runTrace`，展示真实流事件、节点状态和 trace 步骤；没有 trace duration 时不展示演示延迟，不伪造 `42ms` / `80ms` 等数字。
 - **规则**：通过 `GET /api/admin/rules` 读取 `config/safety_policy.yaml` 派生的运行时规则；API 不可用时仅显示静态目录占位。
 - **工具**：通过 `GET /api/admin/tools` 读取运行时工具清单与可达性；后端不可用时使用 fallback catalog，并在界面标注 catalog/fallback 来源。
-- **学习**：仅为 roadmap / not wired，scheduler、摄取队列与自主学习执行尚未接入。
+- **自动科研**：`POST /api/admin/research/runs` 同步执行一次 shadow-only 闭环，`GET /api/admin/research/runs` 与详情端点读取历史 Run；检索仅采用 PubMed 可核验摘要，报告引用必须绑定已知 source ID，结果停在人工复核。结构化生成入口当前要求 `LLM_MODE=API` 及兼容 function calling 的端点，进程内 Local HF/VLLM 模式会明确返回 `503`。当前仍是单进程 MVP，没有持久化 worker、scheduler、取消/重试或跨进程任务租约。
+- **实验图形编译**：设置 `EXPERIMENTAL_DIAGRAMS_ENABLED=true` 后注册管理员接口 `POST /api/admin/experimental/diagrams/compile`；当前只接受已脱敏的受控技术文本，仅生成并校验 `DiagramSpec`、Mermaid 与 DOT 源码，不调用外部渲染器、不落盘、不写入临床流。
 - **只读边界**：后台不写入规则、工具状态或临床流运行态。
 
 ## 目录结构
@@ -127,6 +130,7 @@ LangG/
 │   │   ├── clinical_assertion.py # ClinicalAssertion 数据结构（多源患者事实规范化 + ID 哈希）
 │   │   ├── release_safety_report.py # ReleaseSafetyReport（版本链 + hard_fail_summary + rollback_target）
 │   │   ├── evidence_claim.py     # EvidenceClaim / LiteratureHarnessRun（文献证据抽取 + 隔离校验数据结构）
+│   │   ├── auto_research.py      # AutoResearchRun / Source / Hypothesis / StudyPlan 影子科研契约
 │   │   └── release_governance.py # ReleaseIntent / ReleaseApproval / ReleaseRollbackPlan / ReleaseAuditEvent（哈希链治理契约）
 │   ├── nodes/                    # Agent 节点实现（27 个 Python 文件）
 │   │   ├── intent_nodes.py       # 意图分类（10 种意图 + 多任务）
@@ -209,6 +213,8 @@ LangG/
 │   │   ├── crc_triage_flow.py   # CRC 分诊流程状态机（7 阶段：identity→vitals→red_flags→symptom_cluster→differential→tests→final）
 │   │   ├── clinical_assertion_projection.py # 从患者 records 生成 ClinicalAssertion projection
 │   │   ├── literature_harness.py # 文献证据 L0 shadow harness（claim 抽取 + delta 计算 + isolation 校验）
+│   │   ├── pubmed_research.py    # NCBI PubMed ESearch/EFetch 可核验摘要检索
+│   │   ├── auto_research_service.py # 影子自动科研多阶段编排、幂等与引用校验
 │   │   └── release_governance.py # 发布治理服务（intent/approval/rollback 校验 + 派生状态计算）
 │   └── __init__.py
 ├── backend/                      # FastAPI BFF 层
@@ -223,6 +229,7 @@ LangG/
 │       │   ├── assets.py         # 会话资产文件服务
 │       │   ├── crc_triage.py     # CRC 分诊评估保存（含 safety_policy_version / matched_rules / hard_fail_flags）
 │       │   ├── doctor_review.py  # 医生复核（ClinicalAssertion projection + DoctorActionTrace 记录）
+│       │   ├── research.py       # 管理研究 API（AutoResearch Runs / cohort feasibility）
 │       │   └── admin.py          # 管理 API（工具清单与可达性 / release-dashboard / release-governance 治理端点）
 │       ├── services/             # 后端服务
 │       │   ├── graph_service.py  # 图编排（SSE 流式 + 会话锁 + 心跳）
@@ -247,6 +254,7 @@ LangG/
 │       │   ├── fixture_graph_runner.py    # 固定数据回放器
 │       │   ├── upload_fixture_cards.py    # 固定上传卡片加载
 │       │   ├── admin_release_dashboard.py # 发布看板：汇总 P0 harness / release_safety / literature harness 三类 run
+│       │   ├── auto_research_store.py # append-only AutoResearchRun 原子文件存储与结构完整性检查
 │       │   └── release_governance_store.py # 发布治理事件溯源存储（intent/approval/rollback/audit 哈希链完整性校验）
 │       ├── schemas/              # Pydantic 数据模型
 │       │   ├── events.py         # SSE 事件类型（18 种）
@@ -255,6 +263,7 @@ LangG/
 │       │   ├── patient_registry.py # 注册处请求/响应模型
 │       │   ├── doctor_review.py  # 医生复核 schemas（DoctorReviewDraft / DoctorReviewResponse / provenance refs）
 │       │   ├── doctor_action_trace.py # DoctorActionTrace（字段级操作 + 10 种 reason_code）
+│       │   ├── research.py       # 自动科研与队列可行性请求 schema
 │       │   └── release_governance.py # 发布治理请求/响应 schema（CreateIntent / Approval / RollbackPlan / Cancel）
 │       └── adapters/             # 前端适配层（6 个生产模块 + 9 个测试）
 │           ├── state_snapshot.py # 代理状态 → 前端快照
@@ -276,7 +285,7 @@ LangG/
 │       │   ├── workspace-page.tsx # 主工作区（患者+医生+后台三场景编排）
 │       │   └── database-page.tsx  # 数据库控制台
 │       ├── features/
-│       │   ├── agent-admin/      # 后台智能体观测控制台（10 子任务页 + 模型层 + 组件库，含 Release 发布看板/治理页）
+│       │   ├── agent-admin/      # 后台智能体观测控制台（10 子任务页，含 AutoResearch Run 与 Release 治理）
 │       │   ├── anatomy/          # 结直肠解剖图谱（10 区域交互高亮 + 全身概览）
 │       │   ├── chat/             # 对话面板（流式渲染/内联卡片/思维链/延迟显示）
 │       │   ├── cards/            # 卡片渲染系统（11 种卡片 + 分诊交互卡）
@@ -311,6 +320,7 @@ LangG/
 │   ├── harness/                  # HarnessRun 输出（harness_*.json）
 │   ├── release_safety/           # ReleaseSafetyReport 输出（release_safety_*.json）
 │   ├── literature/               # LiteratureHarnessRun 影子输出（literature_harness_*.json，仅证据，不进入默认流）
+│   ├── auto_research/            # AutoResearchRun append-only 影子工件（runs/*.json，待人工复核）
 │   └── release_governance/       # 发布治理审计产物（intents/ · approvals/ · rollback_plans/ · audit/*.jsonl，仅审计不执行）
 ├── scripts/                      # 启动与管理脚本
 │   ├── start_real.ps1            # 一键启动（后端 + 前端）
@@ -407,6 +417,7 @@ SESSION_STORE_BACKEND=memory
 # SESSION_STORE_BACKEND=sqlite
 # SESSION_STORE_SQLITE_PATH=runtime/sessions.db
 # SESSION_STORE_TTL_DAYS=7         # 可设为 none/null 禁用过期清理
+EXPERIMENTAL_DIAGRAMS_ENABLED=false # 默认关闭；仅启用 source-only shadow API
 
 # 网络搜索
 WEB_SEARCH_ENABLED=true
@@ -536,6 +547,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\start_demo.ps1
 | `SESSION_STORE_BACKEND` | BFF session metadata 存储：`memory` / `sqlite` | `memory` |
 | `SESSION_STORE_SQLITE_PATH` | SQLite session DB 路径；为空时使用 `LANGG_RUNTIME_ROOT/sessions.db` | — |
 | `SESSION_STORE_TTL_DAYS` | SQLite session 过期清理天数；`none` / `null` 表示不清理 | `7` |
+| `EXPERIMENTAL_DIAGRAMS_ENABLED` | 注册管理员实验图形编译接口；当前只返回严格规范及 Mermaid/DOT 源码 | `false` |
 | `CHAT_PERF_LOG` | 对话性能日志 | `0` |
 | `CHAT_LATENCY_TRACE` | 延迟追踪（Phase1 详细事件） | `0` |
 | `UPLOAD_CONVERTER_MODE` | 上传转换模式：`real` / `fixture` | `real` |
@@ -565,6 +577,12 @@ pytest tests/backend/test_doctor_action_trace.py
 
 # 文献证据 harness（claim/delta/isolation 校验）
 pytest tests/backend/test_literature_harness.py
+
+# 影子自动科研（契约 / PubMed / 编排 / 原子存储 / API / 非变更约束）
+pytest tests/backend/test_auto_research_contract.py tests/backend/test_pubmed_research.py tests/backend/test_auto_research_service.py tests/backend/test_auto_research_store.py tests/backend/test_auto_research_api.py tests/backend/test_auto_research_non_mutation.py
+
+# 实验图形编译（严格规范 / source-only 编译 / 管理员鉴权 / 零落盘）
+pytest tests/backend/test_diagram_contract.py tests/backend/test_diagram_service.py tests/backend/test_experimental_diagrams_api.py tests/backend/test_diagram_non_mutation.py
 
 # 发布看板（harness/release_safety/literature 汇总）
 pytest tests/backend/test_admin_release_dashboard.py tests/backend/test_admin_release_dashboard_api.py
@@ -839,6 +857,7 @@ POST /api/admin/release-governance/intents/{intent_id}/cancel
 - [HarnessRun 报告目录](reports/harness/README.md)
 - [ReleaseSafetyReport 目录](reports/release_safety/README.md)
 - [Literature Harness 报告目录](reports/literature/README.md)
+- [Auto Research Run 报告目录](reports/auto_research/README.md)
 - [Release Governance 报告目录](reports/release_governance/README.md)
 - [设计 QA 报告](design-qa.md)
 - [CRC Agent 步骤推进修改计划](langg_crc_agent_stepwise_modification_plan_2026-06-29.md)

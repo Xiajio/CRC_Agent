@@ -94,6 +94,380 @@ export interface AdminRulesResponse {
   note: "read-only projection; not editable from admin UI";
 }
 
+export type AdminLearningSignalType =
+  | "doctor_action_trace"
+  | "evidence_delta"
+  | "harness_failure"
+  | "cohort_feasibility_gap"
+  | "release_monitoring_alert";
+
+export type AdminLearningTargetArea =
+  | "prompt"
+  | "rubric"
+  | "route"
+  | "template"
+  | "evidence_ingest"
+  | "test_case";
+
+export interface AdminCreateLearningSignal {
+  signal_type: AdminLearningSignalType;
+  source_ref: JsonObject;
+  reason_code: string;
+  target_area: AdminLearningTargetArea;
+  severity: string;
+  summary: string;
+  deidentified: true;
+  created_at: string;
+}
+
+export interface AdminLearningSignal extends AdminCreateLearningSignal {
+  signal_id: string;
+}
+
+export interface AdminCreateLearningJobRequest {
+  signals: AdminCreateLearningSignal[];
+  requested_by: string;
+  idempotency_key: string;
+}
+
+export type AdminLearningJobStatus =
+  | "draft"
+  | "shadow_only"
+  | "ready_for_harness"
+  | "harness_failed"
+  | "awaiting_human_review"
+  | "rejected"
+  | "approved_for_release_intent"
+  | "archived";
+
+export type AdminLearningJobType =
+  | "candidate_patch_generation"
+  | "candidate_evidence_ingest"
+  | "candidate_test_case_generation";
+
+export type AdminLearningCandidatePatchStatus =
+  | "candidate"
+  | "needs_harness"
+  | "needs_human_review"
+  | "rejected"
+  | "approved_for_release_intent";
+
+export interface AdminLearningHarnessRequirement {
+  required: true;
+  case_pack_version: string;
+  required_levels: string[];
+  hard_fail_policy: string;
+}
+
+export interface AdminLearningHumanReviewRequirement {
+  required: true;
+  required_roles: string[];
+  status: string;
+}
+
+export interface AdminLearningJob {
+  job_id: string;
+  job_type: AdminLearningJobType;
+  status: AdminLearningJobStatus;
+  created_at: string;
+  source_signal_ids: string[];
+  candidate_patch_ids: string[];
+  required_harness: AdminLearningHarnessRequirement;
+  human_review: AdminLearningHumanReviewRequirement;
+  release_governance_ref: JsonObject | null;
+  idempotency_key: string;
+}
+
+export interface AdminLearningCandidatePatch {
+  patch_id: string;
+  patch_type: AdminLearningTargetArea;
+  target_ref: JsonObject;
+  change_summary: string;
+  proposed_diff: JsonObject;
+  source_signal_ids: string[];
+  status: AdminLearningCandidatePatchStatus;
+  applies_automatically: false;
+}
+
+export interface AdminLearningIntegrity {
+  status: "verified" | "warning";
+  warnings: string[];
+}
+
+export interface AdminLearningDisabledAction {
+  id: "apply" | "train";
+  label: string;
+  disabled: true;
+  reason: string;
+}
+
+export interface AdminLearningActionState {
+  enabled: boolean;
+  reason: string;
+}
+
+export interface AdminLearningJobsEnvelope {
+  candidates: AdminLearningCandidatePatch[];
+  integrity: AdminLearningIntegrity;
+  disabled_actions: AdminLearningDisabledAction[];
+  actions: Record<AdminLearningDisabledAction["id"], AdminLearningActionState>;
+  runtime: {
+    auth: "admin";
+    source: "reports/learning_jobs";
+    mode: "shadow_learning_jobs";
+  };
+}
+
+export interface AdminLearningJobsResponse extends AdminLearningJobsEnvelope {
+  jobs: AdminLearningJob[];
+}
+
+export interface AdminCreateLearningJobResponse extends AdminLearningJobsEnvelope {
+  job: AdminLearningJob;
+  signals: AdminLearningSignal[];
+}
+
+export type AdminAutoResearchRunStatus =
+  | "completed_shadow"
+  | "partial_shadow"
+  | "failed_shadow";
+
+export type AdminAutoResearchStageStatus = "completed" | "failed" | "skipped";
+export type AdminAutoResearchHypothesisVerdict = "advance" | "revise" | "reject";
+
+export interface AdminAutoResearchRequestSnapshot {
+  request_id: string;
+  project_id: string;
+  question: string;
+  requested_by: string;
+  idempotency_key: string;
+  max_sources: number;
+  max_hypotheses: number;
+  max_iterations: number;
+  deidentified: true;
+}
+
+export interface AdminAutoResearchSource {
+  source_id: string;
+  title: string;
+  url: string;
+  abstract: string;
+  journal: string;
+  publication_year: string;
+  source_type: string;
+  query: string;
+  retrieved_at: string;
+  pmid: string | null;
+}
+
+export interface AdminAutoResearchHypothesisReview {
+  verdict: AdminAutoResearchHypothesisVerdict;
+  evidence_support_score: number;
+  novelty_score: number;
+  testability_score: number;
+  safety_risk: string;
+  critique: string;
+  revision_instructions: string;
+}
+
+export interface AdminAutoResearchHypothesis {
+  hypothesis_id: string;
+  statement: string;
+  rationale: string;
+  testable_prediction: string;
+  supporting_source_ids: string[];
+  counterevidence_source_ids: string[];
+  iteration: number;
+  review: AdminAutoResearchHypothesisReview;
+}
+
+export interface AdminAutoResearchStudyPlan {
+  plan_id: string;
+  hypothesis_id: string;
+  study_type: string;
+  objective: string;
+  required_data: string[];
+  analysis_steps: string[];
+  success_criteria: string[];
+  safety_constraints: string[];
+  execution_status: "not_executed";
+}
+
+export interface AdminAutoResearchStage {
+  name: string;
+  status: AdminAutoResearchStageStatus;
+  started_at: string;
+  completed_at: string;
+  summary: string;
+  error: string | null;
+}
+
+export interface AdminAutoResearchRun {
+  run_id: string;
+  request_hash: string;
+  request: AdminAutoResearchRequestSnapshot;
+  status: AdminAutoResearchRunStatus;
+  created_at: string;
+  completed_at: string;
+  stages: AdminAutoResearchStage[];
+  sources: AdminAutoResearchSource[];
+  hypotheses: AdminAutoResearchHypothesis[];
+  study_plans: AdminAutoResearchStudyPlan[];
+  report_markdown: string;
+  iteration_count: number;
+  provenance: Record<string, string>;
+  human_review_status: "needs_human_review";
+  mode: "shadow_only";
+  applies_automatically: false;
+  clinical_default_path_mutated: false;
+  patient_level_rows_returned: false;
+}
+
+export interface AdminCreateAutoResearchRunRequest {
+  request_id: string;
+  project_id: string;
+  question: string;
+  requested_by: string;
+  idempotency_key: string;
+  max_sources?: number;
+  max_hypotheses?: number;
+  max_iterations?: number;
+  deidentified: true;
+}
+
+export type AdminAutoResearchIntegrityIssueCode =
+  | "duplicate_run_id"
+  | "filename_run_id_mismatch"
+  | "invalid_artifact"
+  | "invalid_contract"
+  | "invalid_encoding"
+  | "invalid_json"
+  | "unsafe_artifact_type";
+
+export interface AdminAutoResearchAffectedArtifact {
+  code: AdminAutoResearchIntegrityIssueCode;
+  artifact_path: string;
+  filename_run_id: string;
+  persisted_run_id: string | null;
+  message: string;
+  excluded_from_runs: true;
+}
+
+export type AdminAutoResearchRecoveryActionCode =
+  | "rerun_with_new_idempotency_key"
+  | "manual_quarantine";
+
+export interface AdminAutoResearchRecoveryAction {
+  code: AdminAutoResearchRecoveryActionCode;
+  label: string;
+  instruction: string;
+  overwrites_existing_artifact: false;
+  clinical_data_mutated: false;
+}
+
+export interface AdminAutoResearchIntegrity {
+  status: "verified" | "warning";
+  warnings: string[];
+  affected_artifacts?: AdminAutoResearchAffectedArtifact[];
+  recovery_actions?: AdminAutoResearchRecoveryAction[];
+}
+
+export interface AdminAutoResearchRuntime {
+  auth: "admin";
+  source: "reports/auto_research";
+  mode: "shadow_auto_research";
+}
+
+export interface AdminAutoResearchRunsResponse {
+  runs: AdminAutoResearchRun[];
+  integrity: AdminAutoResearchIntegrity;
+  runtime: AdminAutoResearchRuntime;
+}
+
+export interface AdminAutoResearchRunResponse {
+  run: AdminAutoResearchRun;
+  integrity: AdminAutoResearchIntegrity;
+  runtime: AdminAutoResearchRuntime;
+}
+
+export interface AdminCreateAutoResearchRunResponse extends AdminAutoResearchRunResponse {
+  reused: boolean;
+}
+
+export interface AdminCohortCriteria extends JsonObject {
+  required_features: string[];
+}
+
+export interface AdminCohortDataScope extends JsonObject {
+  source: "patient_record_projection";
+  patient_level_export_requested: boolean;
+  deidentified_only: true;
+}
+
+export interface AdminCohortFeasibilityRequest {
+  request_id: string;
+  project_id: string;
+  question: string;
+  cohort_criteria: AdminCohortCriteria;
+  data_scope: AdminCohortDataScope;
+  version_refs: JsonObject;
+}
+
+export type AdminCohortFeasibilityStatus =
+  | "feasible_for_review"
+  | "needs_review"
+  | "insufficient_data"
+  | "blocked_by_governance";
+
+export interface AdminCohortVariableCoverage {
+  covered_count: number;
+  coverage_ratio: number;
+  source_fact_types: string[];
+  reviewed_status_mix: Record<string, number>;
+}
+
+export type AdminCohortReviewType =
+  | "research_ethics_review"
+  | "pi_review"
+  | "data_governance_review";
+
+export type AdminCohortReviewStatus =
+  | "pending"
+  | "in_review"
+  | "approved"
+  | "rejected"
+  | "blocked"
+  | "reviewed";
+
+export interface AdminCohortReviewQueueItem {
+  review_item_id: string;
+  review_type: AdminCohortReviewType;
+  status: AdminCohortReviewStatus;
+  trigger: string;
+  scope: JsonObject;
+  required_checks: string[];
+}
+
+export interface AdminCohortFeasibilityResponse {
+  result_id: string;
+  request_id: string;
+  project_id: string;
+  status: AdminCohortFeasibilityStatus;
+  estimated_count: number;
+  variable_coverage: Record<string, AdminCohortVariableCoverage>;
+  missing_key_variables: string[];
+  unmapped_required_features: string[];
+  bias_warnings: string[];
+  requires_review: boolean;
+  review_queue_items: AdminCohortReviewQueueItem[];
+  patient_level_rows_returned: false;
+  runtime: {
+    auth: "admin";
+    source: "patient_record_projection";
+    mode: "shadow_cohort_feasibility";
+  };
+}
+
 export type AdminReleaseRunStatus = "pass" | "fail" | "shadow_only" | "missing" | "invalid";
 export type AdminReleaseGateState = "pass" | "locked" | "warning" | "blocked" | "missing";
 export type AdminReleaseHumanSignoffStatus = "missing" | "recorded_elsewhere" | "not_required";

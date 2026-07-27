@@ -37,6 +37,17 @@ tests/backend/*
 !tests/backend/test_app_runtime_wiring.py
 !tests/backend/test_assets_api.py
 !tests/backend/test_auth_security.py
+!tests/backend/test_llm_service_structured_tools.py
+!tests/backend/test_diagram_contract.py
+!tests/backend/test_diagram_service.py
+!tests/backend/test_experimental_diagrams_api.py
+!tests/backend/test_diagram_non_mutation.py
+!tests/backend/test_auto_research_api.py
+!tests/backend/test_auto_research_contract.py
+!tests/backend/test_auto_research_non_mutation.py
+!tests/backend/test_auto_research_service.py
+!tests/backend/test_auto_research_store.py
+!tests/backend/test_pubmed_research.py
 !tests/backend/test_release_governance_api.py
 !tests/backend/test_release_governance_non_mutation.py
 !tests/backend/test_release_execution_contract.py
@@ -136,6 +147,8 @@ htmlcov/
 .superpowers/
 output/
 runtime/
+/reports/auto_research/runs/
+/reports/auto_research/validation/
 tmp/
 .tmp/
 .tmp*/
@@ -177,6 +190,7 @@ CRC-client/
 # AI assistant / IDE local state
 .codex/
 .agents/
+.impeccable/
 .cursor/
 
 # Streamlit local secrets
@@ -191,6 +205,9 @@ Thumbs.db
 
 # Local documentation drafts and generated reports
 generated_reports/
+/deliverables/
+/work_reports_tmp/
+/scripts/generate_langg_hospital_strategy_pdf.py
 docs/*
 !docs/current-architecture-map.md
 !docs/safety/

@@ -1,4 +1,11 @@
-import { useEffect, useState, type CSSProperties, type FormEvent } from "react";
+import {
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from "react";
 import {
   Activity,
   AlertTriangle,
@@ -18,6 +25,13 @@ import {
 } from "lucide-react";
 
 import type {
+  AdminAutoResearchIntegrityIssueCode,
+  AdminAutoResearchRecoveryAction,
+  AdminAutoResearchRun,
+  AdminCohortFeasibilityRequest,
+  AdminCreateAutoResearchRunRequest,
+  AdminLearningSignalType,
+  AdminLearningTargetArea,
   AdminReleaseApprovalDecision,
   AdminReleaseApprovalStatus,
   AdminReleaseClosureRecordStatus,
@@ -51,13 +65,13 @@ import {
   AgentAdminDisabledAction,
   AgentAdminSplitWorkbench,
   AgentAdminSourceBadge,
+  AgentAdminStatusChip,
   AgentAdminStateIcon,
 } from "./agent-admin-components";
 import {
   AGENT_ADMIN_TASKS,
   asRecord,
   buildEvidenceRows,
-  buildLearningReadiness,
   buildMemoryAutomationSummary,
   buildMemoryLayerRows,
   buildMemoryLifecycleRows,
@@ -76,7 +90,19 @@ import {
   type AgentAdminTraceRow,
   type AgentAdminTaskId,
 } from "./agent-admin-model";
-import type { AgentAdminReleaseDashboardResource, AgentAdminRulesResource, AgentAdminToolsResource } from "./agent-admin-view";
+import type {
+  AgentAdminAutoResearchActions,
+  AgentAdminAutoResearchActionState,
+  AgentAdminAutoResearchRunResource,
+  AgentAdminAutoResearchRunsResource,
+  AgentAdminCohortFeasibilityResource,
+  AgentAdminLearningJobsResource,
+  AgentAdminReleaseDashboardResource,
+  AgentAdminResearchActions,
+  AgentAdminResearchActionState,
+  AgentAdminRulesResource,
+  AgentAdminToolsResource,
+} from "./agent-admin-view";
 import type {
   AgentAdminReleaseClosureActions,
   AgentAdminReleaseClosureActionState,
@@ -101,6 +127,15 @@ type AgentAdminPagesProps = {
   toolsResource: AgentAdminToolsResource;
   rulesResource: AgentAdminRulesResource;
   releaseDashboardResource: AgentAdminReleaseDashboardResource;
+  learningJobsResource: AgentAdminLearningJobsResource;
+  cohortFeasibilityResource: AgentAdminCohortFeasibilityResource;
+  autoResearchRunsResource: AgentAdminAutoResearchRunsResource;
+  autoResearchRunResource: AgentAdminAutoResearchRunResource;
+  selectedAutoResearchRunId: string | null;
+  autoResearchActionState: AgentAdminAutoResearchActionState;
+  autoResearchActions: AgentAdminAutoResearchActions;
+  researchActionState: AgentAdminResearchActionState;
+  researchActions: AgentAdminResearchActions;
   releaseGovernanceResource: AgentAdminReleaseGovernanceResource;
   releaseExecutionResource: AgentAdminReleaseExecutionResource;
   releaseMonitoringResource: AgentAdminReleaseMonitoringResource;
@@ -164,6 +199,15 @@ export function AgentAdminTaskPages({
   toolsResource,
   rulesResource,
   releaseDashboardResource,
+  learningJobsResource,
+  cohortFeasibilityResource,
+  autoResearchRunsResource,
+  autoResearchRunResource,
+  selectedAutoResearchRunId,
+  autoResearchActionState,
+  autoResearchActions,
+  researchActionState,
+  researchActions,
   releaseGovernanceResource,
   releaseExecutionResource,
   releaseMonitoringResource,
@@ -212,7 +256,18 @@ export function AgentAdminTaskPages({
       ) : activeTaskId === "tools" ? (
         <ToolsPage toolsResource={toolsResource} />
       ) : activeTaskId === "learning" ? (
-        <LearningPage />
+        <LearningPage
+          releaseDashboardResource={releaseDashboardResource}
+          learningJobsResource={learningJobsResource}
+          cohortFeasibilityResource={cohortFeasibilityResource}
+          autoResearchRunsResource={autoResearchRunsResource}
+          autoResearchRunResource={autoResearchRunResource}
+          selectedAutoResearchRunId={selectedAutoResearchRunId}
+          autoResearchActionState={autoResearchActionState}
+          autoResearchActions={autoResearchActions}
+          researchActionState={researchActionState}
+          researchActions={researchActions}
+        />
       ) : activeTaskId === "trace" ? (
         <TracePage activeScene={activeScene} patient={patient} doctor={doctor} />
       ) : activeTaskId === "evidence" ? (
@@ -252,6 +307,15 @@ function AgentAdminOverviewPage({
   AgentAdminPagesProps,
   | "activeTaskId"
   | "rulesResource"
+  | "learningJobsResource"
+  | "cohortFeasibilityResource"
+  | "autoResearchRunsResource"
+  | "autoResearchRunResource"
+  | "selectedAutoResearchRunId"
+  | "autoResearchActionState"
+  | "autoResearchActions"
+  | "researchActionState"
+  | "researchActions"
   | "releaseDashboardResource"
   | "releaseGovernanceResource"
   | "releaseExecutionResource"
@@ -807,70 +871,1378 @@ function ToolsPage({ toolsResource }: { toolsResource: AgentAdminToolsResource }
   );
 }
 
-function LearningPage() {
-  const readinessRows = buildLearningReadiness();
-  const pipelineStages = ["发现论文", "去重", "打分", "摘要", "人工审核", "写入知识库", "生成学习报告"];
-  const artifacts = [
-    "未接线预览 / paper digest card",
-    "未接线预览 / oncology evidence watch",
-    "未接线预览 / knowledge base write preview / no mutation in Phase 1",
-  ];
+type ResearchTone = "neutral" | "warning" | "success" | "red";
+
+function researchStatusTone(status: string): ResearchTone {
+  if (["pass", "verified", "completed", "feasible_for_review", "approved_for_release_intent"].includes(status)) {
+    return "success";
+  }
+  if (["fail", "failed", "failed_shadow", "invalid", "blocked_by_governance", "harness_failed", "rejected"].includes(status)) {
+    return "red";
+  }
+  if (["missing", "partial_shadow", "needs_review", "insufficient_data", "warning"].includes(status)) {
+    return "warning";
+  }
+  return "neutral";
+}
+
+function formatResearchTimestamp(value: string): string {
+  const timestamp = new Date(value);
+  if (Number.isNaN(timestamp.getTime())) {
+    return value || "时间未记录";
+  }
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(timestamp);
+}
+
+function splitResearchFeatures(value: string): string[] {
+  return Array.from(
+    new Set(
+      value
+        .split(/[，,\n]/)
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+function autoResearchStatusLabel(status: AdminAutoResearchRun["status"]): string {
+  if (status === "completed_shadow") {
+    return "执行完成 · 待人工复核";
+  }
+  if (status === "partial_shadow") {
+    return "部分完成 · 待人工复核";
+  }
+  return "执行失败 · 待人工处置";
+}
+
+function autoResearchIntegrityIssueLabel(
+  code: AdminAutoResearchIntegrityIssueCode,
+): string {
+  if (code === "filename_run_id_mismatch") {
+    return "文件名与工件内 run_id 不一致";
+  }
+  if (code === "invalid_json") {
+    return "JSON 无法解析";
+  }
+  if (code === "invalid_contract") {
+    return "Run 契约校验失败";
+  }
+  if (code === "invalid_encoding") {
+    return "文件编码无效";
+  }
+  if (code === "unsafe_artifact_type") {
+    return "工件文件类型不安全";
+  }
+  if (code === "duplicate_run_id") {
+    return "Run ID 重复";
+  }
+  return "工件完整性校验失败";
+}
+
+function autoResearchRecoveryCopy(
+  action: AdminAutoResearchRecoveryAction,
+): { title: string; detail: string } {
+  if (action.code === "rerun_with_new_idempotency_key") {
+    return {
+      title: "使用新幂等键重新运行",
+      detail: "在右侧“启动一次闭环”提交同一研究问题，并填写新的幂等键。系统只追加新 Run，不覆盖受影响文件。",
+    };
+  }
+  return {
+    title: "由授权人员人工隔离",
+    detail: "保留原始字节与 SHA-256，记录操作人、原因和时间，再将文件移出 runs 目录。",
+  };
+}
+
+type AutoResearchRunStatusFilter = "all" | AdminAutoResearchRun["status"];
+const AUTO_RESEARCH_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+const AUTO_RESEARCH_IDENTIFIER_HTML_PATTERN = String.raw`[A-Za-z0-9][A-Za-z0-9_.:\-]*`;
+type AutoResearchFormField =
+  | "request_id"
+  | "project_id"
+  | "requested_by"
+  | "idempotency_key"
+  | "question"
+  | "max_sources"
+  | "max_hypotheses"
+  | "max_iterations"
+  | "privacy_confirmation";
+
+function AutoResearchWorkbench({
+  autoResearchRunsResource,
+  autoResearchRunResource,
+  selectedAutoResearchRunId,
+  autoResearchActionState,
+  autoResearchActions,
+}: Pick<
+  AgentAdminPagesProps,
+  | "autoResearchRunsResource"
+  | "autoResearchRunResource"
+  | "selectedAutoResearchRunId"
+  | "autoResearchActionState"
+  | "autoResearchActions"
+>) {
+  const [runSearch, setRunSearch] = useState("");
+  const [runStatusFilter, setRunStatusFilter] = useState<AutoResearchRunStatusFilter>("all");
+  const [requestId, setRequestId] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [question, setQuestion] = useState("");
+  const [requestedBy, setRequestedBy] = useState("research_operator");
+  const [idempotencyKey, setIdempotencyKey] = useState("");
+  const [maxSources, setMaxSources] = useState("8");
+  const [maxHypotheses, setMaxHypotheses] = useState("3");
+  const [maxIterations, setMaxIterations] = useState("2");
+  const [privacyConfirmed, setPrivacyConfirmed] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formErrorField, setFormErrorField] = useState<AutoResearchFormField | null>(null);
+  const requestIdRef = useRef<HTMLInputElement>(null);
+  const projectIdRef = useRef<HTMLInputElement>(null);
+  const requestedByRef = useRef<HTMLInputElement>(null);
+  const idempotencyKeyRef = useRef<HTMLInputElement>(null);
+  const questionRef = useRef<HTMLTextAreaElement>(null);
+  const maxSourcesRef = useRef<HTMLInputElement>(null);
+  const maxHypothesesRef = useRef<HTMLInputElement>(null);
+  const maxIterationsRef = useRef<HTMLInputElement>(null);
+  const privacyConfirmationRef = useRef<HTMLInputElement>(null);
+
+  const runs = autoResearchRunsResource.status === "success" ? autoResearchRunsResource.data.runs : [];
+  const runIntegrity = autoResearchRunsResource.status === "success"
+    ? autoResearchRunsResource.data.integrity
+    : null;
+  const affectedArtifacts = runIntegrity?.affected_artifacts ?? [];
+  const recoveryActions = runIntegrity?.recovery_actions ?? [];
+  const affectedArtifactMessages = new Set(affectedArtifacts.map((artifact) => artifact.message));
+  const unscopedIntegrityWarnings = runIntegrity?.warnings.filter(
+    (warning) => !affectedArtifactMessages.has(warning),
+  ) ?? [];
+  const deferredRunSearch = useDeferredValue(runSearch.trim().toLocaleLowerCase("zh-CN"));
+  const filteredRuns = runs.filter((run) => {
+    const matchesStatus = runStatusFilter === "all" || run.status === runStatusFilter;
+    if (!matchesStatus) {
+      return false;
+    }
+    if (!deferredRunSearch) {
+      return true;
+    }
+    return [run.run_id, run.request.project_id, run.request.question]
+      .some((value) => value.toLocaleLowerCase("zh-CN").includes(deferredRunSearch));
+  });
+  const selectedListRun =
+    runs.find((run) => run.run_id === selectedAutoResearchRunId) ?? null;
+  const selectedDetailRun =
+    autoResearchRunResource.status === "success"
+    && autoResearchRunResource.data.run.run_id === selectedAutoResearchRunId
+      ? autoResearchRunResource.data.run
+      : null;
+  const selectedRun: AdminAutoResearchRun | null = selectedDetailRun ?? selectedListRun;
+  const selectedDetailLoading =
+    autoResearchRunResource.status === "loading"
+    && autoResearchRunResource.runId === selectedAutoResearchRunId;
+  const selectedDetailError =
+    autoResearchRunResource.status === "error"
+    && autoResearchRunResource.runId === selectedAutoResearchRunId
+      ? autoResearchRunResource.error
+      : null;
+  const selectedRunHiddenByFilters = Boolean(
+    selectedAutoResearchRunId
+    && runs.some((run) => run.run_id === selectedAutoResearchRunId)
+    && !filteredRuns.some((run) => run.run_id === selectedAutoResearchRunId),
+  );
+  const busy = autoResearchActionState.status === "running";
+  const listRefreshing =
+    autoResearchRunsResource.status === "success"
+    && autoResearchRunsResource.refreshing === true;
+  const detailRefreshing =
+    autoResearchRunResource.status === "success"
+    && autoResearchRunResource.refreshing === true;
+  const inspectorAnnouncement = selectedDetailLoading
+    ? `正在读取自动科研 Run ${selectedAutoResearchRunId ?? ""} 的详情。`
+    : selectedDetailError
+      ? `自动科研 Run ${selectedAutoResearchRunId ?? ""} 的详情读取失败。`
+      : detailRefreshing && selectedRun
+        ? `正在刷新自动科研 Run ${selectedRun.run_id} 的详情。`
+        : selectedRun
+          ? `已选择自动科研 Run ${selectedRun.run_id}，状态 ${autoResearchStatusLabel(selectedRun.status)}。`
+          : "尚未选择自动科研 Run。";
+
+  function reportFormError(field: AutoResearchFormField, message: string) {
+    setFormErrorField(field);
+    setFormError(message);
+    const refs: Record<AutoResearchFormField, { current: HTMLElement | null }> = {
+      request_id: requestIdRef,
+      project_id: projectIdRef,
+      requested_by: requestedByRef,
+      idempotency_key: idempotencyKeyRef,
+      question: questionRef,
+      max_sources: maxSourcesRef,
+      max_hypotheses: maxHypothesesRef,
+      max_iterations: maxIterationsRef,
+      privacy_confirmation: privacyConfirmationRef,
+    };
+    refs[field].current?.focus();
+  }
+
+  function clearRunFilters() {
+    setRunSearch("");
+    setRunStatusFilter("all");
+  }
+
+  function handleCreateRun(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError(null);
+    setFormErrorField(null);
+    const sourceLimit = Number(maxSources);
+    const hypothesisLimit = Number(maxHypotheses);
+    const iterationLimit = Number(maxIterations);
+    if (!requestId.trim()) {
+      reportFormError("request_id", "请填写自动科研请求 ID。");
+      return;
+    }
+    if (!AUTO_RESEARCH_IDENTIFIER_PATTERN.test(requestId.trim())) {
+      reportFormError("request_id", "请求 ID 需为 1–128 位，仅使用字母、数字、点、下划线、冒号或连字符。");
+      return;
+    }
+    if (!projectId.trim()) {
+      reportFormError("project_id", "请填写自动科研项目 ID。");
+      return;
+    }
+    if (!AUTO_RESEARCH_IDENTIFIER_PATTERN.test(projectId.trim())) {
+      reportFormError("project_id", "项目 ID 需为 1–128 位，仅使用字母、数字、点、下划线、冒号或连字符。");
+      return;
+    }
+    if (!requestedBy.trim()) {
+      reportFormError("requested_by", "请填写本次操作的审计操作人。");
+      return;
+    }
+    if (requestedBy.trim().length > 128) {
+      reportFormError("requested_by", "审计操作人不得超过 128 个字符。");
+      return;
+    }
+    if (!idempotencyKey.trim()) {
+      reportFormError("idempotency_key", "请填写幂等键；同一键与相同输入会复用既有 Run。");
+      return;
+    }
+    if (!AUTO_RESEARCH_IDENTIFIER_PATTERN.test(idempotencyKey.trim())) {
+      reportFormError("idempotency_key", "幂等键需为 1–128 位，仅使用字母、数字、点、下划线、冒号或连字符。");
+      return;
+    }
+    if (!question.trim()) {
+      reportFormError("question", "请填写研究问题。");
+      return;
+    }
+    if (question.trim().length < 3) {
+      reportFormError("question", "研究问题至少需要 3 个字符。");
+      return;
+    }
+    if (!Number.isInteger(sourceLimit) || sourceLimit < 1 || sourceLimit > 20) {
+      reportFormError("max_sources", "最多来源必须是 1–20 的整数。");
+      return;
+    }
+    if (!Number.isInteger(hypothesisLimit) || hypothesisLimit < 1 || hypothesisLimit > 5) {
+      reportFormError("max_hypotheses", "最多假设必须是 1–5 的整数。");
+      return;
+    }
+    if (!Number.isInteger(iterationLimit) || iterationLimit < 1 || iterationLimit > 3) {
+      reportFormError("max_iterations", "最多复核轮次必须是 1–3 的整数。");
+      return;
+    }
+    if (!privacyConfirmed) {
+      reportFormError(
+        "privacy_confirmation",
+        "请确认研究问题不含患者标识符，并同意将问题发送至 NCBI PubMed 检索。",
+      );
+      return;
+    }
+
+    const request: AdminCreateAutoResearchRunRequest = {
+      request_id: requestId.trim(),
+      project_id: projectId.trim(),
+      question: question.trim(),
+      requested_by: requestedBy.trim(),
+      idempotency_key: idempotencyKey.trim(),
+      max_sources: sourceLimit,
+      max_hypotheses: hypothesisLimit,
+      max_iterations: iterationLimit,
+      deidentified: true,
+    };
+    void autoResearchActions.createRun(request);
+  }
 
   return (
-    <>
-      <AgentAdminMetricStrip
-        metrics={readinessRows.map((row) => ({
-          label: row.label,
-          value: row.value,
-          detail: row.state,
-          tone: "neutral",
-        }))}
-      />
+    <section className="agent-admin-auto-research" aria-label="自动科研闭环">
       <AgentAdminSplitWorkbench
+        className="agent-admin-research-grid"
         primary={
-          <>
-            <AgentAdminPanel eyebrow="source readiness" title="source readiness" icon={BookOpenCheck}>
-              <div className="agent-admin-detail-list">
-                {readinessRows.map((row) => (
-                  <span key={row.label}>
-                    <strong>{row.label}</strong> / {row.value} / {row.state}
+          <AgentAdminPanel
+            eyebrow="research run ledger"
+            title="自动科研 Runs"
+            icon={Sparkles}
+            action={
+              autoResearchRunsResource.status === "success" ? (
+                <AgentAdminSourceBadge source="runtime-api" />
+              ) : autoResearchRunsResource.status === "loading" ? (
+                <AgentAdminStatusChip tone="neutral">正在连接…</AgentAdminStatusChip>
+              ) : autoResearchRunsResource.status === "error" ? (
+                <AgentAdminSourceBadge source="unavailable" />
+              ) : (
+                <AgentAdminStatusChip tone="warning">尚未连接</AgentAdminStatusChip>
+              )
+            }
+          >
+            <div className="agent-admin-research-toolbar">
+              <label className="agent-admin-research-field" htmlFor="auto-research-run-search">
+                <span>搜索 Run</span>
+                <input
+                  id="auto-research-run-search"
+                  name="auto_research_run_search"
+                  type="search"
+                  value={runSearch}
+                  onChange={(event) => setRunSearch(event.target.value)}
+                  placeholder="Run ID、项目 ID 或研究问题…"
+                  autoComplete="off"
+                />
+              </label>
+              <label className="agent-admin-research-field" htmlFor="auto-research-run-status">
+                <span>执行状态</span>
+                <select
+                  id="auto-research-run-status"
+                  name="auto_research_run_status"
+                  value={runStatusFilter}
+                  onChange={(event) => setRunStatusFilter(event.target.value as AutoResearchRunStatusFilter)}
+                >
+                  <option value="all">全部状态</option>
+                  <option value="completed_shadow">执行完成</option>
+                  <option value="partial_shadow">部分完成</option>
+                  <option value="failed_shadow">执行失败</option>
+                </select>
+              </label>
+              <div className="agent-admin-research-toolbar-summary" aria-live="polite">
+                <span>{filteredRuns.length} / {runs.length} 条</span>
+                <button type="button" onClick={() => void autoResearchActions.refreshRuns()} disabled={busy || listRefreshing}>
+                  {(busy && autoResearchActionState.label.includes("刷新")) || listRefreshing ? "刷新中…" : "刷新 Runs"}
+                </button>
+              </div>
+            </div>
+            {selectedRunHiddenByFilters ? (
+              <div className="agent-admin-research-notice" role="status">
+                <ListChecks size={18} aria-hidden="true" />
+                <strong>当前选择被筛选隐藏</strong>
+                <span>检查器仍显示 Run {selectedAutoResearchRunId}；清除筛选可在台账中重新定位。</span>
+                <div className="agent-admin-research-actions">
+                  <button type="button" onClick={clearRunFilters}>清除筛选</button>
+                </div>
+              </div>
+            ) : null}
+            {autoResearchRunsResource.status === "success" && autoResearchRunsResource.refreshError ? (
+              <div className="agent-admin-research-notice" role="status">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <strong>刷新失败，当前显示最近一次成功结果</strong>
+                <span>{autoResearchRunsResource.refreshError.message}</span>
+              </div>
+            ) : null}
+            {runIntegrity?.status === "warning" ? (
+              <div
+                className="agent-admin-research-integrity-warning"
+                role="alert"
+                aria-labelledby="auto-research-integrity-warning-title"
+              >
+                <AlertTriangle size={18} aria-hidden="true" />
+                <div className="agent-admin-research-integrity-heading">
+                  <strong id="auto-research-integrity-warning-title">自动科研台账 integrity warning</strong>
+                  <span>
+                    {affectedArtifacts.length > 0
+                      ? `${affectedArtifacts.length} 个受影响文件已从正常 Run 列表排除。`
+                      : "台账读取结果不完整，告警范围尚未定位到单个文件。"}
                   </span>
+                </div>
+                {affectedArtifacts.length > 0 ? (
+                  <div className="agent-admin-research-integrity-artifacts" aria-label="受影响的自动科研工件">
+                    {affectedArtifacts.map((artifact) => (
+                      <article key={`${artifact.artifact_path}:${artifact.code}`}>
+                        <div>
+                          <strong>{autoResearchIntegrityIssueLabel(artifact.code)}</strong>
+                          <code translate="no">{artifact.artifact_path}</code>
+                        </div>
+                        <dl>
+                          <div>
+                            <dt>文件名 Run</dt>
+                            <dd><code translate="no">{artifact.filename_run_id}</code></dd>
+                          </div>
+                          <div>
+                            <dt>工件内 Run</dt>
+                            <dd><code translate="no">{artifact.persisted_run_id ?? "无法读取"}</code></dd>
+                          </div>
+                          <div>
+                            <dt>列表处置</dt>
+                            <dd>{artifact.excluded_from_runs ? "已排除，不作为正常结果展示" : "待确认"}</dd>
+                          </div>
+                        </dl>
+                      </article>
+                    ))}
+                  </div>
+                ) : null}
+                {unscopedIntegrityWarnings.map((warning) => (
+                  <span key={warning}>{warning}</span>
+                ))}
+                {recoveryActions.length > 0 ? (
+                  <div className="agent-admin-research-integrity-recovery">
+                    <strong>安全的下一步</strong>
+                    <ol>
+                      {recoveryActions.map((action) => {
+                        const copy = autoResearchRecoveryCopy(action);
+                        return (
+                          <li key={action.code}>
+                            <strong>{copy.title}</strong>
+                            <span>{copy.detail}</span>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    <small>Admin 页面不会自动改名、覆盖或隔离工件；以上路径均不写入或改写临床数据。</small>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {autoResearchRunsResource.status === "idle" ? (
+              <div className="agent-admin-research-empty">
+                <AlertTriangle size={22} aria-hidden="true" />
+                <strong>自动科研 Run 接口尚未连接</strong>
+                <span>连接管理员 API 后刷新；此状态不代表台账为空。</span>
+                <div className="agent-admin-research-actions">
+                  <button type="button" onClick={() => void autoResearchActions.refreshRuns()} disabled={busy || listRefreshing}>重试连接</button>
+                </div>
+              </div>
+            ) : autoResearchRunsResource.status === "loading" ? (
+              <div className="agent-admin-research-ledger" aria-busy="true" aria-label="正在加载自动科研 Runs">
+                {[0, 1, 2].map((item) => (
+                  <div key={item} className="agent-admin-research-row agent-admin-research-row-is-loading" aria-hidden="true" />
                 ))}
               </div>
-            </AgentAdminPanel>
-            <AgentAdminPanel eyebrow="learning pipeline" title="学习流水线" icon={GitBranch}>
-              <div className="agent-admin-timeline">
-                {pipelineStages.map((stage) => (
-                  <article key={stage} className="agent-admin-timeline-row agent-admin-timeline-row-ready">
-                    <span className="agent-admin-timeline-node">
-                      <AgentAdminStateIcon state="ready" />
-                      {stage}
-                    </span>
-                    <span>未接线 / waiting for scheduler</span>
-                    <strong>
-                      <AgentAdminSourceBadge source="roadmap" />
-                    </strong>
+            ) : autoResearchRunsResource.status === "error" ? (
+              <div className="agent-admin-research-error" role="alert">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <strong>自动科研 Runs 读取失败</strong>
+                <span>{autoResearchRunsResource.error.message}</span>
+                <div className="agent-admin-research-actions">
+                  <button type="button" onClick={() => void autoResearchActions.refreshRuns()} disabled={busy || listRefreshing}>重试读取</button>
+                </div>
+              </div>
+            ) : runs.length === 0 && runIntegrity?.status === "warning" ? (
+              <div className="agent-admin-research-empty">
+                <AlertTriangle size={22} aria-hidden="true" />
+                <strong>没有通过完整性校验的 Run</strong>
+                <span>受影响工件保留在告警中，但不会进入正常结果列表。请按上方恢复路径处理。</span>
+              </div>
+            ) : runs.length === 0 ? (
+              <div className="agent-admin-research-empty">
+                <Sparkles size={22} aria-hidden="true" />
+                <strong>尚无自动科研 Run</strong>
+                <span>在本页提交研究问题后，系统会运行文献检索、假设复核、方案设计与引用受控报告。</span>
+              </div>
+            ) : filteredRuns.length > 0 ? (
+              <div className="agent-admin-research-ledger" aria-label="自动科研 Run 列表">
+                {filteredRuns.map((run) => (
+                  <button
+                    key={run.run_id}
+                    type="button"
+                    className={`agent-admin-research-row${selectedRun?.run_id === run.run_id ? " is-selected" : ""}`}
+                    onClick={() => void autoResearchActions.selectRun(run.run_id)}
+                    aria-current={selectedAutoResearchRunId === run.run_id ? "true" : undefined}
+                    aria-controls="auto-research-run-inspector"
+                  >
+                    <div className="agent-admin-research-row-main">
+                      <strong className="agent-admin-research-id" translate="no">{run.run_id}</strong>
+                      <span className="agent-admin-research-meta">
+                        {run.request.project_id} · {formatResearchTimestamp(run.created_at)}
+                      </span>
+                    </div>
+                    <AgentAdminStatusChip tone={researchStatusTone(run.status)}>
+                      {autoResearchStatusLabel(run.status)}
+                    </AgentAdminStatusChip>
+                    <small>{run.sources.length} sources · {run.hypotheses.length} hypotheses</small>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="agent-admin-research-empty">
+                <ListChecks size={22} aria-hidden="true" />
+                <strong>没有匹配的 Run</strong>
+                <span>调整搜索词或状态筛选；已确认的台账共有 {runs.length} 条。</span>
+                <div className="agent-admin-research-actions">
+                  <button
+                    type="button"
+                    onClick={clearRunFilters}
+                  >
+                    清除筛选
+                  </button>
+                </div>
+              </div>
+            )}
+          </AgentAdminPanel>
+        }
+        secondary={
+          <AgentAdminPanel eyebrow="manual shadow trigger" title="启动一次闭环" icon={KeyRound}>
+            <form className="agent-admin-research-form" onSubmit={handleCreateRun} autoComplete="off">
+              <div className="agent-admin-research-form-grid">
+                <label className="agent-admin-research-field" htmlFor="auto-research-request-id">
+                  <span>自动科研请求 ID</span>
+                  <input
+                    ref={requestIdRef}
+                    id="auto-research-request-id"
+                    name="request_id"
+                    value={requestId}
+                    onChange={(event) => setRequestId(event.target.value)}
+                    maxLength={128}
+                    pattern={AUTO_RESEARCH_IDENTIFIER_HTML_PATTERN}
+                    placeholder="auto-research-request-…"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    aria-invalid={formErrorField === "request_id"}
+                    aria-describedby={formErrorField === "request_id" ? "auto-research-form-error" : undefined}
+                    required
+                  />
+                </label>
+                <label className="agent-admin-research-field" htmlFor="auto-research-project-id">
+                  <span>自动科研项目 ID</span>
+                  <input
+                    ref={projectIdRef}
+                    id="auto-research-project-id"
+                    name="project_id"
+                    value={projectId}
+                    onChange={(event) => setProjectId(event.target.value)}
+                    maxLength={128}
+                    pattern={AUTO_RESEARCH_IDENTIFIER_HTML_PATTERN}
+                    placeholder="research-project-…"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    aria-invalid={formErrorField === "project_id"}
+                    aria-describedby={formErrorField === "project_id" ? "auto-research-form-error" : undefined}
+                    required
+                  />
+                </label>
+                <label className="agent-admin-research-field" htmlFor="auto-research-requested-by">
+                  <span>自动科研操作人</span>
+                  <input
+                    ref={requestedByRef}
+                    id="auto-research-requested-by"
+                    name="requested_by"
+                    value={requestedBy}
+                    onChange={(event) => setRequestedBy(event.target.value)}
+                    maxLength={128}
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    aria-invalid={formErrorField === "requested_by"}
+                    aria-describedby={formErrorField === "requested_by" ? "auto-research-form-error" : undefined}
+                    required
+                  />
+                </label>
+                <label className="agent-admin-research-field" htmlFor="auto-research-idempotency-key">
+                  <span>自动科研幂等键</span>
+                  <input
+                    ref={idempotencyKeyRef}
+                    id="auto-research-idempotency-key"
+                    name="idempotency_key"
+                    value={idempotencyKey}
+                    onChange={(event) => setIdempotencyKey(event.target.value)}
+                    maxLength={128}
+                    pattern={AUTO_RESEARCH_IDENTIFIER_HTML_PATTERN}
+                    placeholder="auto-research-…"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    aria-invalid={formErrorField === "idempotency_key"}
+                    aria-describedby={formErrorField === "idempotency_key" ? "auto-research-form-error" : undefined}
+                    required
+                  />
+                </label>
+              </div>
+              <div className="agent-admin-research-field">
+                <label htmlFor="auto-research-question">自动科研研究问题</label>
+                <textarea
+                  ref={questionRef}
+                  id="auto-research-question"
+                  name="question"
+                  value={question}
+                  onChange={(event) => {
+                    setQuestion(event.target.value);
+                    setPrivacyConfirmed(false);
+                  }}
+                  placeholder="提出一个可由公开文献支持或反驳的问题…"
+                  maxLength={4000}
+                  aria-invalid={formErrorField === "question"}
+                  aria-describedby={`auto-research-question-help${formErrorField === "question" ? " auto-research-form-error" : ""}`}
+                  required
+                />
+                <small id="auto-research-question-help">
+                  内容会发送至 NCBI PubMed 检索。系统仅拦截部分明显标识符，不能替代机构 DLP 或人工检查。
+                </small>
+              </div>
+              <div className="agent-admin-research-form-grid">
+                <label className="agent-admin-research-field" htmlFor="auto-research-max-sources">
+                  <span>最多来源（1–20）</span>
+                  <input ref={maxSourcesRef} id="auto-research-max-sources" name="max_sources" type="number" inputMode="numeric" min={1} max={20} value={maxSources} onChange={(event) => setMaxSources(event.target.value)} aria-invalid={formErrorField === "max_sources"} aria-describedby={formErrorField === "max_sources" ? "auto-research-form-error" : undefined} required />
+                </label>
+                <label className="agent-admin-research-field" htmlFor="auto-research-max-hypotheses">
+                  <span>最多假设（1–5）</span>
+                  <input ref={maxHypothesesRef} id="auto-research-max-hypotheses" name="max_hypotheses" type="number" inputMode="numeric" min={1} max={5} value={maxHypotheses} onChange={(event) => setMaxHypotheses(event.target.value)} aria-invalid={formErrorField === "max_hypotheses"} aria-describedby={formErrorField === "max_hypotheses" ? "auto-research-form-error" : undefined} required />
+                </label>
+                <label className="agent-admin-research-field" htmlFor="auto-research-max-iterations">
+                  <span>最多复核轮次（1–3）</span>
+                  <input ref={maxIterationsRef} id="auto-research-max-iterations" name="max_iterations" type="number" inputMode="numeric" min={1} max={3} value={maxIterations} onChange={(event) => setMaxIterations(event.target.value)} aria-invalid={formErrorField === "max_iterations"} aria-describedby={formErrorField === "max_iterations" ? "auto-research-form-error" : undefined} required />
+                </label>
+              </div>
+              <div className="agent-admin-research-fixed-scope">
+                <ShieldCheck size={16} aria-hidden="true" />
+                <span>deidentified = true · 研究问题禁止患者标识符 · shadow_only · 不执行研究方案 · 不返回患者级数据</span>
+              </div>
+              <label className="agent-admin-research-confirmation" htmlFor="auto-research-privacy-confirmation">
+                <input
+                  ref={privacyConfirmationRef}
+                  id="auto-research-privacy-confirmation"
+                  name="privacy_confirmation"
+                  type="checkbox"
+                  checked={privacyConfirmed}
+                  onChange={(event) => setPrivacyConfirmed(event.target.checked)}
+                  aria-invalid={formErrorField === "privacy_confirmation"}
+                  aria-describedby={`auto-research-privacy-help${formErrorField === "privacy_confirmation" ? " auto-research-form-error" : ""}`}
+                  required
+                />
+                <span>
+                  <strong>确认问题不含患者标识符，并发送至 NCBI PubMed</strong>
+                  <small id="auto-research-privacy-help">只允许公开、去标识化的科研问题；确认不会绕过人工复核。</small>
+                </span>
+              </label>
+              {formError ? <div id="auto-research-form-error" className="agent-admin-research-error" role="alert">{formError}</div> : null}
+              <div className="agent-admin-research-actions">
+                <button type="submit" disabled={busy}>{busy ? "运行中…" : "运行自动科研闭环"}</button>
+              </div>
+            </form>
+          </AgentAdminPanel>
+        }
+      />
+
+      <AgentAdminPanel
+        eyebrow="run evidence package"
+        title="自动科研 Run 检查器"
+        icon={ListChecks}
+        action={selectedRun ? (
+          <div className="agent-admin-research-actions agent-admin-research-inspector-actions">
+            <AgentAdminStatusChip tone={researchStatusTone(selectedRun.status)}>{autoResearchStatusLabel(selectedRun.status)}</AgentAdminStatusChip>
+            <button
+              type="button"
+              onClick={() => void autoResearchActions.refreshRun()}
+              disabled={
+                selectedDetailLoading
+                || detailRefreshing
+              }
+            >
+              {detailRefreshing ? "刷新中…" : "刷新详情"}
+            </button>
+          </div>
+        ) : undefined}
+      >
+        <div id="auto-research-run-inspector">
+        <p className="agent-admin-visually-hidden" role="status" aria-atomic="true">
+          {inspectorAnnouncement}
+        </p>
+        {selectedDetailLoading ? (
+          <div className="agent-admin-research-inspector" aria-busy="true" aria-label={`正在读取 Run ${selectedAutoResearchRunId ?? ""} 的详情`}>
+            {[0, 1, 2].map((item) => (
+              <div key={item} className="agent-admin-research-row agent-admin-research-row-is-loading" aria-hidden="true" />
+            ))}
+          </div>
+        ) : selectedDetailError ? (
+          <div className="agent-admin-research-error" role="alert">
+            <AlertTriangle size={18} aria-hidden="true" />
+            <strong>Run 详情读取失败</strong>
+            <span>{selectedDetailError.message}</span>
+            <div className="agent-admin-research-actions">
+              <button type="button" onClick={() => void autoResearchActions.refreshRun()}>重试详情</button>
+            </div>
+          </div>
+        ) : selectedRun ? (
+          <div className="agent-admin-research-inspector">
+            {autoResearchRunResource.status === "success" && autoResearchRunResource.refreshError ? (
+              <div className="agent-admin-research-notice" role="status">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <strong>详情刷新失败，继续显示最近一次成功结果</strong>
+                <span>{autoResearchRunResource.refreshError.message}</span>
+              </div>
+            ) : null}
+            {autoResearchRunResource.status === "success" && autoResearchRunResource.data.integrity.status === "warning" ? (
+              <div className="agent-admin-research-error" role="alert">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <strong>此 Run 的存储完整性需要检查</strong>
+                {autoResearchRunResource.data.integrity.warnings.map((warning) => <span key={warning}>{warning}</span>)}
+              </div>
+            ) : null}
+            <div className="agent-admin-research-result-summary">
+              <div>
+                <span>Run ID</span>
+                <strong className="agent-admin-research-id">{selectedRun.run_id}</strong>
+                <small>{selectedRun.request.project_id}</small>
+              </div>
+              <div>
+                <span>可核验来源</span>
+                <strong>{selectedRun.sources.length}</strong>
+                <small>PubMed metadata + abstract</small>
+              </div>
+              <div>
+                <span>假设 / 方案</span>
+                <strong>{selectedRun.hypotheses.length} / {selectedRun.study_plans.length}</strong>
+                <small>{selectedRun.iteration_count} review iterations</small>
+              </div>
+              <div>
+                <span>人工复核</span>
+                <strong>{selectedRun.human_review_status}</strong>
+                <small>{formatResearchTimestamp(selectedRun.completed_at)}</small>
+              </div>
+            </div>
+
+            <div className="agent-admin-research-fixed-scope">
+              <ShieldCheck size={16} aria-hidden="true" />
+              <span>
+                applies automatically: {String(selectedRun.applies_automatically)} · clinical default mutated: {String(selectedRun.clinical_default_path_mutated)} · patient rows returned: {String(selectedRun.patient_level_rows_returned)}
+              </span>
+            </div>
+
+            <div className="agent-admin-research-notice agent-admin-research-review-steps">
+              <ListChecks size={18} aria-hidden="true" />
+              <div>
+                <strong>人工复核顺序</strong>
+                <ol>
+                  <li>核对 PubMed 摘要与检索上下文。</li>
+                  <li>检查每条假设的支持来源、反证与安全风险。</li>
+                  <li>记录人工结论后，再进入独立治理流程；本页不会 Apply 或 Promote。</li>
+                </ol>
+              </div>
+            </div>
+
+            <dl className="agent-admin-definition-list agent-admin-research-run-metadata">
+              <dt>研究问题</dt>
+              <dd>{selectedRun.request.question}</dd>
+              <dt>Request hash</dt>
+              <dd className="agent-admin-research-id">{selectedRun.request_hash}</dd>
+              <dt>检索器</dt>
+              <dd>{selectedRun.provenance.retriever ?? "未记录"}</dd>
+              <dt>推理器</dt>
+              <dd>{selectedRun.provenance.reasoner ?? "未记录"}</dd>
+              <dt>Pipeline</dt>
+              <dd>{selectedRun.provenance.pipeline_version ?? "未记录"}</dd>
+            </dl>
+
+            <section aria-label="自动科研阶段">
+              <h3>阶段时间线</h3>
+              <div className="agent-admin-research-review-list">
+                {selectedRun.stages.map((stage) => (
+                  <article key={`${stage.name}-${stage.started_at}`}>
+                    <strong>{stage.name}</strong>
+                    <span><AgentAdminStatusChip tone={researchStatusTone(stage.status)}>{stage.status}</AgentAdminStatusChip></span>
+                    <small>{stage.error ?? stage.summary} · {formatResearchTimestamp(stage.completed_at)}</small>
                   </article>
                 ))}
               </div>
+            </section>
+
+            <section aria-label="自动科研假设">
+              <h3>假设与对抗性复核（同模型分阶段）</h3>
+              <div className="agent-admin-research-review-list">
+                {selectedRun.hypotheses.length > 0 ? selectedRun.hypotheses.map((hypothesis) => (
+                  <article key={hypothesis.hypothesis_id}>
+                    <strong>{hypothesis.statement}</strong>
+                    <span>{hypothesis.rationale}</span>
+                    <span>可证伪预测：{hypothesis.testable_prediction}</span>
+                    <small>
+                      iteration {hypothesis.iteration} · verdict {hypothesis.review.verdict} · evidence {hypothesis.review.evidence_support_score} · novelty {hypothesis.review.novelty_score} · testability {hypothesis.review.testability_score}
+                    </small>
+                    <small>支持来源：{hypothesis.supporting_source_ids.join(" · ") || "无"}；反证来源：{hypothesis.counterevidence_source_ids.join(" · ") || "无"}</small>
+                    <small>复核意见：{hypothesis.review.critique}</small>
+                    <small>安全风险：{hypothesis.review.safety_risk}</small>
+                    {hypothesis.review.revision_instructions ? <small>修订要求：{hypothesis.review.revision_instructions}</small> : null}
+                  </article>
+                )) : <span>此 Run 未形成可进入方案设计的假设。</span>}
+              </div>
+            </section>
+
+            <section aria-label="自动科研方案">
+              <h3>研究方案草案（未执行）</h3>
+              <div className="agent-admin-research-review-list">
+                {selectedRun.study_plans.length > 0 ? selectedRun.study_plans.map((plan) => (
+                  <article key={plan.plan_id}>
+                    <strong>{plan.objective}</strong>
+                    <span>{plan.study_type} · {plan.execution_status}</span>
+                    <small>所需数据：{plan.required_data.join(" · ")}</small>
+                    <small>分析步骤：{plan.analysis_steps.join(" · ")}</small>
+                    <small>成功标准：{plan.success_criteria.join(" · ")}</small>
+                    <small>安全约束：{plan.safety_constraints.join(" · ")}</small>
+                  </article>
+                )) : <span>此 Run 未生成研究方案。</span>}
+              </div>
+            </section>
+
+            <section aria-label="自动科研来源">
+              <h3>来源台账</h3>
+              <div className="agent-admin-research-review-list">
+                {selectedRun.sources.length > 0 ? selectedRun.sources.map((source) => (
+                  <article key={source.source_id} id={`auto-research-source-${source.source_id}`}>
+                    <strong>{source.title}</strong>
+                    <span>{source.journal} · {source.publication_year} · {source.pmid ? `PMID ${source.pmid}` : "PMID unavailable"}</span>
+                    <small><a href={source.url} target="_blank" rel="noreferrer" aria-label={`${source.title}（新窗口）`}>{source.source_id}</a> · {source.source_type}</small>
+                    <details className="agent-admin-research-source-detail">
+                      <summary>查看摘要与检索上下文</summary>
+                      <p>{source.abstract}</p>
+                      <small>检索式：{source.query}</small>
+                      <small>检索时间：{formatResearchTimestamp(source.retrieved_at)}</small>
+                    </details>
+                  </article>
+                )) : <span>未检索到带摘要的可核验来源。</span>}
+              </div>
+            </section>
+
+            <section aria-label="自动科研报告">
+              <h3>引用受控报告</h3>
+              <pre className="agent-admin-auto-research-report" tabIndex={0} aria-label={`Run ${selectedRun.run_id} 的引用受控报告`}>{selectedRun.report_markdown || "报告未生成。"}</pre>
+            </section>
+          </div>
+        ) : (
+          <div className="agent-admin-research-empty">
+            <ListChecks size={22} aria-hidden="true" />
+            <strong>尚未选择 Run</strong>
+            <span>运行或选择一条记录后，可检查阶段、引用、假设复核、未执行方案和安全边界。</span>
+          </div>
+        )}
+        </div>
+      </AgentAdminPanel>
+    </section>
+  );
+}
+
+function LearningPage({
+  releaseDashboardResource,
+  learningJobsResource,
+  cohortFeasibilityResource,
+  autoResearchRunsResource,
+  autoResearchRunResource,
+  selectedAutoResearchRunId,
+  autoResearchActionState,
+  autoResearchActions,
+  researchActionState,
+  researchActions,
+}: Pick<
+  AgentAdminPagesProps,
+  | "releaseDashboardResource"
+  | "learningJobsResource"
+  | "cohortFeasibilityResource"
+  | "autoResearchRunsResource"
+  | "autoResearchRunResource"
+  | "selectedAutoResearchRunId"
+  | "autoResearchActionState"
+  | "autoResearchActions"
+  | "researchActionState"
+  | "researchActions"
+>) {
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [requestedBy, setRequestedBy] = useState("admin_operator");
+  const [idempotencyKey, setIdempotencyKey] = useState("");
+  const [signalType, setSignalType] = useState<AdminLearningSignalType>("evidence_delta");
+  const [targetArea, setTargetArea] = useState<AdminLearningTargetArea>("evidence_ingest");
+  const [sourceRefId, setSourceRefId] = useState("");
+  const [reasonCode, setReasonCode] = useState("");
+  const [severity, setSeverity] = useState("review_required");
+  const [signalSummary, setSignalSummary] = useState("");
+  const [requestId, setRequestId] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [question, setQuestion] = useState("");
+  const [condition, setCondition] = useState("colorectal_cancer_or_crc_triage_risk");
+  const [requiredFeatures, setRequiredFeatures] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const dashboard = releaseDashboardResource.status === "success" ? releaseDashboardResource.data : null;
+  const literatureRuns = dashboard?.runs.filter((run) => run.kind === "literature_shadow_harness") ?? [];
+  const literatureReportUnavailable =
+    literatureRuns.length === 0 || literatureRuns.some((run) => run.status === "missing" || run.status === "invalid");
+  const learningData = learningJobsResource.status === "success" ? learningJobsResource.data : null;
+  const selectedJob =
+    learningData?.jobs.find((job) => job.job_id === selectedJobId) ?? learningData?.jobs[0] ?? null;
+  const selectedCandidates = selectedJob
+    ? learningData?.candidates.filter((candidate) => selectedJob.candidate_patch_ids.includes(candidate.patch_id)) ?? []
+    : [];
+  const cohortResult = cohortFeasibilityResource.status === "success" ? cohortFeasibilityResource.data : null;
+  const researchBusy = researchActionState.status === "running";
+  const runtimeConnected =
+    releaseDashboardResource.status === "success"
+    && learningJobsResource.status === "success"
+    && autoResearchRunsResource.status === "success";
+
+  const literatureClaimsValue =
+    releaseDashboardResource.status === "loading"
+      ? "加载中"
+      : dashboard && !literatureReportUnavailable
+        ? dashboard.summary.literature_claims
+        : "待核验";
+  const isolationValue =
+    releaseDashboardResource.status === "loading"
+      ? "加载中"
+      : dashboard && !literatureReportUnavailable
+        ? dashboard.summary.literature_isolation_violations
+        : "待核验";
+
+  function handleCreateLearningJob(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError(null);
+    if (![idempotencyKey, sourceRefId, reasonCode, signalSummary, requestedBy].every((value) => value.trim())) {
+      setFormError("请完整填写候选任务的审计字段。");
+      return;
+    }
+
+    void researchActions.createLearningJob({
+      signals: [
+        {
+          signal_type: signalType,
+          source_ref: {
+            kind: signalType,
+            id: sourceRefId.trim(),
+            projection: "aggregate_shadow_learning",
+          },
+          reason_code: reasonCode.trim(),
+          target_area: targetArea,
+          severity: severity.trim(),
+          summary: signalSummary.trim(),
+          deidentified: true,
+          created_at: new Date().toISOString(),
+        },
+      ],
+      requested_by: requestedBy.trim(),
+      idempotency_key: idempotencyKey.trim(),
+    });
+  }
+
+  function handleCohortFeasibility(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setFormError(null);
+    const features = splitResearchFeatures(requiredFeatures);
+    if (![requestId, projectId, question, condition].every((value) => value.trim()) || features.length === 0) {
+      setFormError("请填写请求 ID、项目 ID、研究问题、条件和至少一个必需变量。");
+      return;
+    }
+
+    const request: AdminCohortFeasibilityRequest = {
+      request_id: requestId.trim(),
+      project_id: projectId.trim(),
+      question: question.trim(),
+      cohort_criteria: {
+        condition: condition.trim(),
+        required_features: features,
+      },
+      data_scope: {
+        source: "patient_record_projection",
+        patient_level_export_requested: false,
+        deidentified_only: true,
+      },
+      version_refs: {
+        projection_version: "patient_record_projection_v0",
+        clinical_safety_policy_version: "crc_safety_policy_v0",
+      },
+    };
+    void researchActions.evaluateCohortFeasibility(request);
+  }
+
+  return (
+    <>
+      <section className="agent-admin-research-boundary" aria-label="影子科研边界">
+        <ShieldCheck size={22} aria-hidden="true" />
+        <div className="agent-admin-research-boundary-copy">
+          <strong>影子科研，不进入临床默认流</strong>
+          <span>可运行文献检索、假设复核、研究方案与报告闭环；知识写入、自动训练、自动应用仍被禁止，真实实验也不会由此触发。</span>
+        </div>
+        <AgentAdminSourceBadge source={runtimeConnected ? "runtime-api" : "unavailable"} />
+        <button type="button" onClick={() => void researchActions.refresh()} disabled={researchBusy}>
+          {researchActionState.status === "running" && researchActionState.label.includes("刷新") ? "刷新中" : "刷新数据"}
+        </button>
+      </section>
+
+      <AgentAdminMetricStrip
+        className="agent-admin-research-metrics"
+        metrics={[
+          {
+            label: "文献证据声明",
+            value: literatureClaimsValue,
+            detail: literatureReportUnavailable ? "报告缺失或无效时不采用兜底数" : "最新影子报告",
+            tone: literatureReportUnavailable ? "warning" : "neutral",
+          },
+          {
+            label: "临床隔离违规",
+            value: isolationValue,
+            detail: literatureReportUnavailable ? "需先恢复报告" : "应保持为 0",
+            tone: isolationValue === 0 ? "success" : "warning",
+          },
+          {
+            label: "LearningJobs",
+            value: learningJobsResource.status === "loading" ? "加载中" : learningData?.jobs.length ?? "不可用",
+            detail: learningData?.integrity.status ?? "shadow queue",
+            tone: learningData?.integrity.status === "verified" ? "success" : "neutral",
+          },
+          {
+            label: "候选改进",
+            value: learningJobsResource.status === "loading" ? "加载中" : learningData?.candidates.length ?? "不可用",
+            detail: "不会自动应用",
+            tone: "neutral",
+          },
+        ]}
+      />
+
+      <div aria-live="polite" aria-atomic="true">
+        {researchActionState.status === "running" ? (
+          <span className="agent-admin-action-status">{researchActionState.label} 正在执行</span>
+        ) : researchActionState.status === "success" ? (
+          <span className="agent-admin-action-status">{researchActionState.message}</span>
+        ) : researchActionState.status === "warning" ? (
+          <span className="agent-admin-action-status agent-admin-action-status-warning">{researchActionState.message}</span>
+        ) : researchActionState.status === "error" ? (
+          <span className="agent-admin-action-status agent-admin-action-status-error">{researchActionState.message}</span>
+        ) : null}
+        {autoResearchActionState.status === "running" ? (
+          <span className="agent-admin-action-status">{autoResearchActionState.label} 正在执行</span>
+        ) : autoResearchActionState.status === "success" ? (
+          <span className="agent-admin-action-status">{autoResearchActionState.message}</span>
+        ) : autoResearchActionState.status === "warning" ? (
+          <span className="agent-admin-action-status agent-admin-action-status-warning">{autoResearchActionState.message}</span>
+        ) : autoResearchActionState.status === "error" ? (
+          <span className="agent-admin-action-status agent-admin-action-status-error">{autoResearchActionState.message}</span>
+        ) : null}
+        {formError ? <span className="agent-admin-action-status agent-admin-action-status-error">{formError}</span> : null}
+      </div>
+
+      <AutoResearchWorkbench
+        autoResearchRunsResource={autoResearchRunsResource}
+        autoResearchRunResource={autoResearchRunResource}
+        selectedAutoResearchRunId={selectedAutoResearchRunId}
+        autoResearchActionState={autoResearchActionState}
+        autoResearchActions={autoResearchActions}
+      />
+
+      <AgentAdminSplitWorkbench
+        className="agent-admin-research-grid"
+        primary={
+          <>
+            <AgentAdminPanel
+              eyebrow="literature shadow harness"
+              title="最新文献影子报告"
+              icon={BookOpenCheck}
+              action={<AgentAdminSourceBadge source={dashboard ? "runtime-api" : "unavailable"} />}
+            >
+              {releaseDashboardResource.status === "loading" ? (
+                <div className="agent-admin-research-ledger" aria-busy="true" aria-label="正在加载文献报告">
+                  {[0, 1].map((item) => (
+                    <div key={item} className="agent-admin-research-row agent-admin-research-row-is-loading" aria-hidden="true" />
+                  ))}
+                </div>
+              ) : releaseDashboardResource.status === "error" ? (
+                <div className="agent-admin-research-error" role="alert">
+                  <AlertTriangle size={18} aria-hidden="true" />
+                  <span>文献报告读取失败：{releaseDashboardResource.error.message}</span>
+                </div>
+              ) : literatureRuns.length > 0 ? (
+                <div className="agent-admin-research-ledger">
+                  {literatureRuns.map((run) => (
+                    <article key={run.run_id} className="agent-admin-research-row">
+                      <div className="agent-admin-research-row-main">
+                        <strong className="agent-admin-research-id">{run.run_id}</strong>
+                        <span className="agent-admin-research-meta">{run.source_path}</span>
+                      </div>
+                      <AgentAdminStatusChip tone={researchStatusTone(run.status)}>{run.status}</AgentAdminStatusChip>
+                      <small>hard fail {run.hard_fail_count}</small>
+                    </article>
+                  ))}
+                  <p className="agent-admin-research-notice">当前 API 仅提供最新文献报告切片，不将它表述为历史运行台账。</p>
+                </div>
+              ) : (
+                <div className="agent-admin-research-empty">
+                  <BookOpenCheck size={22} aria-hidden="true" />
+                  <strong>尚无可用文献影子报告</strong>
+                  <span>先生成 literature shadow harness 报告，再回到这里复核状态与隔离约束。</span>
+                </div>
+              )}
+            </AgentAdminPanel>
+
+            <AgentAdminPanel
+              eyebrow="shadow learning jobs"
+              title="候选学习任务"
+              icon={GitBranch}
+              action={<AgentAdminSourceBadge source={learningData ? "runtime-api" : "unavailable"} />}
+            >
+              {learningJobsResource.status === "loading" ? (
+                <div className="agent-admin-research-ledger" aria-busy="true" aria-label="正在加载候选学习任务">
+                  {[0, 1, 2].map((item) => (
+                    <div key={item} className="agent-admin-research-row agent-admin-research-row-is-loading" aria-hidden="true" />
+                  ))}
+                </div>
+              ) : learningJobsResource.status === "error" ? (
+                <div className="agent-admin-research-error" role="alert">
+                  <AlertTriangle size={18} aria-hidden="true" />
+                  <span>LearningJob 读取失败：{learningJobsResource.error.message}</span>
+                </div>
+              ) : learningData && learningData.jobs.length > 0 ? (
+                <div className="agent-admin-research-ledger">
+                  {learningData.jobs.map((job) => (
+                    <button
+                      key={job.job_id}
+                      type="button"
+                      className={`agent-admin-research-row${selectedJob?.job_id === job.job_id ? " is-selected" : ""}`}
+                      onClick={() => setSelectedJobId(job.job_id)}
+                      aria-pressed={selectedJob?.job_id === job.job_id}
+                    >
+                      <div className="agent-admin-research-row-main">
+                        <strong className="agent-admin-research-id">{job.job_id}</strong>
+                        <span className="agent-admin-research-meta">
+                          {job.job_type} · {formatResearchTimestamp(job.created_at)}
+                        </span>
+                      </div>
+                      <AgentAdminStatusChip tone={researchStatusTone(job.status)}>{job.status}</AgentAdminStatusChip>
+                      <small>{job.source_signal_ids.length} signals · {job.candidate_patch_ids.length} candidates</small>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="agent-admin-research-empty">
+                  <GitBranch size={22} aria-hidden="true" />
+                  <strong>候选队列为空</strong>
+                  <span>使用右侧表单提交一条去标识化聚合信号；任务只会进入 shadow_only 队列。</span>
+                </div>
+              )}
             </AgentAdminPanel>
           </>
         }
         secondary={
-          <AgentAdminPanel eyebrow="actions" title="disabled actions" icon={ShieldCheck}>
-            <div className="agent-admin-detail-list">
-              <AgentAdminDisabledAction label="Run now" reason="一期不执行每日任务" />
-              <AgentAdminDisabledAction label="Write knowledge base" reason="Phase 1 read-only" />
-              <AgentAdminDisabledAction label="Enable scheduler" reason="scheduler disabled / config needed" />
-            </div>
-          </AgentAdminPanel>
+          <>
+            <AgentAdminPanel eyebrow="selected job" title="候选检查器" icon={ListChecks}>
+              {selectedJob ? (
+                <div className="agent-admin-research-inspector">
+                  <dl className="agent-admin-definition-list">
+                    <dt>Job ID</dt>
+                    <dd className="agent-admin-research-id">{selectedJob.job_id}</dd>
+                    <dt>状态</dt>
+                    <dd>{selectedJob.status}</dd>
+                    <dt>Harness</dt>
+                    <dd>{selectedJob.required_harness.case_pack_version}</dd>
+                    <dt>人工复核</dt>
+                    <dd>{selectedJob.human_review.status}</dd>
+                    <dt>幂等键</dt>
+                    <dd className="agent-admin-research-id">{selectedJob.idempotency_key}</dd>
+                  </dl>
+                  <div className="agent-admin-research-review-list">
+                    {selectedCandidates.length > 0 ? (
+                      selectedCandidates.map((candidate) => (
+                        <article key={candidate.patch_id}>
+                          <strong className="agent-admin-research-id">{candidate.patch_id}</strong>
+                          <span>{candidate.change_summary}</span>
+                          <small>{candidate.status} · applies automatically: {String(candidate.applies_automatically)}</small>
+                        </article>
+                      ))
+                    ) : (
+                      <span>此任务尚无候选改进。</span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="agent-admin-research-empty">
+                  <ListChecks size={22} aria-hidden="true" />
+                  <strong>尚未选择任务</strong>
+                  <span>任务出现后可在这里检查 harness、人工复核和候选改进。</span>
+                </div>
+              )}
+            </AgentAdminPanel>
+
+            <AgentAdminPanel eyebrow="hard boundaries" title="不可执行操作" icon={ShieldCheck}>
+              <div className="agent-admin-detail-list">
+                {(learningData?.disabled_actions ?? [
+                  { id: "apply", label: "Apply candidate", disabled: true as const, reason: "候选改进不得自动应用" },
+                  { id: "train", label: "Train model", disabled: true as const, reason: "后台不触发模型训练" },
+                ]).map((action) => (
+                  <AgentAdminDisabledAction key={action.id} label={action.label} reason={action.reason} />
+                ))}
+                <AgentAdminDisabledAction label="写入临床 RAG" reason="文献影子输出与临床知识库隔离" />
+              </div>
+            </AgentAdminPanel>
+
+            <AgentAdminPanel eyebrow="manual shadow trigger" title="创建候选任务" icon={KeyRound}>
+              <form className="agent-admin-research-form" onSubmit={handleCreateLearningJob} autoComplete="off">
+                <div className="agent-admin-research-form-grid">
+                  <label className="agent-admin-research-field" htmlFor="research-requested-by">
+                    <span>操作人</span>
+                    <input id="research-requested-by" name="requested_by" value={requestedBy} onChange={(event) => setRequestedBy(event.target.value)} required />
+                  </label>
+                  <label className="agent-admin-research-field" htmlFor="research-idempotency-key">
+                    <span>幂等键</span>
+                    <input id="research-idempotency-key" name="idempotency_key" value={idempotencyKey} onChange={(event) => setIdempotencyKey(event.target.value)} placeholder="learning-job-…" required />
+                  </label>
+                  <label className="agent-admin-research-field" htmlFor="research-signal-type">
+                    <span>信号类型</span>
+                    <select id="research-signal-type" name="signal_type" value={signalType} onChange={(event) => setSignalType(event.target.value as AdminLearningSignalType)}>
+                      <option value="evidence_delta">evidence_delta</option>
+                      <option value="doctor_action_trace">doctor_action_trace</option>
+                      <option value="harness_failure">harness_failure</option>
+                      <option value="cohort_feasibility_gap">cohort_feasibility_gap</option>
+                      <option value="release_monitoring_alert">release_monitoring_alert</option>
+                    </select>
+                  </label>
+                  <label className="agent-admin-research-field" htmlFor="research-target-area">
+                    <span>候选目标</span>
+                    <select id="research-target-area" name="target_area" value={targetArea} onChange={(event) => setTargetArea(event.target.value as AdminLearningTargetArea)}>
+                      <option value="evidence_ingest">evidence_ingest</option>
+                      <option value="prompt">prompt</option>
+                      <option value="rubric">rubric</option>
+                      <option value="route">route</option>
+                      <option value="template">template</option>
+                      <option value="test_case">test_case</option>
+                    </select>
+                  </label>
+                  <label className="agent-admin-research-field" htmlFor="research-source-ref">
+                    <span>聚合来源 ID</span>
+                    <input id="research-source-ref" name="source_ref_id" value={sourceRefId} onChange={(event) => setSourceRefId(event.target.value)} placeholder="aggregate-signal-…" required />
+                  </label>
+                  <label className="agent-admin-research-field" htmlFor="research-reason-code">
+                    <span>原因代码</span>
+                    <input id="research-reason-code" name="reason_code" value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} placeholder="evidence_gap" required />
+                  </label>
+                  <label className="agent-admin-research-field" htmlFor="research-severity">
+                    <span>严重度</span>
+                    <input id="research-severity" name="severity" value={severity} onChange={(event) => setSeverity(event.target.value)} required />
+                  </label>
+                </div>
+                <label className="agent-admin-research-field" htmlFor="research-signal-summary">
+                  <span>信号摘要</span>
+                  <textarea id="research-signal-summary" name="signal_summary" value={signalSummary} onChange={(event) => setSignalSummary(event.target.value)} placeholder="仅填写去标识化聚合摘要" required />
+                </label>
+                <div className="agent-admin-research-fixed-scope">
+                  <ShieldCheck size={16} aria-hidden="true" />
+                  <span>deidentified = true · projection = aggregate_shadow_learning</span>
+                </div>
+                <div className="agent-admin-research-actions">
+                  <button type="submit" disabled={researchBusy}>创建 shadow_only 候选</button>
+                </div>
+              </form>
+            </AgentAdminPanel>
+          </>
         }
       />
-      <AgentAdminPanel eyebrow="preview" title="learned artifacts preview" icon={FileText}>
-        <div className="agent-admin-detail-list">
-          {artifacts.map((artifact) => (
-            <span key={artifact}>{artifact}</span>
-          ))}
+
+      <AgentAdminPanel eyebrow="aggregate projection" title="队列可行性评估" icon={DatabaseZap}>
+        <div className="agent-admin-research-grid">
+          <form className="agent-admin-research-form" onSubmit={handleCohortFeasibility} autoComplete="off">
+            <div className="agent-admin-research-form-grid">
+              <label className="agent-admin-research-field" htmlFor="cohort-request-id">
+                <span>请求 ID</span>
+                <input id="cohort-request-id" name="request_id" value={requestId} onChange={(event) => setRequestId(event.target.value)} placeholder="cohort-request-…" required />
+              </label>
+              <label className="agent-admin-research-field" htmlFor="cohort-project-id">
+                <span>项目 ID</span>
+                <input id="cohort-project-id" name="project_id" value={projectId} onChange={(event) => setProjectId(event.target.value)} placeholder="research-crc-…" required />
+              </label>
+              <label className="agent-admin-research-field" htmlFor="cohort-condition">
+                <span>研究条件标签</span>
+                <input id="cohort-condition" name="condition" value={condition} onChange={(event) => setCondition(event.target.value)} required />
+              </label>
+              <label className="agent-admin-research-field" htmlFor="cohort-features">
+                <span>必需变量，逗号分隔</span>
+                <input id="cohort-features" name="required_features" value={requiredFeatures} onChange={(event) => setRequiredFeatures(event.target.value)} placeholder="rectal_bleeding, anemia" required />
+              </label>
+            </div>
+            <label className="agent-admin-research-field" htmlFor="cohort-question">
+              <span>研究问题</span>
+              <textarea id="cohort-question" name="question" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="这组投影数据是否足以进入可行性复核？" required />
+            </label>
+            <div className="agent-admin-research-fixed-scope">
+              <ShieldCheck size={16} aria-hidden="true" />
+              <span>仅 patient_record_projection · 去标识化 · 不返回患者级行</span>
+            </div>
+            <div className="agent-admin-research-actions">
+              <button type="submit" disabled={researchBusy}>运行可行性评估</button>
+            </div>
+          </form>
+
+          <section className="agent-admin-research-result" aria-label="队列可行性结果">
+            {cohortFeasibilityResource.status === "loading" ? (
+              <div className="agent-admin-research-empty" aria-busy="true">
+                <DatabaseZap size={22} aria-hidden="true" />
+                <strong>正在评估聚合投影</strong>
+                <span>系统只检查可用变量、覆盖率和治理门槛。</span>
+              </div>
+            ) : cohortFeasibilityResource.status === "error" ? (
+              <div className="agent-admin-research-error" role="alert">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <span>可行性评估失败：{cohortFeasibilityResource.error.message}</span>
+              </div>
+            ) : cohortResult ? (
+              <>
+                <div className="agent-admin-research-result-summary">
+                  <div>
+                    <span>Result ID</span>
+                    <strong className="agent-admin-research-id">{cohortResult.result_id}</strong>
+                    <small>{cohortResult.project_id}</small>
+                  </div>
+                  <div>
+                    <span>评估状态</span>
+                    <AgentAdminStatusChip tone={researchStatusTone(cohortResult.status)}>{cohortResult.status}</AgentAdminStatusChip>
+                  </div>
+                  <div>
+                    <span>可评估投影人数</span>
+                    <strong>{cohortResult.estimated_count}</strong>
+                    <small>不是符合纳排条件的患者数</small>
+                  </div>
+                  <div>
+                    <span>需要复核</span>
+                    <strong>{cohortResult.requires_review ? "是" : "否"}</strong>
+                    <small>患者级返回：{String(cohortResult.patient_level_rows_returned)}</small>
+                  </div>
+                </div>
+                <div className="agent-admin-research-coverage">
+                  {Object.entries(cohortResult.variable_coverage).map(([feature, coverage]) => {
+                    const percent = Math.max(0, Math.min(100, Math.round(coverage.coverage_ratio * 100)));
+                    return (
+                      <article key={feature} className="agent-admin-research-coverage-row">
+                        <div><strong>{feature}</strong><span>{coverage.covered_count} · {percent}%</span></div>
+                        <div
+                          role="progressbar"
+                          aria-label={`${feature} 覆盖率`}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={percent}
+                        ><span style={{ width: `${percent}%` }} /></div>
+                        <small>{coverage.source_fact_types.join(" · ") || "无来源事实类型"}</small>
+                      </article>
+                    );
+                  })}
+                </div>
+                {(cohortResult.missing_key_variables.length > 0 || cohortResult.unmapped_required_features.length > 0 || cohortResult.bias_warnings.length > 0) ? (
+                  <div className="agent-admin-research-notice">
+                    <strong>评估警告</strong>
+                    {[...cohortResult.missing_key_variables, ...cohortResult.unmapped_required_features, ...cohortResult.bias_warnings].map((warning) => (
+                      <span key={warning}>{warning}</span>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="agent-admin-research-review-list">
+                  <strong>复核队列</strong>
+                  {cohortResult.review_queue_items.length > 0 ? cohortResult.review_queue_items.map((item) => (
+                    <article key={item.review_item_id}>
+                      <strong className="agent-admin-research-id">{item.review_item_id}</strong>
+                      <span>{item.review_type} · {item.status}</span>
+                      <small>{item.required_checks.join(" · ")}</small>
+                    </article>
+                  )) : <span>此结果未生成复核项。</span>}
+                </div>
+              </>
+            ) : (
+              <div className="agent-admin-research-empty">
+                <DatabaseZap size={22} aria-hidden="true" />
+                <strong>尚未运行评估</strong>
+                <span>填写研究问题和必需变量后，系统返回聚合覆盖率与治理复核项。</span>
+              </div>
+            )}
+          </section>
         </div>
       </AgentAdminPanel>
     </>

@@ -1,7 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "./client";
-import type { AdminReleaseClosureResponse, AdminReleaseMonitoringResponse } from "./types";
+import type {
+  AdminAutoResearchRun,
+  AdminAutoResearchRunResponse,
+  AdminAutoResearchRunsResponse,
+  AdminCohortFeasibilityRequest,
+  AdminCreateAutoResearchRunRequest,
+  AdminCreateAutoResearchRunResponse,
+  AdminCreateLearningJobRequest,
+  AdminReleaseClosureResponse,
+  AdminReleaseMonitoringResponse,
+} from "./types";
 
 function jsonResponse(payload: unknown): Response {
   return {
@@ -73,6 +83,96 @@ function releaseMonitoringResponse(): AdminReleaseMonitoringResponse {
       source: "reports/release_monitoring",
       mode: "post_release_monitoring",
     },
+  };
+}
+
+function autoResearchRun(): AdminAutoResearchRun {
+  return {
+    run_id: "auto_research_run_001",
+    request_hash: `sha256:${"a".repeat(64)}`,
+    request: {
+      request_id: "research_request_001",
+      project_id: "research_crc_001",
+      question: "Which source-grounded CRC hypotheses merit controlled follow-up?",
+      requested_by: "admin_operator",
+      idempotency_key: "auto-research-001",
+      max_sources: 8,
+      max_hypotheses: 3,
+      max_iterations: 2,
+      deidentified: true,
+    },
+    status: "completed_shadow",
+    created_at: "2026-07-19T02:00:00+00:00",
+    completed_at: "2026-07-19T02:01:00+00:00",
+    stages: [
+      {
+        name: "literature_search",
+        status: "completed",
+        started_at: "2026-07-19T02:00:00+00:00",
+        completed_at: "2026-07-19T02:00:10+00:00",
+        summary: "Retrieved one verified PubMed abstract.",
+        error: null,
+      },
+    ],
+    sources: [
+      {
+        source_id: "research_source_001",
+        title: "CRC evidence source",
+        url: "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+        abstract: "A source abstract used only for a shadow research fixture.",
+        journal: "Fixture Journal",
+        publication_year: "2026",
+        source_type: "pubmed",
+        query: "colorectal cancer",
+        retrieved_at: "2026-07-19T02:00:09+00:00",
+        pmid: "12345678",
+      },
+    ],
+    hypotheses: [
+      {
+        hypothesis_id: "research_hypothesis_001",
+        statement: "A source-grounded candidate hypothesis.",
+        rationale: "The verified abstract supports controlled follow-up.",
+        testable_prediction: "A predefined aggregate analysis can falsify the candidate.",
+        supporting_source_ids: ["research_source_001"],
+        counterevidence_source_ids: [],
+        iteration: 1,
+        review: {
+          verdict: "advance",
+          evidence_support_score: 0.8,
+          novelty_score: 0.6,
+          testability_score: 0.9,
+          safety_risk: "shadow-only interpretation required",
+          critique: "Requires independent human review.",
+          revision_instructions: "",
+        },
+      },
+    ],
+    study_plans: [
+      {
+        plan_id: "research_plan_001",
+        hypothesis_id: "research_hypothesis_001",
+        study_type: "aggregate retrospective analysis",
+        objective: "Falsify the candidate using approved aggregate data.",
+        required_data: ["approved aggregate projection"],
+        analysis_steps: ["Pre-register the aggregate analysis."],
+        success_criteria: ["Meet the predefined effect threshold."],
+        safety_constraints: ["Do not return patient-level rows."],
+        execution_status: "not_executed",
+      },
+    ],
+    report_markdown: "# Shadow report\n\nPending human review.",
+    iteration_count: 1,
+    provenance: {
+      pipeline_version: "shadow_auto_research_v1",
+      retriever: "pubmed",
+      reasoner: "fixture",
+    },
+    human_review_status: "needs_human_review",
+    mode: "shadow_only",
+    applies_automatically: false,
+    clinical_default_path_mutated: false,
+    patient_level_rows_returned: false,
   };
 }
 
@@ -170,6 +270,229 @@ describe("createApiClient", () => {
     expect(fetchImpl).toHaveBeenCalledWith(
       "http://127.0.0.1:8000/api/admin/tools",
       { headers: { Authorization: "Bearer dev-token" } },
+    );
+  });
+
+  it("loads admin learning jobs with configured Authorization headers", async () => {
+    const payload = {
+      jobs: [],
+      candidates: [],
+      integrity: { status: "verified", warnings: [] },
+      disabled_actions: [],
+      actions: {
+        apply: { enabled: false, reason: "shadow_learning_jobs_only" },
+        train: { enabled: false, reason: "shadow_learning_jobs_only" },
+      },
+      runtime: {
+        auth: "admin",
+        source: "reports/learning_jobs",
+        mode: "shadow_learning_jobs",
+      },
+    };
+    const fetchImpl = vi.fn(async () => jsonResponse(payload));
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer admin-token" },
+    });
+
+    await expect(client.getAdminLearningJobs()).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/learning-jobs",
+      { headers: { Authorization: "Bearer admin-token" } },
+    );
+  });
+
+  it("creates an admin learning job with admin headers and a JSON body", async () => {
+    const payload = {
+      job: { job_id: "learning_job_001", status: "shadow_only" },
+      signals: [],
+      candidates: [],
+    };
+    let latestInit: RequestInit | undefined;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      latestInit = init;
+      return jsonResponse(payload);
+    });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    const request: AdminCreateLearningJobRequest = {
+      signals: [
+        {
+          signal_type: "doctor_action_trace",
+          source_ref: {
+            kind: "doctor_action_trace",
+            id: "doctor_action_trace_crc_shadow_001",
+          },
+          reason_code: "unsafe_disposition",
+          target_area: "prompt",
+          severity: "high",
+          summary: "Aggregate deidentified shadow signal.",
+          deidentified: true,
+          created_at: "2026-07-09T10:00:00+08:00",
+        },
+      ],
+      requested_by: "admin_user",
+      idempotency_key: "learning-job-001",
+    };
+
+    await expect(client.createAdminLearningJob(request)).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/learning-jobs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    );
+    const headers = latestInit?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer admin-token");
+    expect(headers.get("Content-Type")).toBe("application/json");
+  });
+
+  it("evaluates cohort feasibility with admin headers and a JSON body", async () => {
+    const payload = {
+      result_id: "cohort_feasibility_001",
+      request_id: "cohort_request_crc_001",
+      status: "needs_review",
+      estimated_count: 1,
+      patient_level_rows_returned: false,
+    };
+    let latestInit: RequestInit | undefined;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      latestInit = init;
+      return jsonResponse(payload);
+    });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    const request: AdminCohortFeasibilityRequest = {
+      request_id: "cohort_request_crc_001",
+      project_id: "research_crc_001",
+      question: "Is there enough aggregate CRC data for feasibility review?",
+      cohort_criteria: {
+        condition: "colorectal_cancer_or_crc_triage_risk",
+        required_features: ["rectal_bleeding"],
+      },
+      data_scope: {
+        source: "patient_record_projection",
+        patient_level_export_requested: false,
+        deidentified_only: true,
+      },
+      version_refs: {
+        projection_version: "patient_record_projection_v0",
+        clinical_safety_policy_version: "crc_safety_policy_v0",
+      },
+    };
+
+    await expect(client.evaluateAdminCohortFeasibility(request)).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/research/cohort-feasibility",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    );
+    const headers = latestInit?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer admin-token");
+    expect(headers.get("Content-Type")).toBe("application/json");
+  });
+
+  it("loads admin auto-research runs with configured Authorization headers", async () => {
+    const payload: AdminAutoResearchRunsResponse = {
+      runs: [autoResearchRun()],
+      integrity: { status: "verified", warnings: [] },
+      runtime: {
+        auth: "admin",
+        source: "reports/auto_research",
+        mode: "shadow_auto_research",
+      },
+    };
+    const fetchImpl = vi.fn(async () => jsonResponse(payload));
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer admin-token" },
+    });
+
+    await expect(client.getAdminAutoResearchRuns()).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/research/runs",
+      { headers: { Authorization: "Bearer admin-token" } },
+    );
+  });
+
+  it("creates an admin auto-research run with admin headers and a JSON body", async () => {
+    const payload: AdminCreateAutoResearchRunResponse = {
+      run: autoResearchRun(),
+      reused: false,
+      integrity: { status: "verified", warnings: [] },
+      runtime: {
+        auth: "admin",
+        source: "reports/auto_research",
+        mode: "shadow_auto_research",
+      },
+    };
+    let latestInit: RequestInit | undefined;
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      latestInit = init;
+      return jsonResponse(payload);
+    });
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer admin-token" },
+    });
+    const request: AdminCreateAutoResearchRunRequest = {
+      request_id: "research_request_001",
+      project_id: "research_crc_001",
+      question: "Which source-grounded CRC hypotheses merit controlled follow-up?",
+      requested_by: "admin_operator",
+      idempotency_key: "auto-research-001",
+      max_sources: 8,
+      max_hypotheses: 3,
+      max_iterations: 2,
+      deidentified: true,
+    };
+
+    await expect(client.createAdminAutoResearchRun(request)).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/research/runs",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    );
+    const headers = latestInit?.headers as Headers;
+    expect(headers.get("Authorization")).toBe("Bearer admin-token");
+    expect(headers.get("Content-Type")).toBe("application/json");
+  });
+
+  it("loads one admin auto-research run with an encoded run id", async () => {
+    const payload: AdminAutoResearchRunResponse = {
+      run: autoResearchRun(),
+      integrity: { status: "verified", warnings: [] },
+      runtime: {
+        auth: "admin",
+        source: "reports/auto_research",
+        mode: "shadow_auto_research",
+      },
+    };
+    const fetchImpl = vi.fn(async () => jsonResponse(payload));
+    const client = createApiClient({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl,
+      headers: { Authorization: "Bearer admin-token" },
+    });
+
+    await expect(client.getAdminAutoResearchRun("auto research/run 001")).resolves.toEqual(payload);
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "http://127.0.0.1:8000/api/admin/research/runs/auto%20research%2Frun%20001",
+      { headers: { Authorization: "Bearer admin-token" } },
     );
   });
 

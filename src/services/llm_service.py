@@ -208,6 +208,12 @@ class LLMService:
                 json_mode = True
             if not json_mode and ("json_schema" in kwargs or "json_schema" in payload):
                 json_mode = True
+            tool_mode = bool(
+                payload.get("tools")
+                or kwargs.get("tools")
+                or payload.get("tool_choice")
+                or kwargs.get("tool_choice")
+            )
             capabilities = resolve_provider_capabilities(
                 model_name=str(getattr(self, "model_name", "") or getattr(self, "model", "") or ""),
                 base_url=str(getattr(self, "openai_api_base", "") or getattr(self, "base_url", "") or ""),
@@ -220,9 +226,19 @@ class LLMService:
                     else message
                     for message in payload["messages"]
                 ]
-            if json_mode:
-                extra_body = payload.get("extra_body", {})
-                extra_body["enable_thinking"] = False
+            if (json_mode or tool_mode) and (
+                capabilities.provider == "deepseek"
+                or capabilities.supports_thinking
+            ):
+                # Thinking transports commonly reject response_format or tool_choice.
+                # Structured output must therefore use the provider's non-thinking mode.
+                extra_body = dict(payload.get("extra_body") or {})
+                if capabilities.provider == "deepseek":
+                    extra_body.pop("enable_thinking", None)
+                    extra_body["thinking"] = {"type": "disabled"}
+                else:
+                    extra_body.pop("thinking", None)
+                    extra_body["enable_thinking"] = False
                 extra_body.pop("thinking_budget", None)
                 if extra_body:
                     payload["extra_body"] = extra_body

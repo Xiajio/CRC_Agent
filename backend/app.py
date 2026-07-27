@@ -116,7 +116,9 @@ def _requires_admin_token(request: Request) -> bool:
         return True
     if method == "POST" and path == "/api/admin/release-closure/closures":
         return True
-    if method == "POST" and path == "/api/admin/research/cohort-feasibility":
+    if path.startswith("/api/admin/research/"):
+        return True
+    if path.startswith("/api/admin/experimental/diagrams"):
         return True
     if method in {"GET", "POST"} and path == "/api/admin/learning-jobs":
         return True
@@ -245,6 +247,10 @@ def create_app() -> FastAPI:
     app.include_router(admin_routes.router)
     app.include_router(learning_job_routes.router)
     app.include_router(research_routes.router)
+    if runtime_settings.experimental_diagrams_enabled:
+        from backend.api.routes import experimental_diagrams as experimental_diagram_routes
+
+        app.include_router(experimental_diagram_routes.router)
     return app
 
 

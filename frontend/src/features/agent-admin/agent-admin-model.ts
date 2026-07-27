@@ -147,11 +147,11 @@ export const AGENT_ADMIN_TASKS: AgentAdminTask[] = [
   },
   {
     id: "learning",
-    label: "学习",
-    detailTitle: "自主学习准备",
-    description: "daily paper readiness / latest research / scheduler config",
-    status: "disabled",
-    responsibility: "daily paper readiness",
+    label: "自动科研",
+    detailTitle: "影子科研控制台",
+    description: "literature harness / LearningJob / cohort feasibility / review gates",
+    status: "shadow",
+    responsibility: "review-gated research",
     icon: BookOpenCheck,
   },
   {
@@ -195,7 +195,7 @@ export const AGENT_ADMIN_TASKS: AgentAdminTask[] = [
 export const ADMIN_NAV_ITEMS: Array<{ key: AgentAdminTaskId; label: string }> = [
   { key: "overview", label: "巡检总览" },
   { key: "trace", label: "运行链路" },
-  { key: "learning", label: "每日论文准备" },
+  { key: "learning", label: "科研控制台" },
   { key: "release", label: "Release" },
   { key: "read-only", label: "只读边界" },
 ];
@@ -1125,10 +1125,10 @@ export function buildTraceRows(state: SessionState): AgentAdminTraceRow[] {
 
 export function buildLearningReadiness() {
   return [
-    { label: "候选工具", value: "search_latest_research", state: "roadmap" },
-    { label: "调度器配置", value: "scheduler disabled / config needed", state: "roadmap" },
-    { label: "摄取队列", value: "ingestion queue empty", state: "roadmap" },
-    { label: "论文来源", value: "PubMed / Crossref / arXiv", state: "roadmap" },
+    { label: "科研模式", value: "shadow only", state: "runtime" },
+    { label: "知识写入", value: "disabled", state: "boundary" },
+    { label: "自动训练", value: "disabled", state: "boundary" },
+    { label: "人工复核", value: "required", state: "governance" },
   ];
 }
 
@@ -1138,6 +1138,6 @@ export function buildPermissionRows() {
     { label: "查看证据", state: "enabled", reason: "references are frontend snapshots" },
     { label: "编辑规则", state: "disabled", reason: "规则运行态不可从后台写入" },
     { label: "启停工具", state: "disabled", reason: "工具运行态不可从后台写入" },
-    { label: "运行学习任务", state: "disabled", reason: "scheduler disabled / config needed" },
+    { label: "创建科研候选", state: "enabled", reason: "admin-only shadow trigger / human review required" },
   ];
 }
